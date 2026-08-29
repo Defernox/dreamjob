@@ -23,7 +23,7 @@ from ..connectors.base import (
     SearchQuery,
 )
 from ..connectors.registry import cles_actives, client_http, construire
-from ..models import Offer, ScanRun
+from ..models import Offer, Recherche, ScanRun
 from ..models.base import maintenant
 from ..models.enums import StatutScan
 from .dedup import hash_offre
@@ -54,6 +54,34 @@ def requete_par_defaut(reglages: Reglages) -> SearchQuery:
         contrats=list(r.contrats),
         max_offres=r.offres_max_par_source,
     )
+
+
+def requetes_actives(session: Session, reglages: Reglages) -> list[SearchQuery]:
+    """Les recherches enregistrées et actives, ou une requête unique par défaut.
+
+    Sans recherche définie, on retombe sur le profil : l'application reste
+    utilisable avant que l'utilisateur en ait créé une.
+    """
+    recherches = list(session.exec(
+        select(Recherche).where(Recherche.active).order_by(Recherche.ordre, Recherche.id)
+    ).all())
+    if not recherches:
+        return [requete_depuis_profil(session, reglages)]
+
+    repli = requete_depuis_profil(session, reglages)
+    return [
+        SearchQuery(
+            mots_cles=list(r.mots_cles),
+            # Vides = les préférences du profil : une recherche n'a pas à
+            # répéter les pays acceptés si elle ne les restreint pas.
+            pays=list(r.pays) or repli.pays,
+            contrats=list(r.contrats) or repli.contrats,
+            departement=r.departement,
+            publiee_depuis_jours=r.publiee_depuis_jours,
+            max_offres=r.max_offres,
+        )
+        for r in recherches
+    ]
 
 
 def requete_depuis_profil(session: Session, reglages: Reglages) -> SearchQuery:
@@ -94,16 +122,33 @@ def _retenue(offre: RawOffer, query: SearchQuery) -> bool:
 
 def lancer_scan(
     session: Session,
-    query: SearchQuery | None = None,
+    query: SearchQuery | list[SearchQuery] | None = None,
     *,
     sources: list[str] | None = None,
     declenche_par: str = "manuel",
 ) -> ScanRun:
+    """Joue une ou plusieurs requêtes sur les sources actives.
+
+    Plusieurs requêtes produisent **un seul** ScanRun : c'est une recherche du
+    point de vue de l'utilisateur, et la déduplication opère sur l'ensemble —
+    une offre trouvée par deux recherches n'est stockée qu'une fois.
+    """
     reglages = lire_reglages()
-    query = query or requete_par_defaut(reglages)
+    if query is None:
+        requetes = [requete_par_defaut(reglages)]
+    elif isinstance(query, SearchQuery):
+        requetes = [query]
+    else:
+        requetes = list(query) or [requete_par_defaut(reglages)]
+
     cles = sources if sources is not None else cles_actives(reglages)
 
-    scan = ScanRun(sources=cles, requete=query.en_dict(), declenche_par=declenche_par)
+    scan = ScanRun(
+        sources=cles,
+        requete={"requetes": [r.en_dict() for r in requetes]} if len(requetes) > 1
+        else requetes[0].en_dict(),
+        declenche_par=declenche_par,
+    )
     session.add(scan)
     session.commit()
     session.refresh(scan)
@@ -114,9 +159,13 @@ def lancer_scan(
     with client_http(reglages) as http:
         for cle in cles:
             try:
-                offres = construire(cle, http, reglages).fetch(query)
+                connecteur = construire(cle, http, reglages)
+                offres = []
+                for requete in requetes:
+                    offres.extend(connecteur.fetch(requete))
                 recoltees.extend(offres)
-                log.info("%s : %d offres récupérées", cle, len(offres))
+                log.info("%s : %d offres récupérées (%d recherche(s))",
+                         cle, len(offres), len(requetes))
             except ConnecteurNonConfigure as e:
                 # Pas une panne : la source n'est simplement pas branchée.
                 erreurs.append({"source": cle, "type": "non_configure", "erreur": str(e)})
@@ -129,7 +178,7 @@ def lancer_scan(
                                 "erreur": f"{type(e).__name__}: {e}"})
                 log.exception("%s : erreur inattendue", cle)
 
-    nouvelles, doublons, rejetees = _stocker(session, recoltees, query)
+    nouvelles, doublons, rejetees = _stocker(session, recoltees, requetes)
 
     scan.nb_recuperees = len(recoltees)
     scan.nb_nouvelles = nouvelles
@@ -157,7 +206,8 @@ def _statut(cles: list[str], erreurs: list[dict]) -> str:
     return StatutScan.ECHEC.value if en_echec >= set(cles) else StatutScan.PARTIEL.value
 
 
-def _stocker(session: Session, offres: list[RawOffer], query: SearchQuery) -> tuple[int, int, int]:
+def _stocker(session: Session, offres: list[RawOffer],
+             requetes: list[SearchQuery]) -> tuple[int, int, int]:
     """Insère ce qui est nouveau. Renvoie (nouvelles, doublons, rejetées)."""
     nouvelles = doublons = rejetees = 0
     # Un doublon peut aussi apparaître *dans* un même lot (deux sources publiant
@@ -165,15 +215,20 @@ def _stocker(session: Session, offres: list[RawOffer], query: SearchQuery) -> tu
     vus: set[str] = set()
 
     for brute in offres:
-        if not _retenue(brute, query):
-            rejetees += 1
-            continue
-
+        # La déduplication passe AVANT le filtrage : plusieurs recherches
+        # ramènent souvent la même annonce, et la compter une fois par
+        # recherche gonflerait le nombre de rejets sans rien signifier.
         empreinte = hash_offre(brute)
         if empreinte in vus:
             doublons += 1
             continue
         vus.add(empreinte)
+
+        # Retenue dès qu'UNE recherche l'accepte : une offre V.I.E au Canada
+        # ne doit pas être jetée parce que la recherche « CDI Paris » l'exclut.
+        if not any(_retenue(brute, requete) for requete in requetes):
+            rejetees += 1
+            continue
 
         deja = session.exec(
             select(Offer).where(

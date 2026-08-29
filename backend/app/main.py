@@ -12,7 +12,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from .api import applications, documents, meta, offers, profile, scans
+from .api import applications, documents, meta, offers, profile, recherches, scans
 from .config import reglages
 from .db import checkpoint, creer_tables
 from .scheduler import arreter as arreter_planificateur
@@ -70,6 +70,7 @@ app.add_middleware(
 app.include_router(meta.router)
 app.include_router(profile.router)
 app.include_router(scans.router)
+app.include_router(recherches.router)
 app.include_router(offers.router)
 app.include_router(applications.router)
 app.include_router(documents.router)

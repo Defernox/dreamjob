@@ -11,16 +11,24 @@ from ..db import get_session
 from ..connectors.base import SearchQuery
 from ..models import ScanRun
 from ..schemas.scan import RequeteScan, ScanLecture
-from ..services.scan import lancer_scan, requete_par_defaut
+from ..services.scan import lancer_scan, requete_par_defaut, requetes_actives
 
 router = APIRouter(prefix="/api/scans", tags=["scans"])
 
 
-def _construire_requete(demande: RequeteScan | None) -> SearchQuery:
-    """La demande de l'interface surcharge les valeurs de config.yaml, champ à champ."""
+def _construire_requete(
+    demande: RequeteScan | None, session: Session
+) -> SearchQuery | list[SearchQuery]:
+    """Ce que le scan va chercher.
+
+    Sans surcharge de l'interface, on joue les recherches enregistrées — c'est
+    le cas courant. Une demande explicite les remplace, pour permettre un scan
+    ponctuel sur d'autres mots-clés sans toucher aux recherches.
+    """
+    if demande is None or not demande.model_dump(exclude_unset=True):
+        return requetes_actives(session, reglages())
+
     base = requete_par_defaut(reglages())
-    if demande is None:
-        return base
     return SearchQuery(
         mots_cles=demande.mots_cles if demande.mots_cles is not None else base.mots_cles,
         pays=demande.pays if demande.pays is not None else base.pays,
@@ -49,7 +57,7 @@ def lancer(
             "Aucune source active. Activez-en une dans config.yaml et renseignez "
             "ses identifiants dans .env.",
         )
-    return lancer_scan(session, _construire_requete(demande), sources=sources)
+    return lancer_scan(session, _construire_requete(demande, session), sources=sources)
 
 
 @router.get("/planification")

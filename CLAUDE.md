@@ -277,6 +277,32 @@ l'avertissement est remonté. Mieux vaut pas de lettre qu'une lettre qui ment.
 
 ---
 
+## Recherches enregistrées
+
+Un profil ne se résume pas à un jeu de mots-clés : « analyste risques »,
+« middle office » et « V.I.E finance » se cherchent en même temps, parfois sur
+des pays différents. Chaque `Recherche` active est jouée à chaque scan, manuel
+comme automatique.
+
+Trois règles :
+
+- **Un seul `ScanRun` pour toutes les recherches.** C'est une recherche du point
+  de vue de l'utilisateur ; l'historique n'a pas à se remplir d'une ligne par
+  mot-clé.
+- **Pays et contrats vides = ceux du profil.** Une recherche n'a pas à répéter
+  les préférences quand elle ne les restreint pas.
+- **Une offre est retenue dès qu'UNE recherche l'accepte.** Une mission V.I.E au
+  Canada ne doit pas être jetée parce que la recherche « CDI Paris » l'exclut.
+
+La déduplication passe **avant** le filtrage : plusieurs recherches ramènent
+souvent la même annonce, et la compter une fois par recherche gonflerait le
+nombre de rejets sans rien signifier.
+
+Sans aucune recherche définie, on retombe sur le profil — l'application reste
+utilisable avant qu'on en ait créé une.
+
+---
+
 ## Écran Offres
 
 L'API sert **60 offres par défaut** (`limite`, plafond 500) : l'écran affiche
@@ -372,4 +398,5 @@ Sans LibreOffice, les documents sont générés en Word uniquement — même pri
 - [x] **6.** Génération CV/lettre Word + PDF — modèle préservé, anti-invention bloquant
 - [x] **7.** Écran Candidatures + export Excel — justificatif France Travail
 - [x] **8.** Connecteurs — France Travail, Civiweb (V.I.E) et Adzuna actifs ; trois sources refusées, motifs consignés
+- [x] **10.** Recherches enregistrées multiples, jouées ensemble
 - [x] **9.** Scan planifié quotidien + rattrapage au démarrage + badge « X nouvelles offres »

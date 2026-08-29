@@ -29,7 +29,7 @@ from sqlmodel import Session
 from .config import reglages as lire_reglages
 from .db import engine
 from .models.base import maintenant
-from .services.scan import dernier_scan_abouti, lancer_scan, requete_depuis_profil
+from .services.scan import dernier_scan_abouti, lancer_scan, requetes_actives
 from .services.scoring import ProfilVide, scorer_toutes
 
 log = logging.getLogger("dreamjob.planificateur")
@@ -48,14 +48,13 @@ def executer_scan(declenche_par: str = "planifie") -> None:
     tournerait sinon en erreur silencieuse jusqu'au prochain redémarrage."""
     try:
         with Session(engine) as session:
-            # Les pays et contrats viennent du profil, pas de config.yaml :
-            # un scan automatique plus étroit que le scan manuel jetterait en
-            # silence les offres étrangères que l'utilisateur accepte.
-            requete = requete_depuis_profil(session, lire_reglages())
-            scan = lancer_scan(session, requete, declenche_par=declenche_par)
-            log.info("Scan %s : %d nouvelles offres (statut %s, pays %s)",
-                     declenche_par, scan.nb_nouvelles, scan.statut,
-                     ", ".join(requete.pays) or "tous")
+            # Toutes les recherches enregistrées, pas seulement config.yaml :
+            # le scan automatique doit couvrir exactement ce que l'utilisateur
+            # cherche, sinon il travaille plus étroit que lui.
+            requetes = requetes_actives(session, lire_reglages())
+            scan = lancer_scan(session, requetes, declenche_par=declenche_par)
+            log.info("Scan %s : %d nouvelles offres (statut %s, %d recherche(s))",
+                     declenche_par, scan.nb_nouvelles, scan.statut, len(requetes))
             try:
                 # Sans condition sur les nouveautés : un changement de poids ou
                 # de profil laisse des offres à rescorer même sans arrivée.

@@ -14,6 +14,7 @@ import {
 } from '../api/offres'
 import { Bouton } from '../components/champs'
 import { GroupeChips } from '../components/Chips'
+import { Recherches } from '../components/Recherches'
 import { ScoreBadge } from '../components/ScoreBadge'
 import { anciennete, nombreFr } from '../lib/format'
 import { useTemporise } from '../lib/temporiser'
@@ -114,6 +115,8 @@ export default function Offres() {
           calcul local.
         </Message>
       )}
+
+      <Recherches />
 
       <div className="bg-white rounded-lg border border-slate-200 p-4 space-y-3">
         <div className="flex gap-3 flex-wrap items-center">

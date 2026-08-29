@@ -171,3 +171,61 @@ def test_les_nouvelles_offres_sont_marquees_non_vues(session, sources):
     sources["a"] = _source("a", [_offre()])
     lancer_scan(session, SearchQuery(), sources=["a"])
     assert session.exec(select(Offer)).first().vue is False
+
+
+# --- Plusieurs recherches en un seul scan -----------------------------------
+
+
+def test_plusieurs_recherches_produisent_un_seul_scan(session, sources):
+    """C'est une recherche du point de vue de l'utilisateur : l'historique ne
+    doit pas se remplir d'une ligne par mot-clé."""
+    sources["a"] = _source("a", [_offre(identifiant="1")])
+    scan = lancer_scan(session, [SearchQuery(mots_cles=["x"]), SearchQuery(mots_cles=["y"])],
+                       sources=["a"])
+    assert scan.nb_recuperees == 2       # la source est interrogée deux fois
+    assert scan.nb_nouvelles == 1        # mais l'offre n'est stockée qu'une fois
+    assert scan.nb_doublons == 1
+
+
+def test_chaque_recherche_est_transmise_au_connecteur(session, sources):
+    recues = []
+
+    class SourceQuiNote(BaseConnector):
+        cle = libelle = "notee"
+
+        def fetch(self, query):
+            recues.append(list(query.mots_cles))
+            return []
+
+    sources["notee"] = SourceQuiNote
+    lancer_scan(session, [SearchQuery(mots_cles=["analyste"]),
+                          SearchQuery(mots_cles=["middle office"])], sources=["notee"])
+    assert recues == [["analyste"], ["middle office"]]
+
+
+def test_une_offre_retenue_par_une_seule_recherche_est_gardee(session, sources):
+    """Une offre V.I.E au Canada ne doit pas être jetée parce que la recherche
+    « CDI Paris » l'exclut."""
+    sources["a"] = _source("a", [_offre(identifiant="1", pays="Canada", contrat="V.I.E")])
+    scan = lancer_scan(session, [
+        SearchQuery(pays=["France"], contrats=["CDI"]),
+        SearchQuery(pays=["Canada"], contrats=["V.I.E"]),
+    ], sources=["a"])
+    assert scan.nb_nouvelles == 1
+    assert scan.nb_rejetees == 0
+
+
+def test_une_offre_rejetee_par_toutes_les_recherches_est_ecartee(session, sources):
+    sources["a"] = _source("a", [_offre(identifiant="1", pays="Allemagne")])
+    scan = lancer_scan(session, [
+        SearchQuery(pays=["France"]),
+        SearchQuery(pays=["Canada"]),
+    ], sources=["a"])
+    assert (scan.nb_nouvelles, scan.nb_rejetees) == (0, 1)
+
+
+def test_la_trace_du_scan_conserve_toutes_les_requetes(session, sources):
+    sources["a"] = _source("a", [])
+    scan = lancer_scan(session, [SearchQuery(mots_cles=["x"]), SearchQuery(mots_cles=["y"])],
+                       sources=["a"])
+    assert len(scan.requete["requetes"]) == 2

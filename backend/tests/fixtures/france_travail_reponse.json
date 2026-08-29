@@ -1,0 +1,48 @@
+{
+  "resultats": [
+    {
+      "id": "195XKQL",
+      "intitule": "Analyste risques de crédit (H/F)",
+      "description": "Au sein de la direction des risques, vous évaluez la solvabilité des contreparties et suivez les encours. Poste basé à Paris. Profil : bac+5 finance.",
+      "dateCreation": "2026-08-27T09:12:00.000Z",
+      "dateActualisation": "2026-08-27T09:12:00.000Z",
+      "lieuTravail": {"libelle": "75 - PARIS 09", "codePostal": "75009", "commune": "75109"},
+      "romeCode": "C1206",
+      "entreprise": {"nom": "BANQUE EXEMPLE"},
+      "typeContrat": "CDI",
+      "typeContratLibelle": "Contrat à durée indéterminée",
+      "natureContrat": "Contrat travail",
+      "experienceExige": "S",
+      "salaire": {"libelle": "Annuel de 38000.0 Euros à 45000.0 Euros sur 12 mois"},
+      "origineOffre": {
+        "origine": "1",
+        "urlOrigine": "https://candidat.francetravail.fr/offres/recherche/detail/195XKQL"
+      }
+    },
+    {
+      "id": "195XKQM",
+      "intitule": "Alternance - Assistant trésorerie (H/F)",
+      "description": "Vous assistez le trésorier dans le suivi des flux et la construction du budget prévisionnel.",
+      "dateCreation": "2026-08-26T14:00:00.000Z",
+      "lieuTravail": {"libelle": "92 - COURBEVOIE", "codePostal": "92400"},
+      "entreprise": {"nom": "GROUPE EXEMPLE"},
+      "typeContrat": "CDD",
+      "typeContratLibelle": "Contrat à durée déterminée - 12 Mois",
+      "natureContrat": "E2",
+      "alternance": true,
+      "origineOffre": {"origine": "1"}
+    },
+    {
+      "id": "195XKQN",
+      "intitule": "Mission - Gestionnaire back office",
+      "description": "Mission d'intérim de 6 mois en back office titres.",
+      "dateCreation": "2026-08-20T08:00:00.000Z",
+      "lieuTravail": {"libelle": "69 - LYON 03"},
+      "entreprise": {},
+      "typeContrat": "MIS",
+      "typeContratLibelle": "Mission intérimaire - 6 Mois",
+      "origineOffre": {"origine": "2", "urlOrigine": "https://partenaire.example/offre/42"}
+    }
+  ],
+  "filtresPossibles": [{"filtre": "typeContrat", "agregation": []}]
+}

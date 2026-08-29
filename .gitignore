@@ -1,0 +1,21 @@
+# Python
+backend/.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Node
+frontend/node_modules/
+frontend/dist/
+
+# Données locales — ne JAMAIS versionner
+data/
+*.db
+*.db-wal
+*.db-shm
+
+# Secrets
+.env
+
+# Modèle de CV personnel
+templates/cv_modele.docx

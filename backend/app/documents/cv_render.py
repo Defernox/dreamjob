@@ -1,0 +1,299 @@
+"""Rendu du CV depuis `templates/cv_modele.docx`.
+
+Deux exigences du cahier des charges, tenues ici :
+
+1. **La mise en page du modèle ne doit jamais casser.** Aucun paragraphe n'est
+   créé de zéro : on duplique ceux du modèle et on remplace leur texte.
+2. **Réordonnancement selon l'offre.** Expériences et compétences les plus
+   proches de l'annonce passent en tête (désactivable dans `config.yaml`).
+
+Rien n'est inventé : tout provient du profil.
+"""
+
+from __future__ import annotations
+
+import logging
+import re
+from pathlib import Path
+
+import docx
+
+from ..models import Offer, Profile
+from ..scoring.extraction import signaux_de
+from ..scoring.texte import mots
+from .docx_outils import (
+    cloner_apres,
+    cloner_xml_apres,
+    copier_xml,
+    definir_morceaux,
+    definir_texte,
+    est_gras,
+    est_puce,
+    decouper_en_sections,
+    supprimer,
+    supprimer_section,
+)
+
+log = logging.getLogger("dreamjob.cv")
+
+MAX_PUCES = 5
+MAX_COMPETENCES_PAR_LIGNE = 8
+
+
+class ModeleIntrouvable(FileNotFoundError):
+    pass
+
+
+# ------------------------------------------------------------------ pertinence
+
+
+def _pertinence(texte: str, vocabulaire: set[str]) -> float:
+    """Proportion des mots de `texte` que l'offre emploie aussi."""
+    jetons = set(mots(texte))
+    if not jetons:
+        return 0.0
+    return len(jetons & vocabulaire) / len(jetons)
+
+
+def _experiences_ordonnees(profil: Profile, vocabulaire: set[str], reordonner: bool) -> list[dict]:
+    if not reordonner:
+        return list(profil.experiences)
+    return sorted(
+        profil.experiences,
+        key=lambda x: _pertinence(
+            f"{x.get('poste', '')} {x.get('description', '')} {' '.join(x.get('tags', []))}",
+            vocabulaire,
+        ),
+        reverse=True,
+    )
+
+
+def _competences_ordonnees(profil: Profile, vocabulaire: set[str], reordonner: bool) -> list[str]:
+    noms = [s.get("nom", "") for s in profil.skills if s.get("nom")]
+    if not reordonner:
+        return noms
+    ancrees = {s.get("nom") for s in profil.skills if s.get("ancree")}
+    # D'abord ce que l'offre mentionne, puis les compétences signature.
+    return sorted(noms, key=lambda n: (_pertinence(n, vocabulaire), n in ancrees), reverse=True)
+
+
+# --------------------------------------------------------------------- blocs
+
+
+def _blocs(paragraphes: list) -> list[list]:
+    """Découpe une section en blocs : chacun commence par une ligne en gras."""
+    blocs: list[list] = []
+    for paragraphe in paragraphes:
+        if est_gras(paragraphe) and not est_puce(paragraphe):
+            blocs.append([paragraphe])
+        elif blocs:
+            blocs[-1].append(paragraphe)
+    return blocs
+
+
+def _decouper_en_puces(texte: str) -> list[str]:
+    """Une description en prose devient des puces lisibles."""
+    if not texte.strip():
+        return []
+    lignes = [l.strip(" -•\t") for l in texte.splitlines() if l.strip()]
+    if len(lignes) > 1:
+        return lignes[:MAX_PUCES]
+    phrases = [p.strip() for p in re.split(r"(?<=[.!?])\s+", texte) if len(p.strip()) > 15]
+    return (phrases or [texte.strip()])[:MAX_PUCES]
+
+
+def _ajuster_puces(bloc: list, textes: list[str]):
+    """Aligne le nombre de puces du modèle sur le nombre de textes à écrire.
+
+    Renvoie le dernier paragraphe du bloc — il change dès qu'une puce est
+    ajoutée, et l'appelant s'en sert comme point d'insertion du bloc suivant.
+    """
+    puces = [p for p in bloc if est_puce(p)]
+    if not puces:
+        return bloc[-1]
+
+    for i, texte in enumerate(textes):
+        if i < len(puces):
+            definir_texte(puces[i], texte)
+        else:
+            nouvelle = cloner_apres(puces[0], puces[-1])
+            definir_texte(nouvelle, texte)
+            puces.append(nouvelle)
+
+    for surplus in puces[len(textes):]:
+        supprimer(surplus)
+
+    restantes = puces[:len(textes)]
+    return restantes[-1] if restantes else bloc[max(0, len(bloc) - len(puces) - 1)]
+
+
+def _appliquer_blocs(blocs: list[list], donnees: list, remplir) -> None:
+    """Rend `donnees` en dupliquant le premier bloc du modèle autant que besoin."""
+    if not blocs or not donnees:
+        for bloc in blocs:
+            for paragraphe in bloc:
+                supprimer(paragraphe)
+        return
+
+    patron = blocs[0]
+    photo = copier_xml(patron)          # photographie du modèle vierge
+
+    # Les blocs surnuméraires du modèle partent AVANT toute duplication : sinon
+    # les clones s'intercaleraient entre eux et l'ordre deviendrait incohérent.
+    for bloc in blocs[1:]:
+        for paragraphe in bloc:
+            supprimer(paragraphe)
+
+    # `remplir` peut ajouter des puces : il renvoie donc le vrai dernier
+    # paragraphe du bloc, seul point d'insertion valide pour le suivant.
+    dernier = remplir(patron, donnees[0])
+
+    for element in donnees[1:]:
+        clone = []
+        for xml in photo:
+            dernier = cloner_xml_apres(xml, dernier)
+            clone.append(dernier)
+        dernier = remplir(clone, element)
+
+
+# ------------------------------------------------------------------- sections
+
+
+def _remplir_entete(entete: list, profil: Profile, offre: Offer) -> None:
+    if len(entete) < 4:
+        return
+    definir_texte(entete[0], f"{profil.prenom} {profil.nom}".strip().upper())
+    # Le titre reprend l'intitulé de l'offre : c'est ce que lisent les filtres ATS.
+    definir_texte(entete[1], offre.titre or profil.titre_vise)
+
+    contact = " | ".join(filter(None, [
+        ", ".join(filter(None, [profil.ville, profil.pays])),
+        profil.telephone, profil.email, profil.linkedin,
+    ]))
+    definir_texte(entete[2], contact)
+
+    recherche = ", ".join(profil.contrats_acceptes) or "—"
+    mobilite = ", ".join(profil.pays_acceptes) or profil.pays or "—"
+    definir_texte(entete[3], f"Mobilité : {mobilite} — Recherche : {recherche}")
+
+
+def _remplir_competences(paragraphes: list, competences: list[str]) -> None:
+    """Le modèle propose des lignes « Catégorie : éléments ». On garde ce format,
+    en répartissant les compétences du profil sur les lignes disponibles."""
+    if not paragraphes or not competences:
+        for paragraphe in paragraphes:
+            supprimer(paragraphe)
+        return
+
+    lignes_utiles = min(len(paragraphes), max(1, -(-len(competences) // MAX_COMPETENCES_PAR_LIGNE)))
+    par_ligne = -(-len(competences) // lignes_utiles)
+
+    for i in range(lignes_utiles):
+        tranche = competences[i * par_ligne:(i + 1) * par_ligne]
+        if not tranche:
+            break
+        paragraphe = paragraphes[i]
+        # Le libellé de catégorie du modèle (run gras) est conservé tel quel.
+        etiquette = paragraphe.runs[0].text if len(paragraphe.runs) > 1 else ""
+        if etiquette:
+            definir_morceaux(paragraphe, [etiquette, ", ".join(tranche)])
+        else:
+            definir_texte(paragraphe, ", ".join(tranche))
+
+    for surplus in paragraphes[lignes_utiles:]:
+        supprimer(surplus)
+
+
+def _remplir_experience(bloc: list, experience: dict):
+    definir_texte(bloc[0], experience.get("poste") or "Poste")
+    periode = " – ".join(filter(None, [experience.get("debut"), experience.get("fin")]))
+    ligne = " — ".join(filter(None, [
+        experience.get("entreprise"), experience.get("lieu"), periode,
+    ]))
+    if len(bloc) > 1:
+        definir_texte(bloc[1], ligne)
+    return _ajuster_puces(bloc, _decouper_en_puces(experience.get("description", "")))
+
+
+def _remplir_formation(bloc: list, formation: dict):
+    definir_texte(bloc[0], formation.get("diplome") or "Diplôme")
+    ligne = " — ".join(filter(None, [
+        formation.get("etablissement"), formation.get("lieu"), formation.get("annee"),
+    ]))
+    if len(bloc) > 1:
+        definir_texte(bloc[1], ligne)
+    return _ajuster_puces(bloc, _decouper_en_puces(formation.get("details", "")))
+
+
+def _remplir_langues(paragraphes: list, profil: Profile) -> None:
+    if not paragraphes:
+        return
+    if not profil.langues:
+        supprimer(paragraphes[0])
+        return
+    texte = " — ".join(
+        f"{l.get('libelle') or l.get('code', '')} : {l.get('niveau') or '—'}"
+        for l in profil.langues
+    )
+    definir_texte(paragraphes[0], texte)
+    for surplus in paragraphes[1:]:
+        supprimer(surplus)
+
+
+# ---------------------------------------------------------------------- rendu
+
+
+def rendre(
+    profil: Profile,
+    offre: Offer,
+    modele: Path,
+    destination: Path,
+    *,
+    reordonner: bool = True,
+) -> Path:
+    """Écrit le CV adapté à `offre` dans `destination`. Renvoie le chemin."""
+    if not modele.exists():
+        raise ModeleIntrouvable(
+            f"Modèle de CV introuvable : {modele}. Déposez votre CV Word à cet emplacement."
+        )
+
+    document = docx.Document(str(modele))
+    vocabulaire = set(signaux_de(offre).vocabulaire)
+
+    entete, sections = decouper_en_sections(document)
+    _remplir_entete(entete, profil, offre)
+
+    if "Profil" in sections and sections["Profil"]:
+        definir_texte(sections["Profil"][0], profil.resume or profil.titre_vise)
+        for surplus in sections["Profil"][1:]:
+            supprimer(surplus)
+
+    _remplir_competences(
+        sections.get("Compétences", []),
+        _competences_ordonnees(profil, vocabulaire, reordonner),
+    )
+
+    _appliquer_blocs(
+        _blocs(sections.get("Expériences professionnelles", [])),
+        _experiences_ordonnees(profil, vocabulaire, reordonner),
+        _remplir_experience,
+    )
+    _appliquer_blocs(
+        _blocs(sections.get("Formation", [])),
+        list(profil.formations),
+        _remplir_formation,
+    )
+    _remplir_langues(sections.get("Langues", []), profil)
+
+    # Une rubrique sans contenu ne doit pas rester dans le CV rendu.
+    for nom in ("Certifications", "Projets", "Divers"):
+        supprimer_section(document, nom)
+    if not profil.experiences:
+        supprimer_section(document, "Expériences professionnelles")
+    if not profil.formations:
+        supprimer_section(document, "Formation")
+
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    document.save(str(destination))
+    log.info("CV rendu : %s", destination)
+    return destination

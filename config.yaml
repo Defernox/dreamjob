@@ -1,0 +1,114 @@
+# ============================================================
+#  DreamJob — configuration
+#  Modifiable à chaud : changer les poids ne rappelle JAMAIS le LLM,
+#  le score est recalculé en pur code depuis les extractions en cache.
+# ============================================================
+
+scoring:
+  # Version des règles. Incrémentée à chaque changement de poids :
+  # sert à repérer les offres dont le score doit être recalculé.
+  version: 1
+  poids:            # total attendu : 100
+    competences: 35
+    secteur: 25
+    pays: 15
+    langue: 15
+    contrat: 10
+  seuils:           # couleur de la pastille dans l'interface
+    bon: 75         # vert   >= 75
+    moyen: 50       # orange 50-74, gris en dessous
+  # Une offre dont NI les competences NI le secteur ne correspondent est hors
+  # cible : pays/langue/contrat sont des filtres administratifs, ils ne doivent
+  # pas suffire a la faire remonter. Mettre a 100 pour desactiver ce plafond.
+  plafond_hors_cible: 25
+
+llm:
+  # Deux modeles, deux usages :
+  #  - extraction : appele sur CHAQUE offre (volume) -> le moins cher qui tienne la route
+  #  - redaction  : import du CV et lettre de motivation (rare, enjeu fort) -> le plus capable
+  # « ollama » = local et gratuit (par defaut). « anthropic » = payant, meilleure
+  # qualite de lettre. Le scoring, lui, n'appelle jamais de LLM quel que soit ce reglage.
+  fournisseur: ollama
+  ollama_url: "http://127.0.0.1:11434"
+  modele_local: "mistral:7b"
+  modele_extraction: claude-sonnet-5
+  modele_redaction: claude-opus-5
+  # Un modele local invente plus facilement : on rejette et on regenere.
+  tentatives_anti_invention: 3
+  max_tokens_extraction: 1200
+  max_tokens_lettre: 2000
+  max_tokens_import_cv: 8000
+
+http:
+  # Respect des sources : 1 requête/seconde maximum, User-Agent explicite,
+  # backoff exponentiel sur erreur, cache disque des réponses.
+  requetes_par_seconde: 1.0
+  timeout_secondes: 20
+  tentatives_max: 4
+  # L'adresse de contact vient de .env (CONTACT_EMAIL) : elle n'a rien a faire
+  # dans un fichier versionne. Les sources interrogees doivent pouvoir vous
+  # joindre, c'est la contrepartie normale d'un acces automatise.
+  user_agent: "DreamJob/0.1 (application personnelle de recherche d'emploi)"
+  cache_ttl_heures: 12
+
+documents:
+  # Met en tete du CV les experiences et competences les plus proches de l'offre.
+  # A desactiver si vous preferez l'ordre chronologique strict.
+  reordonner_cv: true
+  ouvrir_le_dossier: true
+
+chemins:
+  base_donnees: "data/dreamjob.db"
+  cache: "data/cache"
+  logs: "data/logs"
+  modele_cv: "templates/cv_modele.docx"
+  dossier_candidatures: "~/Jobscout/candidatures"
+
+# Recherche par défaut appliquée à un scan (surchargée depuis l'interface)
+recherche:
+  mots_cles: []
+  pays:
+    - France
+  contrats:
+    - CDI
+    - CDD
+    - V.I.E
+    - Stage
+    - Alternance
+  offres_max_par_source: 150
+
+# Un connecteur désactivé n'est jamais interrogé.
+# Les sources sans API ni flux public autorisé restent à false par défaut.
+sources:
+  france_travail:
+    actif: true
+    libelle: "France Travail"
+    remarque: "API officielle Offres d'emploi v2, OAuth client credentials."
+  adzuna:
+    actif: false
+    libelle: "Adzuna"
+    remarque: "API publique, clé gratuite à renseigner dans .env."
+  civiweb:
+    actif: false
+    libelle: "Civiweb (V.I.E)"
+    remarque: "Endpoint JSON public."
+  talent:
+    actif: false
+    libelle: "Talent.com"
+    remarque: "À valider : robots.txt et CGU avant activation."
+  wttj:
+    actif: false
+    libelle: "Welcome to the Jungle"
+    remarque: "À valider : robots.txt et CGU avant activation."
+  hellowork:
+    actif: false
+    libelle: "HelloWork"
+    remarque: "À valider : robots.txt et CGU avant activation."
+  apec:
+    actif: false
+    libelle: "APEC"
+    remarque: "À valider : robots.txt et CGU avant activation."
+
+planification:
+  scan_quotidien_actif: false
+  heure: "07:30"

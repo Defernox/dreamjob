@@ -45,13 +45,27 @@ def lister(session: Session = Depends(get_session)) -> list[CandidatureLecture]:
 @router.get("/export.xlsx")
 def exporter_xlsx(session: Session = Depends(get_session)) -> Response:
     """Le justificatif de recherche d'emploi, prêt à envoyer à France Travail."""
-    lignes = [c.model_dump() | {
-        "titre": (o.titre if (o := session.get(Offer, c.offer_id)) else ""),
-        "entreprise": o.entreprise if o else "",
-        "pays": o.pays if o else "",
-        "score": o.score if o else None,
-        "url": o.url if o else "",
-    } for c in session.exec(select(Application).order_by(desc(Application.date_candidature))).all()]
+    candidatures = list(session.exec(
+        select(Application).order_by(desc(Application.date_candidature))
+    ).all())
+    # Une seule requête pour toutes les offres : un `session.get` par
+    # candidature ferait autant d'allers-retours que de lignes exportées.
+    offres = {
+        o.id: o for o in session.exec(
+            select(Offer).where(Offer.id.in_([c.offer_id for c in candidatures]))
+        ).all()
+    } if candidatures else {}
+
+    lignes = []
+    for candidature in candidatures:
+        offre = offres.get(candidature.offer_id)
+        lignes.append(candidature.model_dump() | {
+            "titre": offre.titre if offre else "",
+            "entreprise": offre.entreprise if offre else "",
+            "pays": offre.pays if offre else "",
+            "score": offre.score if offre else None,
+            "url": offre.url if offre else "",
+        })
 
     jour = date.today().isoformat()
     return Response(

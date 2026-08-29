@@ -139,18 +139,22 @@ def lire(contenu: bytes | Path) -> Reprise:
             + ", ".join(e for e, c, _ in COLONNES if c in manquantes)
         )
 
+    def valeur(rangee: tuple, cle: str):
+        """Lecture d'une cellule par nom de colonne, pas par position."""
+        i = indices.get(cle)
+        return rangee[i] if i is not None and i < len(rangee) else None
+
     reprise = Reprise()
     for numero, rangee in enumerate(rangees[1:], start=2):
-        def valeur(cle):
-            i = indices.get(cle)
-            return rangee[i] if i is not None and i < len(rangee) else None
+        def valeur_ligne(cle, _rangee=rangee):
+            return valeur(_rangee, cle)
 
-        entreprise = (valeur("entreprise") or "").strip()
-        titre = (valeur("titre") or "").strip()
+        entreprise = (valeur_ligne("entreprise") or "").strip()
+        titre = (valeur_ligne("titre") or "").strip()
         if not entreprise and not titre:
             continue      # ligne vide en fin de feuille
 
-        statut = (valeur("statut") or "").strip()
+        statut = (valeur_ligne("statut") or "").strip()
         if statut and statut not in STATUTS:
             reprise.problemes.append(f"Ligne {numero} : statut inconnu « {statut} », ignoré.")
             statut = ""
@@ -158,11 +162,11 @@ def lire(contenu: bytes | Path) -> Reprise:
         reprise.lignes.append({
             "entreprise": entreprise,
             "titre": titre,
-            "url": (valeur("url") or "").strip(),
+            "url": (valeur_ligne("url") or "").strip(),
             "statut": statut,
-            "notes": (valeur("notes") or "").strip(),
-            "contact": (valeur("contact") or "").strip(),
-            "deadline": _en_date(valeur("deadline")),
+            "notes": (valeur_ligne("notes") or "").strip(),
+            "contact": (valeur_ligne("contact") or "").strip(),
+            "deadline": _en_date(valeur_ligne("deadline")),
             "ligne": numero,
         })
     return reprise

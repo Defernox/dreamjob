@@ -2,15 +2,12 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta
-
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func
 from sqlmodel import Session, select
 
-from ..config import reglages
 from ..db import get_session
-from ..models import Application, Offer, ScanRun
+from ..models import Application, Offer
 from ..models.base import maintenant
 from ..schemas.offre import (
     Compteurs,
@@ -24,6 +21,16 @@ from ..services.scan import dernier_scan_abouti
 from ..services.scoring import ProfilVide, scorer_toutes
 
 router = APIRouter(prefix="/api/offres", tags=["offres"])
+
+def echapper_like(terme: str) -> str:
+    """Neutralise les jokers de LIKE dans une saisie utilisateur.
+
+    Sans cela, taper « % » remonte les 448 offres et « middle_office » match
+    n'importe quel caractère à la place du souligné : la recherche ment
+    silencieusement sur ce qu'elle a trouvé.
+    """
+    return terme.replace("\\", r"\\").replace("%", r"\%").replace("_", r"\_")
+
 
 TRIS = {
     # « Pertinence » : le meilleur score d'abord, la plus fraîche pour départager.
@@ -46,10 +53,11 @@ def _filtres(contrats, sources, pays, score_min, recherche, *, sauf: str = "") -
     if score_min is not None:
         conditions.append(Offer.score >= score_min)
     if recherche:
-        motif = f"%{recherche}%"
+        motif = f"%{echapper_like(recherche)}%"
         conditions.append(
-            Offer.titre.ilike(motif) | Offer.entreprise.ilike(motif)
-            | Offer.description_brute.ilike(motif)
+            Offer.titre.ilike(motif, escape="\\")
+            | Offer.entreprise.ilike(motif, escape="\\")
+            | Offer.description_brute.ilike(motif, escape="\\")
         )
     return conditions
 
@@ -69,7 +77,9 @@ def lister(
     score_min: float | None = Query(None, ge=0, le=100),
     recherche: str | None = None,
     tri: str = "pertinence",
-    limite: int = Query(60, ge=1, le=300),
+    # 500 : de quoi tout afficher sur une base locale, sans permettre de
+    # demander un volume qui ferait ramer l'interface.
+    limite: int = Query(60, ge=1, le=500),
     decalage: int = Query(0, ge=0),
     session: Session = Depends(get_session),
 ) -> PageOffres:

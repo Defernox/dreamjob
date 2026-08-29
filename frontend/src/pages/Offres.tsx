@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { useReglages } from '../api/hooks'
 import {
   FILTRES_VIDES,
+  PAR_PAGE,
   useLancerScan,
   useOffres,
   useScorer,
@@ -15,6 +16,7 @@ import { Bouton } from '../components/champs'
 import { GroupeChips } from '../components/Chips'
 import { ScoreBadge } from '../components/ScoreBadge'
 import { anciennete, nombreFr } from '../lib/format'
+import { useTemporise } from '../lib/temporiser'
 
 const TRIS = [
   { cle: 'pertinence', libelle: 'Pertinence' },
@@ -25,15 +27,28 @@ const TRIS = [
 
 export default function Offres() {
   const [filtres, setFiltres] = useState<Filtres>(FILTRES_VIDES)
-  const { data: page, isLoading } = useOffres(filtres)
+  // La saisie s'affiche sans délai, mais n'interroge le serveur qu'une fois la
+  // frappe retombée : chaque requête en déclenche quatre côté base.
+  const rechercheTemporisee = useTemporise(filtres.recherche)
+  const { data: page, isLoading } = useOffres({ ...filtres, recherche: rechercheTemporisee })
   const { data: stats } = useStatistiques()
   const { data: reglages } = useReglages()
   const { data: planification } = usePlanification()
   const scan = useLancerScan()
   const scorer = useScorer()
 
+  // Changer un filtre ramène la fenêtre à sa taille initiale : garder 300
+  // offres affichées après avoir coché un contrat n'aurait aucun sens. Mais
+  // `limite` est elle-même un champ : la remettre à zéro ici rendrait le bouton
+  // « afficher plus » inopérant.
   const maj = <K extends keyof Filtres>(champ: K, valeur: Filtres[K]) =>
-    setFiltres({ ...filtres, [champ]: valeur })
+    setFiltres({
+      ...filtres,
+      ...(champ === 'limite' ? {} : { limite: PAR_PAGE }),
+      [champ]: valeur,
+    })
+
+  const afficherPlus = () => maj('limite', filtres.limite + PAR_PAGE)
 
   const filtreActif =
     filtres.contrats.length + filtres.sources.length + filtres.pays.length > 0 ||
@@ -165,7 +180,9 @@ export default function Offres() {
 
       {page && (
         <p className="text-sm text-slate-500">
-          {nombreFr(page.total)} offre{page.total > 1 ? 's' : ''}
+          {page.offres.length < page.total
+            ? `${nombreFr(page.offres.length)} offres affichées sur ${nombreFr(page.total)}`
+            : `${nombreFr(page.total)} offre${page.total > 1 ? 's' : ''}`}
           {filtreActif && ' après filtrage'}
         </p>
       )}
@@ -178,6 +195,15 @@ export default function Offres() {
           <Carte key={o.id} offre={o} seuils={reglages?.scoring.seuils} />
         ))}
       </div>
+
+      {page && page.offres.length < page.total && (
+        <div className="flex justify-center pt-2">
+          <Bouton onClick={afficherPlus}>
+            Afficher {nombreFr(Math.min(PAR_PAGE, page.total - page.offres.length))} offres
+            de plus
+          </Bouton>
+        </div>
+      )}
     </div>
   )
 }

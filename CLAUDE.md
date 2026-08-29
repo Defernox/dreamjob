@@ -265,6 +265,22 @@ l'avertissement est remonté. Mieux vaut pas de lettre qu'une lettre qui ment.
 
 ---
 
+## Écran Offres
+
+L'API sert **60 offres par défaut** (`limite`, plafond 500) : l'écran affiche
+« X affichées sur Y » et un bouton pour élargir la fenêtre. Sans ce compteur,
+l'interface annonçait « 448 offres » en n'en montrant que soixante.
+
+La zone de recherche est **temporisée** (250 ms) : chaque requête en déclenche
+quatre côté base (la liste plus les trois compteurs de facettes), et une frappe
+non temporisée en lançait autant que de caractères tapés.
+
+Les jokers de `LIKE` sont **échappés** (`echapper_like`) : sans cela, taper
+« % » remontait toute la base et « middle_office » matchait n'importe quel
+caractère à la place du souligné.
+
+---
+
 ## Suivi des candidatures
 
 `exports/excel.py` produit le **justificatif de recherche d'emploi** envoyé tel

@@ -28,7 +28,6 @@ from sqlmodel import Session
 
 from .config import reglages as lire_reglages
 from .db import engine
-from .models import ScanRun
 from .models.base import maintenant
 from .services.scan import dernier_scan_abouti, lancer_scan, requete_depuis_profil
 from .services.scoring import ProfilVide, scorer_toutes

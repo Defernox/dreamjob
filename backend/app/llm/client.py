@@ -17,7 +17,7 @@ from typing import TypeVar
 
 import anthropic
 from pydantic import BaseModel
-from sqlmodel import Session, select
+from sqlmodel import Session
 
 from ..config import reglages
 from ..models import LlmCache

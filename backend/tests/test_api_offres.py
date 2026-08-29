@@ -209,3 +209,42 @@ def test_une_offre_scoree_sans_version_de_poids_est_bien_rescoree(client, base_r
 
     with Session(engine) as s:
         assert all(o.poids_version == 1 for o in s.exec(select(Offer)).all())
+
+
+# --- Corrections issues de l'audit ------------------------------------------
+
+
+@pytest.mark.parametrize("terme, attendu", [
+    ("%", 0),          # joker LIKE : ne doit plus tout ramener
+    ("_", 0),
+    ("Analyste", 2),   # « Analyste risques » et « V.I.E Analyste financier »
+])
+def test_les_jokers_sql_ne_sont_plus_interpretes(client, base_remplie, terme, attendu):
+    """Taper « % » remontait les 448 offres, et « middle_office » matchait
+    n'importe quel caractère à la place du souligné."""
+    assert client.get(f"/api/offres?recherche={terme}").json()["total"] == attendu
+
+
+def test_un_souligne_est_cherche_litteralement(client, base_remplie, engine):
+    with Session(engine) as s:
+        s.add(Offer(source="test", source_id="9", hash="h9", titre="Poste middle_office",
+                    entreprise="X", pays="France"))
+        s.commit()
+    assert client.get("/api/offres?recherche=middle_office").json()["total"] == 1
+    # « middleXoffice » ne doit rien trouver : le souligné n'est plus un joker.
+    assert client.get("/api/offres?recherche=middleXoffice").json()["total"] == 0
+
+
+def test_la_pagination_sert_bien_toutes_les_offres(client, base_remplie):
+    """L'écran annonçait « 448 offres » et n'en affichait que 60."""
+    page = client.get("/api/offres?limite=2").json()
+    assert page["total"] == 6
+    assert len(page["offres"]) == 2
+
+    suite = client.get("/api/offres?limite=2&decalage=2").json()
+    assert len(suite["offres"]) == 2
+    premiers = {o["id"] for o in page["offres"]}
+    assert premiers.isdisjoint({o["id"] for o in suite["offres"]})
+
+    # Une limite élargie doit pouvoir tout servir d'un coup.
+    assert len(client.get("/api/offres?limite=500").json()["offres"]) == 6

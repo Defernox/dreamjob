@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlmodel import Session
+from sqlmodel import Session, select
 
 from ..config import reglages
 from ..db import get_session
@@ -64,7 +64,7 @@ def generer_documents(
     # Le dossier rejoint la candidature si elle existe déjà : l'onglet
     # Candidatures doit pouvoir y renvoyer.
     candidature = session.exec(
-        __import__("sqlmodel").select(Application).where(Application.offer_id == offre_id)
+        select(Application).where(Application.offer_id == offre_id)
     ).first()
     if candidature is not None:
         candidature.dossier_local = str(resultat.dossier)
@@ -85,8 +85,6 @@ def generer_documents(
 @router.post("/{offre_id}/documents/ouvrir")
 def ouvrir_dossier_existant(offre_id: int, session: Session = Depends(get_session)) -> dict:
     """Rouvre le dossier déjà généré, sans rien régénérer."""
-    from sqlmodel import select
-
     candidature = session.exec(
         select(Application).where(Application.offer_id == offre_id)
     ).first()

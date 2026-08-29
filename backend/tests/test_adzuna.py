@@ -79,10 +79,17 @@ def test_le_plafond_se_repartit_entre_les_pays():
     ({"contract_type": "permanent"}, "CDI"),
     ({"contract_type": "contract"}, "CDD"),
     ({"title": "Finance Internship"}, "Stage"),
-    ({"title": "Data Engineer"}, "Autre"),
+    ({"title": "Data Engineer"}, ""),
+    ({"contract_time": "part_time"}, "Autre"),
 ])
 def test_traduction_des_contrats(brute, attendu):
     assert AdzunaConnector._contrat(brute) == attendu
+
+
+def test_un_contrat_inconnu_ne_devient_pas_autre():
+    """Adzuna omet souvent le type. « Autre » mettrait le critère à zéro pour une
+    information qu'on n'a pas ; une chaîne vide le rend simplement non évaluable."""
+    assert AdzunaConnector._contrat({"title": "Credit Risk Analyst"}) == ""
 
 
 def test_identifiants_refuses_donnent_un_message_actionnable():

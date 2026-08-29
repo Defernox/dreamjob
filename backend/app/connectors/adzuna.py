@@ -36,10 +36,12 @@ PAYS = {
     "France": "fr", "Inde": "in", "Italie": "it", "Mexique": "mx",
     "Nouvelle-Zélande": "nz", "Pays-Bas": "nl", "Pologne": "pl",
     "Royaume-Uni": "gb", "Singapour": "sg", "Suisse": "ch",
+    "Afrique du Sud": "za",
 }
+# Vérifié le 2026-08-29 : l'Irlande, le Luxembourg, le Portugal et les pays
+# nordiques renvoient 404 chez Adzuna. Inutile de les interroger.
 
-# `contract_time` et `contract_type` d'Adzuna vers notre vocabulaire.
-CONTRATS = {("permanent", None): "CDI", ("contract", None): "CDD"}
+
 
 
 class AdzunaConnector(BaseConnector):
@@ -118,21 +120,28 @@ class AdzunaConnector(BaseConnector):
 
     @staticmethod
     def _contrat(brute: dict) -> str:
-        duree = (brute.get("contract_time") or "").lower()
+        """Type de contrat, ou chaîne vide s'il est réellement inconnu.
+
+        Adzuna omet souvent `contract_type`. Répondre « Autre » ferait chuter le
+        critère contrat à zéro pour une information qu'on n'a simplement pas —
+        alors qu'un critère non évaluable, lui, ne pénalise pas l'offre.
+        """
         type_ = (brute.get("contract_type") or "").lower()
         if type_ == "permanent":
             return "CDI"
         if type_ == "contract":
             return "CDD"
-        if duree == "part_time":
-            return "Autre"
+
         titre = (brute.get("title") or "").lower()
         for motif, valeur in (("intern", "Stage"), ("stage", "Stage"),
                               ("apprenti", "Alternance"), ("alternance", "Alternance"),
-                              ("v.i.e", "V.I.E"), ("vie ", "V.I.E")):
+                              ("graduate", "CDI"), ("v.i.e", "V.I.E")):
             if motif in titre:
                 return valeur
-        return "Autre"
+
+        if (brute.get("contract_time") or "").lower() == "part_time":
+            return "Autre"
+        return ""
 
     @staticmethod
     def _date(valeur: str | None) -> datetime | None:

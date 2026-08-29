@@ -201,7 +201,7 @@ la trace qui justifie chaque décision.
 |---|---|---|
 | France Travail | actif | API officielle v2, validée en réel |
 | Civiweb (V.I.E) | actif | `robots.txt` n'interdit que `/refresh`, aucune clause CGU sur l'extraction ; endpoint JSON du site, clé publiée dans sa configuration front |
-| Adzuna | inactif | API publique documentée — attend `ADZUNA_APP_ID`/`_KEY` |
+| Adzuna | actif | API publique documentée, validée en réel. 19 pays, un appel par pays. **Descriptions tronquées à 500 caractères par l'API** : le critère compétences y est structurellement plus faible que sur les autres sources |
 | Talent.com | **refusé** | `robots.txt` interdit `/services/api-new/search` et `/search-jobs/*` |
 | HelloWork | **refusé** | `robots.txt` interdit `/fr-fr/emploi/recherche.html` et `Disallow: /*?` |
 | Welcome to the Jungle | **refusé** | `robots.txt` interdit `*/jobs?query=*` ; API réservée aux partenaires |
@@ -294,5 +294,5 @@ Sans LibreOffice, les documents sont générés en Word uniquement — même pri
 - [x] **5.** Écran Détail + détail du score — bouton « Postuler » compris
 - [x] **6.** Génération CV/lettre Word + PDF — modèle préservé, anti-invention bloquant
 - [x] **7.** Écran Candidatures + export Excel — justificatif France Travail
-- [x] **8.** Connecteurs — Civiweb (V.I.E) actif, Adzuna écrit ; trois sources refusées, motifs consignés
+- [x] **8.** Connecteurs — France Travail, Civiweb (V.I.E) et Adzuna actifs ; trois sources refusées, motifs consignés
 - [ ] **9.** Scan planifié + badge « X nouvelles offres »

@@ -97,12 +97,14 @@ sources:
       JSON que le site utilise lui-meme, avec la cle publiee dans sa configuration
       front (surchargeable par CIVIWEB_API_KEY). Valide en reel.
   adzuna:
-    actif: false
+    actif: true
     libelle: "Adzuna"
     remarque: >-
-      API publique documentee, cle gratuite sur developer.adzuna.com. Ecrit et
-      teste hors ligne ; passera a true des que ADZUNA_APP_ID et ADZUNA_APP_KEY
-      seront dans .env.
+      API publique documentee, cle gratuite. Valide en reel. Couvre 19 pays, un
+      appel par pays (l'Irlande, le Luxembourg, le Portugal et les pays nordiques
+      renvoient 404 : ils ne sont pas interroges). ATTENTION : l'API tronque les
+      descriptions a 500 caracteres, ce qui affaiblit le critere competences du
+      scoring sur cette source.
   talent:
     actif: false
     libelle: "Talent.com"

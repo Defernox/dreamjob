@@ -24,12 +24,14 @@ Start-Process powershell -ArgumentList @(
   ".\.venv\Scripts\python.exe -m uvicorn app.main:app --reload --port 8000"
 )
 
+# npm.cmd et non npm : PowerShell prefere le shim npm.ps1, que l'ExecutionPolicy
+# par defaut de Windows refuse d'executer.
 Write-Host "Demarrage de l'interface -> http://localhost:5173" -ForegroundColor Cyan
 Start-Process powershell -ArgumentList @(
   "-NoExit", "-Command",
   "Set-Location '$racine\frontend'; " +
   "`$host.UI.RawUI.WindowTitle = 'DreamJob - Interface'; " +
-  "npm run dev"
+  "npm.cmd run dev"
 )
 
 Start-Sleep -Seconds 5

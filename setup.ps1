@@ -25,7 +25,7 @@ Write-Host "      OK" -ForegroundColor Green
 # --- 3. Dependances front ---
 Write-Host "[3/4] Dependances de l'interface..." -ForegroundColor Yellow
 Set-Location "$racine\frontend"
-npm install --silent
+npm.cmd install --silent
 Write-Host "      OK" -ForegroundColor Green
 
 # --- 4. Fichier .env ---

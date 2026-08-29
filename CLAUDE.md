@@ -12,8 +12,8 @@ Mono-utilisateur, aucun déploiement. Rien ne sort de la machine sauf les appels
 
 | Objectif | Commande |
 |---|---|
-| **Installer** (une seule fois) | `.\setup.ps1` |
-| **Lancer** (API + interface) | `.\dev.ps1` |
+| **Installer** (une seule fois) | `.\setup.cmd` |
+| **Lancer** (API + interface) | `.\dev.cmd` |
 | Tests backend | `cd backend; .\.venv\Scripts\python.exe -m pytest` |
 | Typage frontend | `cd frontend; npx tsc --noEmit` |
 | Nouvelle migration | `cd backend; .\.venv\Scripts\alembic.exe revision --autogenerate -m "message"` |
@@ -21,8 +21,13 @@ Mono-utilisateur, aucun déploiement. Rien ne sort de la machine sauf les appels
 
 Interface : http://localhost:5173 — API : http://127.0.0.1:8000/docs
 
-`make` fonctionne aussi (`make dev`, `make test`) si GnuWin32 est dans le PATH ;
-sous Windows, `.\dev.ps1` reste la voie normale.
+**Pourquoi `.cmd` et non `.ps1`.** Windows bloque par défaut l'exécution des
+scripts PowerShell (`ExecutionPolicy`). Les `.cmd` échappent à cette
+restriction : ils appellent le `.ps1` avec un contournement valable pour ce seul
+processus. Aucun réglage de sécurité de la machine n'est modifié — et il ne faut
+pas en modifier : c'est une protection légitime.
+
+`make` fonctionne aussi (`make dev`, `make test`) si GnuWin32 est dans le PATH.
 
 ---
 
@@ -32,7 +37,7 @@ sous Windows, `.\dev.ps1` reste la voie normale.
 DreamJob/
 ├─ config.yaml          réglages : poids du scoring, sources actives, chemins
 ├─ .env                 secrets uniquement (jamais versionné)
-├─ setup.ps1 / dev.ps1  installation / lancement
+├─ setup.cmd / dev.cmd  installation / lancement (appellent les .ps1)
 ├─ templates/           cv_modele.docx — le modèle Word personnel
 ├─ data/                base SQLite, caches, logs (jamais versionné)
 │

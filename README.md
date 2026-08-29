@@ -42,10 +42,14 @@ l'export · Ollama en local, ou l'API Anthropic.
 
 ## Installation
 
-```powershell
-.\setup.ps1   # une seule fois
-.\dev.ps1     # lancement quotidien
 ```
+setup.cmd   # une seule fois
+dev.cmd     # lancement quotidien
+```
+
+Ce sont des `.cmd` et non des `.ps1` : Windows bloque par défaut l'exécution des
+scripts PowerShell, et abaisser ce réglage pour lancer une application locale
+serait une mauvaise idée.
 
 Interface sur http://localhost:5173, API sur http://127.0.0.1:8000/docs.
 

@@ -15,6 +15,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from .api import applications, documents, meta, offers, profile, scans
 from .config import reglages
 from .db import checkpoint, creer_tables
+from .scheduler import arreter as arreter_planificateur
+from .scheduler import demarrer as demarrer_planificateur
 
 logging.basicConfig(
     level=logging.INFO,
@@ -39,7 +41,10 @@ async def cycle_de_vie(app: FastAPI):
         log.warning("Modèle de CV absent : %s", r.chemins.cv_modele)
     actives = [k for k, s in r.sources.items() if s.actif]
     log.info("Sources actives : %s", ", ".join(actives) or "aucune")
+
+    demarrer_planificateur()
     yield
+    arreter_planificateur()
     # Le journal WAL rejoint le fichier principal : rien d'important ne reste
     # dans un fichier annexe une fois l'application fermée.
     checkpoint()

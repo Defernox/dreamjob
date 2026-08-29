@@ -131,8 +131,22 @@ class Source(BaseModel):
 
 
 class Planification(BaseModel):
-    scan_quotidien_actif: bool = False
+    scan_quotidien_actif: bool = True
     heure: str = "07:30"
+    rattrapage_apres_heures: int = 20
+    delai_rattrapage_secondes: int = 30
+
+    def heure_minute(self) -> tuple[int, int]:
+        """(heure, minute). Une valeur illisible retombe sur 7 h 30 plutôt que
+        d'empêcher l'application de démarrer."""
+        try:
+            h, _, m = self.heure.partition(":")
+            heure, minute = int(h), int(m or 0)
+            if 0 <= heure <= 23 and 0 <= minute <= 59:
+                return heure, minute
+        except ValueError:
+            pass
+        return 7, 30
 
 
 class Reglages(BaseModel):

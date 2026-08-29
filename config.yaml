@@ -133,5 +133,12 @@ sources:
       publique documentee. Rien d'exploitable proprement pour l'instant.
 
 planification:
-  scan_quotidien_actif: false
+  # DreamJob n'est pas un serveur : il ne tourne que quand vous l'ouvrez. Le
+  # planificateur ne peut donc declencher un scan que pendant ce temps-la.
+  scan_quotidien_actif: true
   heure: "07:30"
+  # Filet pour une application qui n'est pas allumee en permanence : si aucun
+  # scan n'a abouti depuis plus de `rattrapage_apres_heures`, on en lance un peu
+  # apres le demarrage. Mettre a 0 pour desactiver.
+  rattrapage_apres_heures: 20
+  delai_rattrapage_secondes: 30

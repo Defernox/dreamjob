@@ -105,3 +105,19 @@ export function useScorer() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['offres'] }),
   })
 }
+
+export type Planification = {
+  actif: boolean
+  heure: string
+  prochaine_execution: string | null
+  dernier_scan: string | null
+  dernier_scan_nouvelles: number | null
+  rattrapage_apres_heures: number
+}
+
+export const usePlanification = () =>
+  useQuery({
+    queryKey: ['planification'],
+    queryFn: () => api.get<Planification>('/api/scans/planification'),
+    staleTime: 60_000,
+  })

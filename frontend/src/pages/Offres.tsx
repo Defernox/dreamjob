@@ -6,6 +6,7 @@ import {
   useLancerScan,
   useOffres,
   useScorer,
+  usePlanification,
   useStatistiques,
   type Filtres,
   type OffreResume,
@@ -27,6 +28,7 @@ export default function Offres() {
   const { data: page, isLoading } = useOffres(filtres)
   const { data: stats } = useStatistiques()
   const { data: reglages } = useReglages()
+  const { data: planification } = usePlanification()
   const scan = useLancerScan()
   const scorer = useScorer()
 
@@ -68,6 +70,19 @@ export default function Offres() {
           </Bouton>
         </div>
       </div>
+
+      {planification && (
+        <p className="text-xs text-slate-400 -mt-2">
+          {planification.actif
+            ? `Recherche automatique chaque jour à ${planification.heure}, et au démarrage si aucune n'a eu lieu depuis ${planification.rattrapage_apres_heures} h.`
+            : 'Recherche automatique désactivée (config.yaml → planification).'}
+          {planification.dernier_scan &&
+            ` Dernière recherche ${anciennete(planification.dernier_scan)}` +
+              (planification.dernier_scan_nouvelles
+                ? ` — ${planification.dernier_scan_nouvelles} nouvelle(s) offre(s).`
+                : ' — aucune nouveauté.')}
+        </p>
+      )}
 
       {scan.isError && <Message ton="rouge">{(scan.error as Error).message}</Message>}
       {scan.isSuccess && (

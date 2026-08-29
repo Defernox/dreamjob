@@ -275,6 +275,28 @@ entreprise + poste normalisés.
 
 ---
 
+## Scan automatique
+
+**DreamJob n'est pas un serveur** : il ne tourne que pendant que l'utilisateur
+l'a ouvert. Un simple « tous les jours à 7 h 30 » manquerait donc son rendez-vous
+dès que l'application est fermée, sans que rien ne le rattrape.
+
+D'où deux déclencheurs, dans `scheduler.py` :
+
+- **l'heure quotidienne** (`planification.heure`), utile si l'application reste
+  ouverte ;
+- **le rattrapage au démarrage** : si aucun scan n'a *abouti* depuis
+  `rattrapage_apres_heures`, un scan part quelques secondes après l'ouverture.
+
+« Abouti » exclut les scans en échec : sinon une panne de source ferait croire
+que la veille est à jour et le rattrapage ne se déclencherait jamais. Un scan
+partiel, lui, compte — les offres des sources valides sont bien arrivées.
+
+`executer_scan` n'a pas le droit de laisser remonter une exception : le
+planificateur resterait muet jusqu'au prochain redémarrage.
+
+---
+
 ## Mode dégradé
 
 Sans `ANTHROPIC_API_KEY`, l'application démarre quand même : scoring lexical
@@ -295,4 +317,4 @@ Sans LibreOffice, les documents sont générés en Word uniquement — même pri
 - [x] **6.** Génération CV/lettre Word + PDF — modèle préservé, anti-invention bloquant
 - [x] **7.** Écran Candidatures + export Excel — justificatif France Travail
 - [x] **8.** Connecteurs — France Travail, Civiweb (V.I.E) et Adzuna actifs ; trois sources refusées, motifs consignés
-- [ ] **9.** Scan planifié + badge « X nouvelles offres »
+- [x] **9.** Scan planifié quotidien + rattrapage au démarrage + badge « X nouvelles offres »

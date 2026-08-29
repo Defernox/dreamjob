@@ -52,6 +52,14 @@ def lancer(
     return lancer_scan(session, _construire_requete(demande), sources=sources)
 
 
+@router.get("/planification")
+def planification() -> dict:
+    """État du scan automatique, pour l'afficher dans l'interface."""
+    from ..scheduler import etat
+
+    return etat()
+
+
 @router.get("", response_model=list[ScanLecture])
 def historique(limite: int = 20, session: Session = Depends(get_session)) -> list[ScanRun]:
     return list(session.exec(

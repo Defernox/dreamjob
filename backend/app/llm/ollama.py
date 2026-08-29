@@ -55,25 +55,40 @@ class ClientOllama:
 
     # --------------------------------------------------------------- requête
 
+    def extraire_json(self, systeme: str, message: str, schema: dict,
+                      *, temperature: float = 0.0) -> str:
+        """Réponse contrainte par un schéma JSON.
+
+        Ollama accepte le schéma dans `format` : le modèle ne peut alors
+        produire qu'une structure valide, ce qui évite d'avoir à rafistoler du
+        JSON approximatif. Température à zéro : structurer un CV n'est pas un
+        exercice de création.
+        """
+        return self._appeler(systeme, message, temperature=temperature, format_=schema)
+
     def generer(self, systeme: str, message: str, *, temperature: float = 0.3) -> str:
+        return self._appeler(systeme, message, temperature=temperature)
+
+    def _appeler(self, systeme: str, message: str, *, temperature: float,
+                 format_: dict | None = None) -> str:
         pret, probleme = self.disponible()
         if not pret:
             raise OllamaIndisponible(probleme)
 
+        charge_utile = {
+            "model": self.modele,
+            "stream": False,
+            "options": {"temperature": temperature},
+            "messages": [
+                {"role": "system", "content": systeme},
+                {"role": "user", "content": message},
+            ],
+        }
+        if format_ is not None:
+            charge_utile["format"] = format_
+
         try:
-            reponse = httpx.post(
-                f"{self.url}/api/chat",
-                timeout=DELAI,
-                json={
-                    "model": self.modele,
-                    "stream": False,
-                    "options": {"temperature": temperature},
-                    "messages": [
-                        {"role": "system", "content": systeme},
-                        {"role": "user", "content": message},
-                    ],
-                },
-            )
+            reponse = httpx.post(f"{self.url}/api/chat", timeout=DELAI, json=charge_utile)
             reponse.raise_for_status()
         except httpx.HTTPError as e:
             raise OllamaIndisponible(f"Ollama a échoué : {e}") from e

@@ -8,6 +8,7 @@ from types import SimpleNamespace
 import pytest
 from pydantic import BaseModel
 
+from app.config import reglages
 from app.llm.client import ClientLlm
 from app.models import LlmCache
 
@@ -17,28 +18,40 @@ class Resultat(BaseModel):
     nombre: int = 0
 
 
-class FauxClient:
-    """Imite la surface utilisée du SDK, et compte les appels."""
+class FauxFournisseur:
+    """Remplace l'appel au modèle, quel que soit le fournisseur.
+
+    On se branche sur `_appeler_fournisseur`, le point unique où Ollama et
+    Anthropic se séparent : ces tests portent sur le cache, pas sur le
+    fournisseur, et ne doivent donc dépendre ni de l'un ni de l'autre.
+    """
 
     def __init__(self, sortie: Resultat):
         self.appels = 0
         self.sortie = sortie
-        self.messages = SimpleNamespace(parse=self._parse)
+        self.dernier_appel = None
 
-    def _parse(self, **kwargs):
+    def __call__(self, systeme, message, format_sortie, modele, max_tokens):
         self.appels += 1
-        self.dernier_appel = kwargs
-        return SimpleNamespace(
-            parsed_output=self.sortie,
-            usage=SimpleNamespace(input_tokens=100, output_tokens=50, cache_read_input_tokens=0),
-        )
+        self.dernier_appel = {"systeme": systeme, "message": message,
+                              "modele": modele, "max_tokens": max_tokens}
+        return self.sortie
+
+
+@pytest.fixture
+def fournisseur_anthropic(monkeypatch):
+    """Force la branche Anthropic. Ces tests portent sur ses messages d'erreur ;
+    par défaut la configuration du projet choisit Ollama."""
+    from app.config import reglages
+
+    monkeypatch.setattr(type(reglages().llm), "local", property(lambda self: False))
 
 
 @pytest.fixture
 def faux(monkeypatch):
-    client = FauxClient(Resultat(valeur="extrait", nombre=3))
-    monkeypatch.setattr(ClientLlm, "_anthropic", lambda self: client)
-    return client
+    fournisseur = FauxFournisseur(Resultat(valeur="extrait", nombre=3))
+    monkeypatch.setattr(ClientLlm, "_appeler_fournisseur", fournisseur)
+    return fournisseur
 
 
 def _appel(session, *, hash_source="h1", modele="modele-a", forcer=False):
@@ -95,11 +108,27 @@ def test_entree_de_cache_incompatible_est_ignoree(session, faux):
     assert resultat.valeur == "extrait"
 
 
-def test_le_prompt_systeme_est_mis_en_cache_cote_api(session, faux):
-    """Le prompt système est stable : il doit porter cache_control."""
+def test_le_prompt_systeme_est_mis_en_cache_cote_api(session, monkeypatch,
+                                                     fournisseur_anthropic):
+    """Le prompt système est stable d'un appel à l'autre : il doit porter
+    `cache_control`, sinon chaque requête Anthropic le refacture en entier."""
+    appels = []
+
+    class FauxSdk:
+        def __init__(self):
+            self.messages = SimpleNamespace(parse=self._parse)
+
+        def _parse(self, **kwargs):
+            appels.append(kwargs)
+            return SimpleNamespace(
+                parsed_output=Resultat(valeur="extrait"),
+                usage=SimpleNamespace(input_tokens=1, output_tokens=1,
+                                      cache_read_input_tokens=0),
+            )
+
+    monkeypatch.setattr(ClientLlm, "_anthropic", lambda self: FauxSdk())
     _appel(session)
-    systeme = faux.dernier_appel["system"]
-    assert systeme[0]["cache_control"] == {"type": "ephemeral"}
+    assert appels[0]["system"][0]["cache_control"] == {"type": "ephemeral"}
 
 
 # --- Messages d'erreur : ce que l'utilisateur lit quand ça casse ------------
@@ -125,7 +154,9 @@ def _erreur_api(statut: int, message: str):
          "ANTHROPIC_WORKSPACE_ID"),
     ],
 )
-def test_les_pannes_courantes_sont_expliquees_en_francais(session, monkeypatch, message_api, attendu):
+def test_les_pannes_courantes_sont_expliquees_en_francais(
+    session, monkeypatch, fournisseur_anthropic, message_api, attendu
+):
     """Ces deux-là sont arrivées pour de vrai : elles doivent être compréhensibles."""
     from app.llm.client import LlmErreur
 
@@ -146,7 +177,7 @@ def test_les_pannes_courantes_sont_expliquees_en_francais(session, monkeypatch, 
     assert message_api in texte, "le message d'origine doit rester lisible pour le diagnostic"
 
 
-def test_un_echec_ne_pollue_pas_le_cache(session, monkeypatch):
+def test_un_echec_ne_pollue_pas_le_cache(session, monkeypatch, fournisseur_anthropic):
     """Une panne ne doit pas laisser d'entrée qui empêcherait un nouvel essai."""
     from app.llm.client import LlmErreur
 
@@ -160,3 +191,57 @@ def test_un_echec_ne_pollue_pas_le_cache(session, monkeypatch):
         _appel(session)
 
     assert session.get(LlmCache, LlmCache.construire_cle("extraction", "h1", "modele-a")) is None
+
+
+# --- Le fournisseur local ----------------------------------------------------
+
+
+def test_le_fournisseur_local_est_utilise_quand_il_est_configure(session, monkeypatch):
+    """L'import de CV restait câblé sur Anthropic alors que la lettre, elle,
+    savait déjà tourner en local."""
+    from app.llm import client as module_client
+
+    appels = []
+
+    class FauxOllama:
+        def __init__(self, _reglages):
+            pass
+
+        def extraire_json(self, systeme, message, schema):
+            appels.append(schema)
+            return '{"valeur": "en local", "nombre": 7}'
+
+    monkeypatch.setattr(type(reglages().llm), "local", property(lambda self: True))
+    monkeypatch.setattr("app.llm.ollama.ClientOllama", FauxOllama)
+
+    resultat, du_cache = _appel(session)
+    assert resultat.valeur == "en local"
+    assert du_cache is False
+    # Le schéma Pydantic est bien transmis à Ollama : sans lui, le modèle
+    # rendrait du texte libre au lieu d'une structure.
+    assert "valeur" in appels[0]["properties"]
+
+
+def test_une_structure_invalide_du_modele_local_est_expliquee(session, monkeypatch):
+    """Un modèle local dévie plus facilement du schéma qu'une API contrainte."""
+    from app.llm.client import LlmErreur
+
+    class OllamaBavard:
+        def __init__(self, _reglages):
+            pass
+
+        def extraire_json(self, systeme, message, schema):
+            return "Bien sûr ! Voici le résultat : {pas du JSON}"
+
+    monkeypatch.setattr(type(reglages().llm), "local", property(lambda self: True))
+    monkeypatch.setattr("app.llm.ollama.ClientOllama", OllamaBavard)
+
+    with pytest.raises(LlmErreur, match="modele_local|modèle local"):
+        _appel(session)
+
+
+def test_la_disponibilite_ne_depend_pas_d_une_cle_anthropic_en_local(monkeypatch):
+    """Sinon l'écran affiche « mode dégradé » alors qu'Ollama fonctionne."""
+    monkeypatch.setattr(type(reglages().llm), "local", property(lambda self: True))
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    assert ClientLlm().disponible is True

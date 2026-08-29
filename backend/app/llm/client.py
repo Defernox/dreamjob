@@ -47,7 +47,14 @@ class ClientLlm:
 
     @property
     def disponible(self) -> bool:
-        return reglages().llm_disponible
+        """Un fournisseur est-il utilisable ?
+
+        En local, la question n'est pas « y a-t-il une clé » : Ollama vérifie
+        lui-même sa disponibilité au moment de l'appel, avec un message précis
+        (serveur arrêté, modèle absent). Juger sur ANTHROPIC_API_KEY afficherait
+        « mode dégradé » alors que tout fonctionne.
+        """
+        return True if reglages().llm.local else reglages().llm_disponible
 
     def _anthropic(self) -> anthropic.Anthropic:
         if not self.disponible:
@@ -96,33 +103,41 @@ class ClientLlm:
 
     # ------------------------------------------------------------------ appel
 
-    def extraire(
-        self,
-        *,
-        type_appel: str,
-        hash_source: str,
-        systeme: str,
-        message: str,
-        format_sortie: type[T],
-        modele: str,
-        max_tokens: int,
-        forcer: bool = False,
-    ) -> tuple[T, bool]:
-        """Renvoie `(resultat_valide, depuis_cache)`.
+    def _extraire_en_local(self, systeme: str, message: str,
+                           format_sortie: type[T]) -> T:
+        from .ollama import ClientOllama, OllamaIndisponible
 
-        `format_sortie` est un modèle Pydantic : l'API contraint sa réponse à ce
-        schéma (structured outputs), le SDK la valide. Pas de JSON à rafistoler.
+        client = ClientOllama(reglages().llm)
+        try:
+            brut = client.extraire_json(systeme, message, format_sortie.model_json_schema())
+        except OllamaIndisponible as e:
+            raise LlmErreur(str(e)) from e
+
+        try:
+            return format_sortie.model_validate_json(brut)
+        except Exception as e:  # noqa: BLE001 — un modèle local peut dévier du schéma
+            raise LlmErreur(
+                f"Le modèle local a renvoyé une structure inexploitable : {e}. "
+                f"Essayez un modèle plus capable (config.yaml → llm.modele_local)."
+            ) from e
+
+    def _appeler_fournisseur(self, systeme: str, message: str, format_sortie: type[T],
+                             modele: str, max_tokens: int) -> T:
+        """**Le seul point où l'on choisit un fournisseur.**
+
+        Tout le reste — cache, validation Pydantic, messages d'erreur — est
+        commun. Sans cet aiguillage unique, l'import de CV etait reste cable sur
+        Anthropic alors que la lettre, elle, savait deja tourner en local.
         """
-        cle = LlmCache.construire_cle(type_appel, hash_source, modele)
+        if reglages().llm.local:
+            return self._extraire_en_local(systeme, message, format_sortie)
+        return self._extraire_chez_anthropic(systeme, message, format_sortie,
+                                             modele, max_tokens)
 
-        if not forcer:
-            en_cache = self._lire_cache(cle, format_sortie)
-            if en_cache is not None:
-                log.info("%s : réponse servie depuis le cache", type_appel)
-                return en_cache, True
-
+    def _extraire_chez_anthropic(self, systeme: str, message: str, format_sortie: type[T],
+                                 modele: str, max_tokens: int) -> T:
         client = self._anthropic()
-        log.info("%s : appel à %s (%d tokens max)", type_appel, modele, max_tokens)
+        log.info("Appel à %s (%d tokens max)", modele, max_tokens)
 
         try:
             reponse = client.messages.parse(
@@ -171,9 +186,41 @@ class ClientLlm:
             raise LlmErreur("Le modèle n'a pas renvoyé de réponse exploitable.")
 
         u = reponse.usage
-        log.info("%s : %d tokens entrée (%d lus en cache), %d sortie",
-                 type_appel, u.input_tokens, getattr(u, "cache_read_input_tokens", 0) or 0,
+        log.info("%d tokens entrée (%d lus en cache), %d sortie",
+                 u.input_tokens, getattr(u, "cache_read_input_tokens", 0) or 0,
                  u.output_tokens)
+        return resultat
 
+    def extraire(
+        self,
+        *,
+        type_appel: str,
+        hash_source: str,
+        systeme: str,
+        message: str,
+        format_sortie: type[T],
+        modele: str,
+        max_tokens: int,
+        forcer: bool = False,
+        variante: str = "",
+    ) -> tuple[T, bool]:
+        """Renvoie `(resultat_valide, depuis_cache)`.
+
+        `format_sortie` est un modèle Pydantic : l'API contraint sa réponse à ce
+        schéma (structured outputs), le SDK la valide. Pas de JSON à rafistoler.
+        """
+        # `variante` distingue plusieurs appels portant sur la même source :
+        # les quatre passes d'un import de CV écraseraient sinon la même entrée.
+        cle = LlmCache.construire_cle(type_appel, hash_source, modele, variante)
+
+        if not forcer:
+            en_cache = self._lire_cache(cle, format_sortie)
+            if en_cache is not None:
+                log.info("%s : réponse servie depuis le cache", type_appel)
+                return en_cache, True
+
+        resultat = self._appeler_fournisseur(
+            systeme, message, format_sortie, modele, max_tokens
+        )
         self._ecrire_cache(cle, type_appel, hash_source, modele, resultat)
         return resultat, False

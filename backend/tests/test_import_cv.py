@@ -67,3 +67,75 @@ def test_le_prompt_interdit_explicitement_l_invention():
     """Garde-fou : cette consigne ne doit jamais disparaître du prompt."""
     assert "N'INVENTE RIEN" in PROMPT_SYSTEME
     assert "laisse le champ vide" in PROMPT_SYSTEME
+
+
+# --- Import en plusieurs passes ---------------------------------------------
+
+
+def test_les_passes_couvrent_tout_le_profil():
+    """Chaque champ de ProfilStructure doit être rempli par une passe, sinon il
+    resterait silencieusement vide après un import."""
+    from app.importers.cv_import import PASSES
+    from app.schemas.profile import ProfilStructure
+
+    couverts = set()
+    for _, schema, _ in PASSES:
+        couverts |= set(schema.model_fields)
+    assert set(ProfilStructure.model_fields) == couverts
+
+
+def test_chaque_passe_reste_courte():
+    """Demander quatorze champs d'un coup fait dériver un modèle local : il
+    range le nom dans le titre et oublie les compétences."""
+    from app.importers.cv_import import PASSES
+
+    for nom, schema, _ in PASSES:
+        assert len(schema.model_fields) <= 9, f"la passe « {nom} » en demande trop"
+
+
+def test_les_passes_ne_partagent_pas_la_meme_entree_de_cache(session, monkeypatch):
+    """Sans variante, les quatre passes écraseraient la même ligne de cache et
+    l'import ne conserverait que la dernière."""
+    from app.importers import cv_import
+    from app.llm.client import ClientLlm
+
+    appels = []
+
+    def faux_fournisseur(_self, systeme, message, format_sortie, modele, max_tokens):
+        appels.append(format_sortie.__name__)
+        return format_sortie()
+
+    monkeypatch.setattr(ClientLlm, "_appeler_fournisseur", faux_fournisseur)
+    monkeypatch.setattr(cv_import, "extraire_texte", lambda _: "Un CV. " * 60)
+
+    _, du_cache, _, _ = cv_import.importer_cv(FIXTURES / "cv_exemple.docx", session)
+    assert len(appels) == 4, "chaque passe doit appeler le modèle une fois"
+    assert du_cache is False
+
+    # Second import du même CV : tout doit sortir du cache.
+    appels.clear()
+    _, du_cache, _, _ = cv_import.importer_cv(FIXTURES / "cv_exemple.docx", session)
+    assert appels == [], "les passes n'ont pas été mises en cache séparément"
+    assert du_cache is True
+
+
+def test_une_passe_deja_en_cache_n_est_pas_rejouee(session, monkeypatch):
+    """Si une passe échoue, les autres restent acquises : réimporter ne refait
+    que ce qui manque."""
+    from app.importers import cv_import
+    from app.llm.client import ClientLlm
+
+    demandes = []
+
+    def faux_fournisseur(_self, systeme, message, format_sortie, modele, max_tokens):
+        demandes.append(format_sortie.__name__)
+        if format_sortie.__name__ == "BlocIdentite":
+            raise RuntimeError("panne du modèle")
+        return format_sortie()
+
+    monkeypatch.setattr(ClientLlm, "_appeler_fournisseur", faux_fournisseur)
+    monkeypatch.setattr(cv_import, "extraire_texte", lambda _: "Un CV. " * 60)
+
+    with pytest.raises(RuntimeError):
+        cv_import.importer_cv(FIXTURES / "cv_exemple.docx", session)
+    assert demandes == ["BlocIdentite"], "l'échec doit interrompre dès la première passe"

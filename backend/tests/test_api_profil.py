@@ -55,9 +55,13 @@ def test_import_refuse_un_format_non_supporte(client):
 
 
 def test_import_sans_llm_repond_503_et_le_dit(client, monkeypatch):
-    """Sans clé API, l'utilisateur doit comprendre pourquoi, pas voir une erreur 500."""
+    """Sans fournisseur utilisable, l'utilisateur doit comprendre pourquoi,
+    pas voir une erreur 500."""
+    from app.config import reglages
     from app.llm.client import ClientLlm
 
+    # Fournisseur distant, sans clé : le cas d'une installation neuve.
+    monkeypatch.setattr(type(reglages().llm), "local", property(lambda self: False))
     monkeypatch.setattr(ClientLlm, "disponible", property(lambda self: False))
     r = client.post(
         "/api/profil/importer",

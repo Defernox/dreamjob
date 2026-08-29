@@ -15,11 +15,19 @@ from sqlmodel import Session
 from ..config import reglages
 from ..llm.client import ClientLlm, empreinte
 from ..models.enums import TypeCacheLlm
-from ..schemas.profile import ProfilStructure
+from ..schemas.profile import (
+    BlocCompetences,
+    BlocExperiences,
+    BlocFormations,
+    BlocIdentite,
+    ProfilStructure,
+)
 
 log = logging.getLogger("dreamjob.import_cv")
 
 EXTENSIONS = {".pdf", ".docx"}
+# Assemble a l'execution : evite toute sequence d'echappement dans le source.
+SEPARATEUR = chr(10) + chr(10)
 
 
 class FormatNonSupporte(ValueError):
@@ -108,6 +116,36 @@ DATES : format AAAA-MM quand le mois est connu, sinon AAAA. Un poste en cours a
 `fin: "en cours"`."""
 
 
+# Une passe = une question courte. Demander les quatorze champs d'un coup fait
+# dériver un modèle local : il range le nom dans le titre et oublie les
+# compétences. Chaque passe reçoit le CV entier mais ne remplit qu'un bloc.
+PASSES: list[tuple[str, type, str]] = [
+    ("identité", BlocIdentite,
+     "Relève UNIQUEMENT l'état civil et l'accroche : prénom, nom, email, "
+     "téléphone, ville, pays, LinkedIn, le titre affiché en tête du CV, et le "
+     "paragraphe « à propos » resserré en deux phrases. "
+     "Le prénom et le nom vont dans `prenom` et `nom`, JAMAIS dans `titre_vise` : "
+     "`titre_vise` est un intitulé de poste."),
+    ("expériences", BlocExperiences,
+     "Relève UNIQUEMENT les expériences professionnelles : une entrée par poste, "
+     "avec l'entreprise, l'intitulé, le lieu, les dates et les missions. "
+     "N'inclus ni les diplômes ni les stages d'études."),
+    ("formations", BlocFormations,
+     "Relève UNIQUEMENT les diplômes et cursus, y compris ceux en cours et les "
+     "échanges universitaires. N'inclus aucune expérience professionnelle."),
+    ("compétences", BlocCompetences,
+     "Relève UNIQUEMENT : les secteurs d'activité que ce CV démontre (2 à 4), "
+     "les langues avec leur niveau, et les compétences énoncées. "
+     "Marque `ancree: true` sur les 3 à 6 compétences centrales — celles du "
+     "titre, du résumé, ou revenant dans plusieurs expériences."),
+]
+
+
+def _consigne_de_passe(consigne: str) -> str:
+    """Prompt systeme commun, suivi de la seule tache de cette passe."""
+    return SEPARATEUR.join([PROMPT_SYSTEME, "CETTE PASSE", consigne])
+
+
 def _message(texte_cv: str) -> str:
     return (
         "Voici le texte brut extrait du CV. Structure-le, sans rien ajouter.\n\n"
@@ -128,23 +166,40 @@ def importer_cv(
 ) -> tuple[ProfilStructure, bool, str, int]:
     """Renvoie `(profil, depuis_cache, modele, caracteres_lus)`.
 
-    Réimporter le même fichier ne recoûte rien : la clé de cache est le hash du
-    texte extrait, pas le nom du fichier.
+    Le CV est lu une fois, puis soumis en quatre passes ciblées : identité,
+    expériences, formations, compétences. Chaque passe est mise en cache
+    séparément — si l'une échoue, les autres restent acquises, et réimporter le
+    même fichier ne recoûte rien.
     """
     texte = extraire_texte(chemin)
     r = reglages()
-    modele = r.llm.modele_redaction
+    modele = r.llm.modele_actif
+    empreinte_cv = empreinte(texte)
+    client = ClientLlm(session)
 
-    profil, depuis_cache = ClientLlm(session).extraire(
-        type_appel=TypeCacheLlm.IMPORT_CV.value,
-        hash_source=empreinte(texte),
-        systeme=PROMPT_SYSTEME,
-        message=_message(texte),
-        format_sortie=ProfilStructure,
-        modele=modele,
-        max_tokens=r.llm.max_tokens_import_cv,
-        forcer=forcer,
-    )
-    log.info("CV importé : %d expériences, %d formations, %d compétences",
-             len(profil.experiences), len(profil.formations), len(profil.skills))
-    return profil, depuis_cache, modele, len(texte)
+    profil = ProfilStructure()
+    tout_en_cache = True
+
+    for nom, schema, consigne in PASSES:
+        bloc, du_cache = client.extraire(
+            type_appel=TypeCacheLlm.IMPORT_CV.value,
+            hash_source=empreinte_cv,
+            systeme=_consigne_de_passe(consigne),
+            message=_message(texte),
+            format_sortie=schema,
+            modele=modele,
+            max_tokens=r.llm.max_tokens_import_cv,
+            forcer=forcer,
+            # La variante sépare les quatre passes dans le cache : sans elle,
+            # elles écraseraient toutes la même entrée.
+            variante=nom,
+        )
+        tout_en_cache = tout_en_cache and du_cache
+        for champ, valeur in bloc.model_dump().items():
+            setattr(profil, champ, valeur)
+        log.info("Passe « %s » : %s", nom, "cache" if du_cache else "appel au modèle")
+
+    log.info("CV importé : %d expériences, %d formations, %d compétences, %d langues",
+             len(profil.experiences), len(profil.formations),
+             len(profil.skills), len(profil.langues))
+    return profil, tout_en_cache, modele, len(texte)

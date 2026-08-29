@@ -141,6 +141,18 @@ Deux modèles, deux usages — réglés dans `config.yaml` :
 | `modele_extraction` | *(inutilisé)* | jamais | le scoring est en pur code |
 | `modele_redaction` | `claude-opus-5` | import de CV, lettre | rare et à fort enjeu |
 
+`llm.fournisseur` choisit entre `ollama` (local, gratuit, par défaut) et
+`anthropic`. **`ClientLlm._appeler_fournisseur` est le seul endroit où ce choix
+se fait** : cache, validation Pydantic et messages d'erreur sont communs. Avant
+cet aiguillage, l'import de CV était resté câblé sur Anthropic alors que la
+lettre savait déjà tourner en local.
+
+**L'import de CV se fait en quatre passes** (identité, expériences, formations,
+compétences). Un modèle local de 7 milliards de paramètres ne tient pas quatorze
+champs en un seul appel : il range le nom dans le titre visé et rend zéro
+compétence. Découpé, il devient exploitable. Chaque passe a sa propre entrée de
+cache (`variante`) : une passe qui échoue ne fait pas perdre les autres.
+
 **L'application doit rester gratuite.** Le compte Anthropic n'a pas de crédits :
 la rédaction passe par **Ollama en local** (`mistral:7b`, RTX 3060, ~100 tok/s).
 Anthropic reste branchable pour qui veut une meilleure qualité de lettre.

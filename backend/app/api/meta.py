@@ -34,20 +34,25 @@ def chemin_soffice() -> str | None:
 
 @router.get("/sante")
 def sante() -> dict:
+    from ..llm.redaction import etat as etat_llm
+
     r = reglages()
     soffice = chemin_soffice()
+    # État réel du fournisseur configuré, pas la seule présence d'une clé
+    # Anthropic : en local, c'est Ollama qu'il faut interroger.
+    pret_llm, probleme_llm = etat_llm(r)
     return {
         "ok": True,
         "racine": str(RACINE),
         "base_donnees": str(r.chemins.db),
         "base_existe": r.chemins.db.exists(),
         "llm": {
-            "disponible": r.llm_disponible,
+            "disponible": pret_llm,
+            "fournisseur": r.llm.fournisseur,
+            "modele": r.llm.modele_actif,
             "modele_extraction": r.llm.modele_extraction,
             "modele_redaction": r.llm.modele_redaction,
-            "message": None if r.llm_disponible
-            else "Aucune ANTHROPIC_API_KEY dans .env : mode dégradé "
-                 "(scoring lexical, ni import de CV ni lettre de motivation).",
+            "message": probleme_llm or None,
         },
         "pdf": {
             "disponible": soffice is not None,

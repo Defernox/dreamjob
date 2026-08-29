@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from ..models.enums import CONTRATS
 
@@ -53,6 +53,11 @@ class ProfilStructure(BaseModel):
     l'interface.
     """
 
+    # L'import remplit ce modèle bloc par bloc, par affectation. Sans
+    # revalidation, `profil.langues` finirait par contenir des dictionnaires
+    # alors que le type annonce des `Langue` : l'annotation mentirait.
+    model_config = ConfigDict(validate_assignment=True)
+
     prenom: str = ""
     nom: str = ""
     email: str = ""
@@ -69,6 +74,39 @@ class ProfilStructure(BaseModel):
     skills: list[Skill] = Field(default_factory=list)
     experiences: list[Experience] = Field(default_factory=list)
     formations: list[Formation] = Field(default_factory=list)
+
+
+# --- Sous-schémas d'import ---------------------------------------------------
+# Un modèle local de 7 milliards de paramètres ne tient pas quatorze champs en
+# un seul appel : il range le nom dans le titre et oublie les compétences.
+# Découpé en quatre demandes courtes, il devient fiable — au prix de quatre
+# appels, ce qui reste gratuit en local.
+
+
+class BlocIdentite(BaseModel):
+    prenom: str = ""
+    nom: str = ""
+    email: str = ""
+    telephone: str = ""
+    ville: str = ""
+    pays: str = Field(default="", description="Pays de résidence, pas la nationalité")
+    linkedin: str = ""
+    titre_vise: str = Field(default="", description="Le titre affiché en tête du CV")
+    resume: str = Field(default="", description="Le paragraphe « à propos », resserré")
+
+
+class BlocExperiences(BaseModel):
+    experiences: list[Experience] = Field(default_factory=list)
+
+
+class BlocFormations(BaseModel):
+    formations: list[Formation] = Field(default_factory=list)
+
+
+class BlocCompetences(BaseModel):
+    secteurs: list[str] = Field(default_factory=list)
+    langues: list[Langue] = Field(default_factory=list)
+    skills: list[Skill] = Field(default_factory=list)
 
 
 class ProfilMaj(ProfilStructure):

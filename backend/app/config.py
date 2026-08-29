@@ -67,6 +67,16 @@ class Llm(BaseModel):
     @property
     def local(self) -> bool:
         return self.fournisseur == "ollama"
+
+    @property
+    def modele_actif(self) -> str:
+        """Le modèle qui rédigera et structurera, selon le fournisseur choisi.
+
+        Il entre dans la clé de cache : changer de fournisseur invalide donc les
+        réponses précédentes, ce qui est voulu — deux modèles ne structurent pas
+        un CV de la même façon.
+        """
+        return self.modele_local if self.local else self.modele_redaction
     max_tokens_extraction: int = 1200
     max_tokens_lettre: int = 2000
     max_tokens_import_cv: int = 8000

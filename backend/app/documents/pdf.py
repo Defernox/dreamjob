@@ -9,6 +9,7 @@ from __future__ import annotations
 import logging
 import shutil
 import subprocess
+import time
 from pathlib import Path
 
 log = logging.getLogger("dreamjob.pdf")
@@ -55,6 +56,9 @@ def convertir(source: Path, dossier_sortie: Path | None = None) -> Path:
     sortie = dossier_sortie or source.parent
     sortie.mkdir(parents=True, exist_ok=True)
 
+    # Repère temporel : un PDF plus ancien que ce point est celui d'une
+    # génération précédente, pas le résultat de cette conversion.
+    depart = time.time() - 1
     try:
         resultat = subprocess.run(
             [soffice, "--headless", "--convert-to", "pdf", "--outdir", str(sortie), str(source)],
@@ -66,9 +70,23 @@ def convertir(source: Path, dossier_sortie: Path | None = None) -> Path:
         ) from e
 
     pdf = sortie / f"{source.stem}.pdf"
-    if not pdf.exists():
+    detail = (resultat.stderr or resultat.stdout or "").strip()[:300]
+
+    if resultat.returncode != 0:
         raise ConversionEchouee(
-            f"La conversion PDF a échoué : {(resultat.stderr or resultat.stdout).strip()[:300]}"
+            f"LibreOffice a échoué (code {resultat.returncode}). "
+            f"Est-il déjà ouvert ? {detail}"
         )
+    if not pdf.exists():
+        raise ConversionEchouee(f"La conversion PDF n'a produit aucun fichier. {detail}")
+    if pdf.stat().st_mtime < depart:
+        # Le fichier existe mais date d'avant l'appel : LibreOffice n'a rien
+        # écrit. Sans ce contrôle, on renvoyait un PDF périmé comme s'il venait
+        # d'être produit — et c'est lui qui partait chez le recruteur.
+        raise ConversionEchouee(
+            f"Le PDF n'a pas été regénéré : {pdf.name} date d'une exécution "
+            f"précédente. LibreOffice est-il déjà ouvert ? {detail}"
+        )
+
     log.info("PDF généré : %s", pdf)
     return pdf

@@ -280,6 +280,28 @@ vide. Deux pièges déjà rencontrés :
 Le nom de dossier est borné à 80 caractères : Windows refuse au-delà de 260
 caractères de chemin complet.
 
+**Le nettoyage de la lettre ne coupe qu'à la fin.** `nettoyer` retirait tout à
+partir de la première formule de politesse rencontrée : « Dans l'attente… »
+ouvre couramment un paragraphe de milieu de lettre, et les trois quarts du texte
+disparaissaient — la lettre était ensuite rejetée comme trop courte, puis
+refusée, alors qu'elle était bonne.
+
+**Un PDF doit être plus récent que sa conversion.** Vérifier son existence ne
+suffit pas : si LibreOffice échoue (déjà ouvert, document verrouillé), le PDF de
+la génération précédente satisfait le test et part chez le recruteur. On
+contrôle le code de retour *et* la date du fichier.
+
+**Le dossier est vidé de ce qu'on y a produit avant chaque régénération.** Sinon
+une lettre refusée par le garde-fou laisse en place celle d'avant, décrivant un
+profil périmé, à côté d'un CV à jour. Les fichiers déposés par l'utilisateur,
+eux, sont conservés.
+
+**Le CV n'affiche pas de catégorie de compétences.** Le modèle en propose
+(« Quantitatif & données : »), mais les compétences y étaient versées par
+tranches sans rapport avec le thème : le rendu portait « Quantitatif & données :
+R, VBA, Power BI, Word, PowerPoint ». Un CV ne doit pas affirmer un classement
+que son contenu dément.
+
 **L'anti-invention est bloquant, pas indicatif.** `lettre.py` compare chaque nom
 propre et chaque année de la lettre au profil et à l'offre ; ce qui est inconnu
 déclenche une régénération, en nommant l'erreur au modèle. Après N essais

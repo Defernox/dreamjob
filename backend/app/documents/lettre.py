@@ -69,17 +69,55 @@ _APPEL = re.compile(
     r"^\s*(?:cher|chère|chere|madame|monsieur|mesdames|messieurs)[^\n]{0,60}[,:]\s*",
     re.IGNORECASE,
 )
-_POLITESSE = re.compile(
-    r"\n\s*(?:cordialement|sincèrement|sincerement|respectueusement|veuillez agréer|"
-    r"je vous prie d.agréer|dans l.attente)[\s\S]*$",
-    re.IGNORECASE,
+# Le modèle produit parfois un objet malgré la consigne, et le document en pose
+# un lui-même : les deux se retrouveraient l'un sous l'autre.
+_OBJET = re.compile(r"^\s*objet\s*[:–-][^\n]*\n+", re.IGNORECASE)
+
+_FORMULES_FINALES = (
+    "cordialement", "sincerement", "respectueusement",
+    "veuillez agreer", "veuillez recevoir", "je vous prie d agreer",
+    "je vous prie de recevoir", "dans l attente", "dans cette attente",
+    "en vous remerciant", "restant a votre disposition",
 )
+def _est_formule_finale(texte: str) -> bool:
+    debut = normaliser(texte)
+    return any(debut.startswith(normaliser(f)) for f in _FORMULES_FINALES)
 
 
 def nettoyer(lettre: str) -> str:
-    """Retire ce que le document met en page lui-même."""
-    texte = _APPEL.sub("", lettre.strip())
-    return _POLITESSE.sub("", texte).strip()
+    """Retire ce que le document met en page lui-même.
+
+    **On ne coupe qu'à la fin.** Une version antérieure supprimait tout à partir
+    de la première formule de politesse rencontrée : « Dans l'attente de pouvoir
+    en discuter… » ouvre couramment un paragraphe de milieu de lettre, et les
+    trois quarts du texte disparaissaient. La lettre tronquée était ensuite
+    rejetée comme trop courte, puis refusée — alors qu'elle était bonne.
+    """
+    # L'objet précède l'appel : les retirer dans le mauvais ordre laissait
+    # « Madame, Monsieur, » en tête quand le modèle avait produit les deux.
+    texte = lettre.strip()
+    for _ in range(3):
+        reduit = _APPEL.sub("", _OBJET.sub("", texte)).strip()
+        if reduit == texte:
+            break
+        texte = reduit
+
+    paragraphes = [p.strip() for p in texte.split("\n\n") if p.strip()]
+
+    # Seule une formule reconnue fait retirer un paragraphe final. Une
+    # heuristique « paragraphe court = signature » mangeait les fins de
+    # lettre laconiques : « Troisieme paragraphe. » disparaissait.
+    while len(paragraphes) > 1 and _est_formule_finale(paragraphes[-1]):
+        paragraphes.pop()
+
+    # Formule collée en fin du dernier paragraphe : on coupe la ligne, pas tout.
+    if paragraphes:
+        lignes = [l for l in paragraphes[-1].split("\n")]
+        while len(lignes) > 1 and _est_formule_finale(lignes[-1]):
+            lignes.pop()
+        paragraphes[-1] = "\n".join(lignes).strip()
+
+    return "\n\n".join(p for p in paragraphes if p).strip()
 
 
 def _sources_texte(profil: Profile, offre: Offer) -> list[str]:

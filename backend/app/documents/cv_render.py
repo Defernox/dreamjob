@@ -172,14 +172,32 @@ def _remplir_entete(entete: list, profil: Profile, offre: Offer) -> None:
     ]))
     definir_texte(entete[2], contact)
 
-    recherche = ", ".join(profil.contrats_acceptes) or "—"
-    mobilite = ", ".join(profil.pays_acceptes) or profil.pays or "—"
-    definir_texte(entete[3], f"Mobilité : {mobilite} — Recherche : {recherche}")
+    # Un fragment sans contenu est omis, jamais rempli d'un tiret : « Recherche
+    # : — » sous le nom donne l'impression d'un document mal fusionné. Si rien
+    # n'est renseigné, la ligne entière disparaît.
+    fragments = []
+    mobilite = ", ".join(profil.pays_acceptes) or profil.pays
+    if mobilite:
+        fragments.append(f"Mobilité : {mobilite}")
+    if profil.contrats_acceptes:
+        fragments.append(f"Recherche : {', '.join(profil.contrats_acceptes)}")
+
+    if fragments:
+        definir_texte(entete[3], " — ".join(fragments))
+    else:
+        supprimer(entete[3])
 
 
 def _remplir_competences(paragraphes: list, competences: list[str]) -> None:
-    """Le modèle propose des lignes « Catégorie : éléments ». On garde ce format,
-    en répartissant les compétences du profil sur les lignes disponibles."""
+    """Répartit les compétences sur les lignes du modèle.
+
+    **Les libellés de catégorie du modèle sont retirés.** Ils étaient conservés
+    tels quels alors que les compétences y étaient versées par tranches, sans
+    rapport avec le thème annoncé : le CV affichait « Quantitatif & données :
+    R, VBA, Power BI, Word, PowerPoint ». Un CV ne doit pas affirmer un
+    classement que son propre contenu dément. Faute de pouvoir catégoriser
+    honnêtement, on liste — la mise en forme du modèle, elle, est préservée.
+    """
     if not paragraphes or not competences:
         for paragraphe in paragraphes:
             supprimer(paragraphe)
@@ -192,13 +210,7 @@ def _remplir_competences(paragraphes: list, competences: list[str]) -> None:
         tranche = competences[i * par_ligne:(i + 1) * par_ligne]
         if not tranche:
             break
-        paragraphe = paragraphes[i]
-        # Le libellé de catégorie du modèle (run gras) est conservé tel quel.
-        etiquette = paragraphe.runs[0].text if len(paragraphe.runs) > 1 else ""
-        if etiquette:
-            definir_morceaux(paragraphe, [etiquette, ", ".join(tranche)])
-        else:
-            definir_texte(paragraphe, ", ".join(tranche))
+        definir_texte(paragraphes[i], ", ".join(tranche))
 
     for surplus in paragraphes[lignes_utiles:]:
         supprimer(surplus)

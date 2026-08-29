@@ -44,11 +44,27 @@ _ENTETE_POLICE = Font(color="FFFFFF", bold=True, size=11)
 _BORDURE = Border(bottom=Side(style="thin", color="D1D5DB"))
 
 
+# Excel stocke en texte toute date tapée dans une cellule au format Texte, ou
+# saisie avec un séparateur qu'il ne reconnaît pas. La reprise étant faite pour
+# des fichiers « retouchés à la main », les ignorer revient à perdre en silence
+# ce que l'utilisateur vient d'écrire.
+FORMATS_DATE = ("%d/%m/%Y", "%d/%m/%y", "%Y-%m-%d", "%d-%m-%Y", "%d.%m.%Y", "%d %m %Y")
+
+
 def _en_date(valeur) -> date | None:
     if isinstance(valeur, datetime):
         return valeur.date()
     if isinstance(valeur, date):
         return valeur
+    if not isinstance(valeur, str) or not valeur.strip():
+        return None
+
+    texte = valeur.strip()
+    for format_ in FORMATS_DATE:
+        try:
+            return datetime.strptime(texte, format_).date()
+        except ValueError:
+            continue
     return None
 
 
@@ -159,6 +175,14 @@ def lire(contenu: bytes | Path) -> Reprise:
             reprise.problemes.append(f"Ligne {numero} : statut inconnu « {statut} », ignoré.")
             statut = ""
 
+        brut_deadline = valeur_ligne("deadline")
+        deadline = _en_date(brut_deadline)
+        if deadline is None and brut_deadline not in (None, ""):
+            reprise.problemes.append(
+                f"Ligne {numero} : date limite « {brut_deadline} » illisible, ignorée. "
+                f"Formats acceptés : {', '.join(FORMATS_DATE)}."
+            )
+
         reprise.lignes.append({
             "entreprise": entreprise,
             "titre": titre,
@@ -166,7 +190,7 @@ def lire(contenu: bytes | Path) -> Reprise:
             "statut": statut,
             "notes": (valeur_ligne("notes") or "").strip(),
             "contact": (valeur_ligne("contact") or "").strip(),
-            "deadline": _en_date(valeur_ligne("deadline")),
+            "deadline": deadline,
             "ligne": numero,
         })
     return reprise

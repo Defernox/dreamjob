@@ -137,6 +137,28 @@ def ouvrir(dossier: Path) -> bool:
         return False
 
 
+# Ce que cette fonction produit, et donc ce qu'elle a le droit d'effacer.
+FICHIERS_PRODUITS = (
+    "CV.docx", "CV.pdf",
+    "Lettre_de_motivation.docx", "Lettre_de_motivation.pdf",
+    "offre.json",
+)
+
+
+def _retirer_generation_precedente(dossier: Path) -> None:
+    """Efface uniquement les fichiers que cette application génère.
+
+    Tout autre document déposé là par l'utilisateur — notes, pièces jointes —
+    est laissé intact.
+    """
+    for nom in FICHIERS_PRODUITS:
+        chemin = dossier / nom
+        try:
+            chemin.unlink(missing_ok=True)
+        except OSError as e:
+            log.warning("Impossible de retirer %s : %s", nom, e)
+
+
 def generer(
     profil: Profile,
     offre: Offer,
@@ -157,6 +179,10 @@ def generer(
 
     dossier = racine / nom_dossier(offre)
     dossier.mkdir(parents=True, exist_ok=True)
+    # Les documents de la génération précédente partent AVANT d'écrire les
+    # nouveaux : sans cela, une lettre refusée par le garde-fou laissait en
+    # place celle d'avant, décrivant un profil périmé, à côté d'un CV à jour.
+    _retirer_generation_precedente(dossier)
     resultat = Resultat(dossier=dossier)
 
     # --- CV (obligatoire) ---

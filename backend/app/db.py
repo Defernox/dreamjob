@@ -29,11 +29,20 @@ def url_base() -> str:
     return f"sqlite:///{_chemin_db().as_posix()}"
 
 
+# Le planificateur écrit depuis son propre thread pendant que l'API sert des
+# requêtes : en WAL, SQLite n'autorise qu'un écrivain à la fois. Sans attente
+# explicite, la seconde écriture échoue aussitôt en « database is locked » et
+# l'utilisateur reçoit une erreur 500 pour un simple conflit passager.
+ATTENTE_VERROU_SECONDES = 30
+
 engine = create_engine(
     url_base(),
     echo=False,
-    # FastAPI sert les requêtes sur plusieurs threads : SQLite l'exige.
-    connect_args={"check_same_thread": False},
+    connect_args={
+        # FastAPI sert les requêtes sur plusieurs threads : SQLite l'exige.
+        "check_same_thread": False,
+        "timeout": ATTENTE_VERROU_SECONDES,
+    },
 )
 
 
@@ -46,6 +55,9 @@ def _pragmas_sqlite(dbapi_connection, connection_record) -> None:
     # se perdre si la machine s'arrête brutalement. Le volume d'écriture de
     # l'application est minuscule — la sécurité ne coûte rien ici.
     cur.execute("PRAGMA synchronous=FULL")
+    # Ceinture et bretelles : le `timeout` de la couche Python ne couvre pas
+    # tous les chemins, ce pragma vaut pour la connexion elle-même.
+    cur.execute(f"PRAGMA busy_timeout={ATTENTE_VERROU_SECONDES * 1000}")
     cur.close()
 
 

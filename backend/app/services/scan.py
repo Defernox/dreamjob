@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import logging
 
-from sqlmodel import Session, select
+from sqlmodel import Session, desc, select
 
 from ..config import Reglages
 from ..config import reglages as lire_reglages
@@ -31,6 +31,21 @@ from .dedup import hash_offre
 log = logging.getLogger("dreamjob.scan")
 
 
+def dernier_scan_abouti(session: Session) -> ScanRun | None:
+    """Le dernier scan qui a réellement ramené quelque chose.
+
+    Un scan en échec ne compte pas : sinon une panne de source ferait croire que
+    la veille est à jour. Un scan partiel, si : les offres des sources valides
+    sont bien arrivées.
+    """
+    return session.exec(
+        select(ScanRun)
+        .where(ScanRun.statut.in_([StatutScan.TERMINE.value, StatutScan.PARTIEL.value]))
+        .order_by(desc(ScanRun.started_at))
+        .limit(1)
+    ).first()
+
+
 def requete_par_defaut(reglages: Reglages) -> SearchQuery:
     r = reglages.recherche
     return SearchQuery(
@@ -38,6 +53,32 @@ def requete_par_defaut(reglages: Reglages) -> SearchQuery:
         pays=list(r.pays),
         contrats=list(r.contrats),
         max_offres=r.offres_max_par_source,
+    )
+
+
+def requete_depuis_profil(session: Session, reglages: Reglages) -> SearchQuery:
+    """Requête d'un scan automatique.
+
+    Les pays et contrats du **profil** l'emportent sur ceux de `config.yaml` :
+    ce que l'utilisateur a coché dans l'interface est son choix explicite, alors
+    que `config.yaml` n'est qu'un repli. Sans cela, un scan automatique
+    filtrerait sur « France » pendant que le profil accepte quatre pays, et les
+    offres étrangères seraient silencieusement jetées.
+    """
+    from ..models import Profile
+
+    base = requete_par_defaut(reglages)
+    profil = session.exec(select(Profile).order_by(Profile.id)).first()
+    if profil is None:
+        return base
+
+    return SearchQuery(
+        mots_cles=base.mots_cles,
+        pays=list(profil.pays_acceptes) or base.pays,
+        contrats=list(profil.contrats_acceptes) or base.contrats,
+        departement=base.departement,
+        publiee_depuis_jours=base.publiee_depuis_jours,
+        max_offres=base.max_offres,
     )
 
 

@@ -131,7 +131,8 @@ class Source(BaseModel):
 
 
 class Planification(BaseModel):
-    scan_quotidien_actif: bool = True
+    # Opt-in : c'est config.yaml qui l'active, pas un defaut implicite.
+    scan_quotidien_actif: bool = False
     heure: str = "07:30"
     rattrapage_apres_heures: int = 20
     delai_rattrapage_secondes: int = 30

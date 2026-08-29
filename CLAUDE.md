@@ -73,6 +73,12 @@ DreamJob/
 identifiants de code : **en français**. Les mots-clés techniques restent en
 anglais (`Offer`, `hash`, `score`).
 
+**Concurrence SQLite.** Le planificateur écrit depuis son propre thread pendant
+que l'API sert des requêtes ; en WAL, SQLite n'autorise qu'un écrivain. Sans
+attente explicite (`timeout` + `PRAGMA busy_timeout`, 30 s), la seconde écriture
+échoue aussitôt en « database is locked » et l'utilisateur reçoit une 500 pour
+un simple conflit passager.
+
 **Durabilité SQLite.** `synchronous=FULL` (et non NORMAL) : en WAL + NORMAL,
 une transaction validée peut encore se perdre à l'arrêt brutal de la machine. Le
 volume d'écriture est minuscule, la sécurité ne coûte rien. L'API fait en plus un
@@ -291,6 +297,27 @@ D'où deux déclencheurs, dans `scheduler.py` :
 « Abouti » exclut les scans en échec : sinon une panne de source ferait croire
 que la veille est à jour et le rattrapage ne se déclencherait jamais. Un scan
 partiel, lui, compte — les offres des sources valides sont bien arrivées.
+
+Trois réglages non négociables, chacun corrigeant une panne silencieuse :
+
+- **`misfire_grace_time`** à six heures. APScheduler abandonne par défaut une
+  exécution en retard de plus d'**une seconde** : sur un poste qui dort la nuit,
+  le rendez-vous quotidien serait systématiquement perdu, sans trace.
+- **Le rattrapage utilise l'heure du fuseau du planificateur**, pas
+  `datetime.now()`. Une heure naïve est relue comme une heure de Paris : sur une
+  machine réglée ailleurs, elle tomberait dans le passé et ne partirait jamais.
+- **Aucun rattrapage sur une base vierge.** La toute première recherche revient
+  à l'utilisateur — sortir sur le réseau avant qu'il ait vu l'écran Profil
+  serait une initiative qu'il n'a pas demandée.
+
+Le scan automatique prend ses **pays et contrats dans le profil**, pas dans
+`config.yaml` : ce que l'utilisateur a coché l'emporte sur un repli, sinon un
+scan nocturne filtrerait sur « France » pendant que le profil accepte quatre
+pays.
+
+Le badge compte les offres **arrivées à la dernière recherche** et pas encore
+ouvertes — pas toutes les offres jamais consultées, qui le bloqueraient à
+« 99+ » pendant des mois. Le total reste disponible dans `jamais_vues`.
 
 `executer_scan` n'a pas le droit de laisser remonter une exception : le
 planificateur resterait muet jusqu'au prochain redémarrage.

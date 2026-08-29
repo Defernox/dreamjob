@@ -20,6 +20,7 @@ from ..schemas.offre import (
     ResultatScoring,
     Statistiques,
 )
+from ..services.scan import dernier_scan_abouti
 from ..services.scoring import ProfilVide, scorer_toutes
 
 router = APIRouter(prefix="/api/offres", tags=["offres"])
@@ -114,17 +115,24 @@ def statistiques(session: Session = Depends(get_session)) -> Statistiques:
     def compter(*conditions):
         return session.exec(select(func.count()).select_from(Offer).where(*conditions)).one()
 
-    dernier = session.exec(
-        select(ScanRun.finished_at).order_by(ScanRun.started_at.desc()).limit(1)
-    ).first()
+    scan = dernier_scan_abouti(session)
+
+    # « Nouvelles » = arrivées à la dernière recherche et pas encore ouvertes.
+    # Compter toutes les offres jamais ouvertes donnerait un badge bloqué à
+    # « 99+ » pendant des mois : le signal « il y a du neuf » s'y perdrait.
+    nouvelles = compter(
+        Offer.vue == False,  # noqa: E712 — SQLAlchemy exige ==
+        Offer.date_recuperation >= scan.started_at,
+    ) if scan is not None else 0
 
     return Statistiques(
         total=session.exec(select(func.count()).select_from(Offer)).one(),
         aujourd_hui=compter(Offer.date_publication >= debut_journee),
         vie=compter(Offer.type_contrat == "V.I.E"),
-        nouvelles=compter(Offer.vue == False),  # noqa: E712 — SQLAlchemy exige ==
+        nouvelles=nouvelles,
+        jamais_vues=compter(Offer.vue == False),  # noqa: E712
         non_scorees=compter(Offer.score.is_(None)),
-        dernier_scan=dernier,
+        dernier_scan=scan.finished_at if scan else None,
     )
 
 

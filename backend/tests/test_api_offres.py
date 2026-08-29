@@ -1,7 +1,7 @@
 """L'API des offres : filtres, compteurs de facettes, tri, scoring."""
 
 import pytest
-from sqlmodel import Session
+from sqlmodel import Session, select
 
 from app.models import Application, Offer, Profile
 from app.models.base import maintenant
@@ -112,9 +112,9 @@ def test_un_filtre_ne_s_applique_pas_a_ses_propres_compteurs(client, base_rempli
 
 def test_detail_marque_l_offre_comme_vue(client, base_remplie):
     identifiant = client.get("/api/offres").json()["offres"][0]["id"]
-    assert client.get("/api/offres/statistiques").json()["nouvelles"] == 6
+    assert client.get("/api/offres/statistiques").json()["jamais_vues"] == 6
     assert client.get(f"/api/offres/{identifiant}").json()["vue"] is True
-    assert client.get("/api/offres/statistiques").json()["nouvelles"] == 5
+    assert client.get("/api/offres/statistiques").json()["jamais_vues"] == 5
 
 
 def test_offre_introuvable(client, base_remplie):
@@ -132,12 +132,39 @@ def test_le_detail_signale_une_candidature_existante(client, base_remplie, engin
 # --- Statistiques ----------------------------------------------------------
 
 
+def test_le_badge_ne_compte_que_la_derniere_recherche(client, base_remplie, engine):
+    """Compter toutes les offres jamais ouvertes bloquerait le badge à « 99+ »
+    pendant des mois : le signal « il y a du neuf » s'y perdrait."""
+    from datetime import timedelta
+
+    from app.models import ScanRun
+    from app.models.base import maintenant
+    from app.models.enums import StatutScan
+
+    # Sans historique de recherche, il n'y a rien de « nouveau » à annoncer.
+    assert client.get("/api/offres/statistiques").json()["nouvelles"] == 0
+
+    with Session(engine) as s:
+        # Les six offres de la fixture datent d'« il y a une heure ».
+        for offre in s.exec(select(Offer)).all():
+            offre.date_recuperation = maintenant() - timedelta(hours=1)
+            s.add(offre)
+        # Une recherche vient de se terminer : elle n'a rien ramené de nouveau.
+        s.add(ScanRun(started_at=maintenant(), statut=StatutScan.TERMINE.value))
+        s.commit()
+
+    stats = client.get("/api/offres/statistiques").json()
+    assert stats["nouvelles"] == 0, "des offres antérieures au scan ne sont pas nouvelles"
+    assert stats["jamais_vues"] == 6, "elles restent non consultées, mais pas nouvelles"
+
+
 def test_statistiques_pour_l_en_tete(client, base_remplie):
     stats = client.get("/api/offres/statistiques").json()
     assert stats["total"] == 6
     assert stats["aujourd_hui"] == 6
     assert stats["vie"] == 1
     assert stats["non_scorees"] == 1
+    assert stats["jamais_vues"] == 6
 
 
 # --- Scoring ---------------------------------------------------------------

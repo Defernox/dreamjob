@@ -38,6 +38,7 @@ export type Statistiques = {
   aujourd_hui: number
   vie: number
   nouvelles: number
+  jamais_vues: number
   non_scorees: number
   dernier_scan: string | null
 }

@@ -14,7 +14,7 @@ from app.config import Planification
 from app.models import ScanRun
 from app.models.base import maintenant
 from app.models.enums import StatutScan
-from app.scheduler import dernier_scan_abouti
+from app.services.scan import dernier_scan_abouti
 
 
 # --- Lecture de l'heure -----------------------------------------------------
@@ -121,3 +121,85 @@ def test_une_source_qui_explose_ne_tue_pas_le_planificateur(session, monkeypatch
     monkeypatch.setattr(scheduler, "lancer_scan", boum)
     monkeypatch.setattr(scheduler, "engine", session.get_bind())
     scheduler.executer_scan("planifie")      # ne doit pas lever
+
+
+# --- Corrections issues de la revue de code ---------------------------------
+
+
+def test_un_retard_de_plusieurs_heures_reste_rattrapable():
+    """APScheduler abandonne par défaut une exécution en retard de plus d'UNE
+    seconde : sur un portable qui dort la nuit, le rendez-vous quotidien serait
+    systématiquement perdu."""
+    from app.scheduler import TOLERANCE_RETARD_SECONDES
+
+    assert TOLERANCE_RETARD_SECONDES >= 3600
+
+
+def test_le_scan_planifie_suit_les_pays_du_profil(session):
+    """config.yaml n'est qu'un repli : ce que l'utilisateur a coché l'emporte."""
+    from app.config import reglages
+    from app.models import Profile
+    from app.services.scan import requete_depuis_profil
+
+    session.add(Profile(pays_acceptes=["Belgique", "Luxembourg"],
+                        contrats_acceptes=["V.I.E", "CDI"]))
+    session.commit()
+
+    requete = requete_depuis_profil(session, reglages())
+    assert requete.pays == ["Belgique", "Luxembourg"]
+    assert requete.contrats == ["V.I.E", "CDI"]
+
+
+def test_un_profil_sans_preference_retombe_sur_la_configuration(session):
+    from app.config import reglages
+    from app.models import Profile
+    from app.services.scan import requete_depuis_profil, requete_par_defaut
+
+    session.add(Profile())
+    session.commit()
+
+    r = reglages()
+    assert requete_depuis_profil(session, r).pays == requete_par_defaut(r).pays
+
+
+def test_pas_de_rattrapage_sur_une_base_vierge(monkeypatch):
+    """Sortir sur le réseau avant que l'utilisateur ait vu l'écran Profil serait
+    une initiative qu'il n'a pas demandée."""
+    from app import scheduler
+
+    class FauxPlanificateur:
+        timezone = None
+
+        def __init__(self):
+            self.taches = []
+
+        def add_job(self, *a, **kw):
+            self.taches.append(kw.get("id"))
+
+    faux = FauxPlanificateur()
+    scheduler._programmer_rattrapage(faux)
+    assert faux.taches == []
+
+
+def test_l_heure_de_prochaine_execution_est_en_utc():
+    """Convention de l'API (CLAUDE.md) : de l'UTC naïf, jamais une heure locale
+    — le front suffixe systématiquement d'un « Z »."""
+    from datetime import datetime, timezone as tz
+
+    from app import scheduler
+
+    class FausseTache:
+        next_run_time = datetime(2026, 8, 30, 7, 30, tzinfo=tz(__import__("datetime").timedelta(hours=2)))
+
+    class FauxPlanificateur:
+        def get_job(self, _):
+            return FausseTache()
+
+    monkeypatch = pytest.MonkeyPatch()
+    monkeypatch.setattr(scheduler, "_planificateur", FauxPlanificateur())
+    try:
+        prochaine = scheduler.etat()["prochaine_execution"]
+    finally:
+        monkeypatch.undo()
+
+    assert prochaine == datetime(2026, 8, 30, 5, 30), "07:30 Paris = 05:30 UTC"

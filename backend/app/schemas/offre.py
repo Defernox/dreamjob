@@ -52,7 +52,10 @@ class Statistiques(BaseModel):
     total: int
     aujourd_hui: int
     vie: int
+    # Arrivées à la dernière recherche et pas encore ouvertes : c'est le badge.
     nouvelles: int
+    # Toutes celles jamais ouvertes, tous scans confondus.
+    jamais_vues: int
     non_scorees: int
     dernier_scan: datetime | None
 

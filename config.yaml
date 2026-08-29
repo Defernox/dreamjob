@@ -66,7 +66,10 @@ chemins:
 
 # Recherche par défaut appliquée à un scan (surchargée depuis l'interface)
 recherche:
-  mots_cles: []
+  # Un filtre trop large vaut mieux qu'un filtre trop etroit : le tri fin est
+  # fait par le scoring, pas par la source.
+  mots_cles:
+    - "analyste risques"
   pays:
     - France
   contrats:

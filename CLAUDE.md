@@ -264,7 +264,7 @@ Sans LibreOffice, les documents sont générés en Word uniquement — même pri
 
 - [x] **1.** Squelette, modèles, migrations, `dev.ps1`
 - [x] **2.** Import du CV → profil structuré + écran d'édition
-- [~] **3.** Connecteur France Travail — écrit et testé hors ligne ; test réel en attente des identifiants francetravail.io
+- [x] **3.** Connecteur France Travail — validé en réel : 47 offres, second scan identique = 0 doublon créé
 - [x] **4.** Scoring + tests + écran Offres — **sans LLM**, 137 tests au vert
 - [x] **5.** Écran Détail + détail du score — bouton « Postuler » compris
 - [x] **6.** Génération CV/lettre Word + PDF — modèle préservé, anti-invention bloquant

@@ -7,7 +7,9 @@ d'une installation neuve — le comportement doit être lisible, pas un plantage
 
 
 def test_un_scan_sans_identifiants_repond_200_et_explique(client):
-    reponse = client.post("/api/scans")
+    # Source nommée explicitement : le test ne doit pas dépendre de la liste
+    # des sources actives dans config.yaml, qui évolue.
+    reponse = client.post("/api/scans", json={"sources": ["france_travail"]})
     assert reponse.status_code == 200
 
     scan = reponse.json()

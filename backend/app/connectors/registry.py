@@ -11,6 +11,8 @@ import logging
 
 from ..config import Reglages
 from .base import BaseConnector
+from .adzuna import AdzunaConnector
+from .civiweb import CiviwebConnector
 from .france_travail import FranceTravailConnector
 from .http import ClientHttp
 
@@ -18,8 +20,8 @@ log = logging.getLogger("dreamjob.connecteurs")
 
 CONNECTEURS: dict[str, type[BaseConnector]] = {
     FranceTravailConnector.cle: FranceTravailConnector,
-    # Les suivants arrivent à l'étape 8 : adzuna, civiweb, talent, wttj,
-    # hellowork, apec. Leur entrée existe déjà dans config.yaml, à `actif: false`.
+    CiviwebConnector.cle: CiviwebConnector,
+    AdzunaConnector.cle: AdzunaConnector,
 }
 
 

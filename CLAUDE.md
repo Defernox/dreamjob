@@ -194,7 +194,21 @@ Deux filets, deux problèmes :
 Toute source implémente `BaseConnector.fetch(query: SearchQuery) -> list[RawOffer]`
 et s'active dans `config.yaml`. **Avant d'écrire un connecteur** : vérifier
 `robots.txt` et les CGU. Sans API ni flux public autorisé, le connecteur reste
-`actif: false` et la raison est notée dans `config.yaml`.
+`actif: false` et **la raison exacte est consignée dans `config.yaml`** — c'est
+la trace qui justifie chaque décision.
+
+| Source | État | Motif |
+|---|---|---|
+| France Travail | actif | API officielle v2, validée en réel |
+| Civiweb (V.I.E) | actif | `robots.txt` n'interdit que `/refresh`, aucune clause CGU sur l'extraction ; endpoint JSON du site, clé publiée dans sa configuration front |
+| Adzuna | inactif | API publique documentée — attend `ADZUNA_APP_ID`/`_KEY` |
+| Talent.com | **refusé** | `robots.txt` interdit `/services/api-new/search` et `/search-jobs/*` |
+| HelloWork | **refusé** | `robots.txt` interdit `/fr-fr/emploi/recherche.html` et `Disallow: /*?` |
+| Welcome to the Jungle | **refusé** | `robots.txt` interdit `*/jobs?query=*` ; API réservée aux partenaires |
+| APEC | en attente | `robots.txt` permissif, mais le sitemap ne publie que des pages de recherche et il n'existe pas d'API |
+
+Le corps d'une requête peut être un formulaire (`donnees=`, pour OAuth) ou du
+JSON (`corps_json=`, pour les API modernes) — Civiweb rejette le premier.
 
 Le client HTTP partagé (`connectors/http.py`) impose 1 req/s **par hôte**, un
 User-Agent explicite, un backoff exponentiel (le `Retry-After` du serveur prime)
@@ -280,5 +294,5 @@ Sans LibreOffice, les documents sont générés en Word uniquement — même pri
 - [x] **5.** Écran Détail + détail du score — bouton « Postuler » compris
 - [x] **6.** Génération CV/lettre Word + PDF — modèle préservé, anti-invention bloquant
 - [x] **7.** Écran Candidatures + export Excel — justificatif France Travail
-- [ ] **8.** Connecteurs restants
+- [x] **8.** Connecteurs — Civiweb (V.I.E) actif, Adzuna écrit ; trois sources refusées, motifs consignés
 - [ ] **9.** Scan planifié + badge « X nouvelles offres »

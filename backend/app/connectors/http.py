@@ -95,11 +95,12 @@ class ClientHttp:
     # ----------------------------------------------------------------- cache
 
     def _chemin_cache(self, methode: str, url: str, params: dict | None,
-                      donnees: dict | None) -> Path | None:
+                      donnees: dict | None, corps_json: dict | None) -> Path | None:
         if self.dossier_cache is None:
             return None
         empreinte = hashlib.sha256(
-            json.dumps([methode, url, params or {}, donnees or {}], sort_keys=True).encode()
+            json.dumps([methode, url, params or {}, donnees or {}, corps_json or {}],
+                       sort_keys=True).encode()
         ).hexdigest()
         return self.dossier_cache / f"{empreinte}.json"
 
@@ -132,12 +133,14 @@ class ClientHttp:
         url: str,
         *,
         params: dict | None = None,
-        donnees: dict | None = None,
+        donnees: dict | None = None,      # corps de formulaire (OAuth notamment)
+        corps_json: dict | None = None,   # corps JSON (APIs modernes)
         entetes: dict | None = None,
         utiliser_cache: bool = True,
         statuts_acceptes: tuple[int, ...] = (200,),
     ) -> Reponse:
-        chemin = self._chemin_cache(methode, url, params, donnees) if utiliser_cache else None
+        chemin = (self._chemin_cache(methode, url, params, donnees, corps_json)
+                  if utiliser_cache else None)
         en_cache = self._lire_cache(chemin)
         if en_cache is not None:
             log.debug("cache : %s %s", methode, url)
@@ -150,7 +153,8 @@ class ClientHttp:
             self._attendre_son_tour(url)
             try:
                 brute = self._session().request(
-                    methode, url, params=params, data=donnees, headers=tous_entetes
+                    methode, url, params=params, data=donnees, json=corps_json,
+                    headers=tous_entetes,
                 )
             except httpx.HTTPError as e:
                 derniere_erreur = e

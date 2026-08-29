@@ -23,6 +23,25 @@ SECRETS_EXTERNES = (
 
 
 @pytest.fixture(autouse=True)
+def sans_reseau(monkeypatch):
+    """Aucun test ne sort sur le réseau.
+
+    Neutraliser les identifiants ne suffit pas : une source publique comme
+    Civiweb n'en demande aucun et partirait interroger le vrai serveur. On coupe
+    donc le transport HTTP réel. `httpx.MockTransport`, utilisé par les tests du
+    client HTTP, passe par une autre classe et reste opérationnel.
+    """
+    import httpx
+
+    def interdit(self, request, *a, **kw):
+        raise AssertionError(
+            f"appel réseau interdit pendant les tests : {request.method} {request.url}"
+        )
+
+    monkeypatch.setattr(httpx.HTTPTransport, "handle_request", interdit)
+
+
+@pytest.fixture(autouse=True)
 def sans_identifiants_reels(monkeypatch):
     """Coupe la suite de tests du monde extérieur.
 

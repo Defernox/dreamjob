@@ -30,7 +30,12 @@ class FauxReglages:
 
 
 class FauxHttp:
-    """Rejoue des réponses et enregistre les appels."""
+    """Rejoue des réponses et enregistre les appels.
+
+    La dernière réponse est répétée si la liste s'épuise : un connecteur qui
+    interroge plusieurs pays ferait sinon échouer le test sur un détail de
+    plomberie plutôt que sur ce qu'il vérifie.
+    """
 
     def __init__(self, reponses):
         self.reponses = list(reponses)
@@ -38,7 +43,7 @@ class FauxHttp:
 
     def _suivante(self, methode, url, **kw):
         self.appels.append({"methode": methode, "url": url, **kw})
-        suite = self.reponses.pop(0)
+        suite = self.reponses.pop(0) if len(self.reponses) > 1 else self.reponses[0]
         if isinstance(suite, Exception):
             raise suite
         return suite
@@ -48,6 +53,9 @@ class FauxHttp:
 
     def post(self, url, **kw):
         return self._suivante("POST", url, **kw)
+
+    def requete(self, methode, url, **kw):
+        return self._suivante(methode, url, **kw)
 
 
 def _jeton(expire_dans=1499):

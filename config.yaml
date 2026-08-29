@@ -80,37 +80,55 @@ recherche:
     - Alternance
   offres_max_par_source: 150
 
-# Un connecteur désactivé n'est jamais interrogé.
-# Les sources sans API ni flux public autorisé restent à false par défaut.
+# Un connecteur desactive n'est jamais interroge.
+# `remarque` consigne ce qui a ete VERIFIE (robots.txt, CGU, existence d'une API)
+# le 2026-08-29 : c'est ce qui justifie qu'une source soit active ou non.
 sources:
   france_travail:
     actif: true
     libelle: "France Travail"
-    remarque: "API officielle Offres d'emploi v2, OAuth client credentials."
+    remarque: "API officielle Offres d'emploi v2, OAuth client credentials. Valide en reel."
+  civiweb:
+    actif: true
+    libelle: "Civiweb (V.I.E)"
+    remarque: >-
+      Business France. robots.txt n'interdit que /refresh ; aucune clause sur
+      l'extraction automatisee dans les mentions legales. On interroge l'endpoint
+      JSON que le site utilise lui-meme, avec la cle publiee dans sa configuration
+      front (surchargeable par CIVIWEB_API_KEY). Valide en reel.
   adzuna:
     actif: false
     libelle: "Adzuna"
-    remarque: "API publique, clé gratuite à renseigner dans .env."
-  civiweb:
-    actif: false
-    libelle: "Civiweb (V.I.E)"
-    remarque: "Endpoint JSON public."
+    remarque: >-
+      API publique documentee, cle gratuite sur developer.adzuna.com. Ecrit et
+      teste hors ligne ; passera a true des que ADZUNA_APP_ID et ADZUNA_APP_KEY
+      seront dans .env.
   talent:
     actif: false
     libelle: "Talent.com"
-    remarque: "À valider : robots.txt et CGU avant activation."
-  wttj:
-    actif: false
-    libelle: "Welcome to the Jungle"
-    remarque: "À valider : robots.txt et CGU avant activation."
+    remarque: >-
+      REFUSE. robots.txt interdit explicitement /services/api-new/search,
+      /search-jobs/* et /ajax/* : il n'existe aucun acces a la recherche qui soit
+      autorise. Un partenariat editeur serait necessaire.
   hellowork:
     actif: false
     libelle: "HelloWork"
-    remarque: "À valider : robots.txt et CGU avant activation."
+    remarque: >-
+      REFUSE. robots.txt interdit /fr-fr/emploi/recherche.html et toute URL
+      portant une chaine de requete (Disallow: /*?), ce qui couvre la recherche.
+  wttj:
+    actif: false
+    libelle: "Welcome to the Jungle"
+    remarque: >-
+      REFUSE. robots.txt interdit */jobs?query=* et toute URL avec chaine de
+      requete. Pas d'API publique : leur API est reservee aux partenaires.
   apec:
     actif: false
     libelle: "APEC"
-    remarque: "À valider : robots.txt et CGU avant activation."
+    remarque: >-
+      EN ATTENTE. robots.txt n'interdit rien, mais le sitemap ne publie que des
+      pages de recherche, pas les offres elles-memes, et il n'existe pas d'API
+      publique documentee. Rien d'exploitable proprement pour l'instant.
 
 planification:
   scan_quotidien_actif: false

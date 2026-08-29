@@ -23,6 +23,10 @@ class OffreResume(BaseModel):
     score: float | None
     score_explication: str
     vue: bool
+    derniere_vue_le: datetime
+    # Aucun scan ne l'a revue depuis le seuil : l'annonce est probablement
+    # retirée du site. On le signale, on ne supprime jamais.
+    expiree: bool = False
     a_candidature: bool = False
 
 
@@ -50,6 +54,7 @@ class PageOffres(BaseModel):
 
 class Statistiques(BaseModel):
     total: int
+    expirees: int
     aujourd_hui: int
     vie: int
     # Arrivées à la dernière recherche et pas encore ouvertes : c'est le badge.

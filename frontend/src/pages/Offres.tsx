@@ -53,7 +53,7 @@ export default function Offres() {
 
   const filtreActif =
     filtres.contrats.length + filtres.sources.length + filtres.pays.length > 0 ||
-    filtres.score_min > 0 || filtres.recherche !== ''
+    filtres.score_min > 0 || filtres.recherche !== '' || filtres.expirees !== null
 
   return (
     <div className="space-y-5">
@@ -160,6 +160,20 @@ export default function Offres() {
           onChange={(v) => maj('pays', v)}
         />
 
+        {stats && stats.expirees > 0 && (
+          <div className="flex items-center gap-3">
+            <span className="text-xs font-medium text-slate-500 w-16 shrink-0">En ligne</span>
+            <label className="flex items-center gap-2 text-sm text-slate-600">
+              <input
+                type="checkbox"
+                checked={filtres.expirees === false}
+                onChange={(e) => maj('expirees', e.target.checked ? false : null)}
+              />
+              Masquer les {nombreFr(stats.expirees)} offres probablement retirées
+            </label>
+          </div>
+        )}
+
         <div className="flex items-center gap-3">
           <span className="text-xs font-medium text-slate-500 w-16 shrink-0">Score ≥</span>
           <input
@@ -233,8 +247,16 @@ function Carte({ offre, seuils }: { offre: OffreResume; seuils?: { bon: number; 
               candidature
             </span>
           )}
-          {!offre.vue && (
+          {!offre.vue && !offre.expiree && (
             <span className="px-1.5 py-0.5 rounded text-xs bg-sky-100 text-sky-800">nouvelle</span>
+          )}
+          {offre.expiree && (
+            <span
+              className="px-1.5 py-0.5 rounded text-xs bg-amber-100 text-amber-800"
+              title="Aucun scan ne l'a revue depuis un moment : sans doute retirée du site"
+            >
+              expirée ?
+            </span>
           )}
           <span className="text-xs text-slate-400 ml-auto shrink-0">
             {anciennete(offre.date_publication ?? offre.date_recuperation)}

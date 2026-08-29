@@ -1,0 +1,24 @@
+#!/bin/sh
+# Garde-fou avant commit : la suite de tests doit passer.
+#
+# Une regression poussee sur GitHub est bien plus couteuse a retrouver qu'une
+# minute d'attente ici. Pour passer outre exceptionnellement : git commit --no-verify
+set -e
+
+racine="$(git rev-parse --show-toplevel)"
+python="$racine/backend/.venv/Scripts/python.exe"
+[ -x "$python" ] || python="$racine/backend/.venv/bin/python"
+
+if [ ! -x "$python" ]; then
+  echo "pre-commit : environnement Python introuvable, tests ignores."
+  exit 0
+fi
+
+echo "pre-commit : execution des tests..."
+if ! (cd "$racine/backend" && "$python" -m pytest -q --no-header 2>&1 | tail -15); then
+  echo ""
+  echo "COMMIT REFUSE : des tests echouent."
+  echo "Corrigez-les, ou forcez avec : git commit --no-verify"
+  exit 1
+fi
+echo "pre-commit : tests au vert."

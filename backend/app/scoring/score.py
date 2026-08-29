@@ -20,6 +20,7 @@ from rapidfuzz import fuzz, process
 from ..config import PoidsScoring
 from ..models import Offer, Profile
 from .extraction import Signaux
+from .synonymes import present as synonyme_present
 from .texte import mots, poids_jeton
 
 CRITERES = ("competences", "secteur", "pays", "langue", "contrat")
@@ -80,7 +81,9 @@ def _presence(terme: str, vocabulaire: set[str], *, flou: bool) -> float:
     for jeton in jetons:
         poids = poids_jeton(jeton)
         total += poids
-        if jeton in vocabulaire:
+        # Les synonymes comptent comme le mot lui-même : « risques de crédit »
+        # doit rencontrer « credit risk », sinon la moitié du marché est écartée.
+        if synonyme_present(jeton, vocabulaire):
             obtenu += poids
         elif flou:
             # Variante proche (gestion/gestionnaire) : jamais autant qu'un mot exact.
@@ -172,19 +175,38 @@ def score_pays(profil: Profile, offre: Offer) -> float | None:
     return 100.0 if offre.pays in profil.pays_acceptes else 0.0
 
 
-def score_langue(profil: Profile, signaux: Signaux) -> float | None:
-    if not profil.langues:
-        return None
-    if not signaux.langue:
-        return None      # texte trop court pour trancher : on ne pénalise pas
+def _niveau_du_profil(profil: Profile, code: str) -> float | None:
+    """Note du candidat pour cette langue, ou None s'il ne la parle pas."""
     for langue in profil.langues:
-        if (langue.get("code") or "").lower() != signaux.langue:
+        if (langue.get("code") or "").lower() != code:
             continue
         for jeton in mots(langue.get("niveau") or ""):
             if jeton in NIVEAUX_LANGUE:
                 return NIVEAUX_LANGUE[jeton]
         return NIVEAU_LANGUE_PAR_DEFAUT
-    return 0.0
+    return None
+
+
+def score_langue(profil: Profile, signaux: Signaux) -> float | None:
+    """Deux questions distinctes : la langue dans laquelle l'annonce est écrite,
+    et celles qu'elle **exige**.
+
+    Une offre en français réclamant « anglais courant » était jugée
+    parfaitement accessible : seule la langue de rédaction comptait. C'est
+    l'exigence la plus dure qui décide.
+    """
+    if not profil.langues:
+        return None
+
+    notes: list[float] = []
+    if signaux.langue:
+        notes.append(_niveau_du_profil(profil, signaux.langue) or 0.0)
+    for code in signaux.exigences_langues:
+        notes.append(_niveau_du_profil(profil, code) or 0.0)
+
+    if not notes:
+        return None      # texte trop court, aucune exigence : on ne pénalise pas
+    return min(notes)
 
 
 def score_contrat(profil: Profile, offre: Offer) -> float | None:

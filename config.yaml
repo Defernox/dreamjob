@@ -57,6 +57,10 @@ documents:
   reordonner_cv: true
   ouvrir_le_dossier: true
 
+sauvegardes:
+  # Copie datee de la base a chaque ouverture, puis rotation. Zero desactive.
+  a_conserver: 7
+
 chemins:
   base_donnees: "data/dreamjob.db"
   cache: "data/cache"
@@ -65,6 +69,17 @@ chemins:
   dossier_candidatures: "~/Jobscout/candidatures"
 
 # Recherche par défaut appliquée à un scan (surchargée depuis l'interface)
+candidatures:
+  # Une candidature « Envoyee » et sans nouvelle depuis ce nombre de jours est
+  # signalee comme a relancer. Zero desactive le rappel.
+  relance_apres_jours: 15
+
+offres:
+  # Une annonce qu'aucun scan n'a revue depuis ce nombre de jours est
+  # probablement retiree du site : on la signale plutot que de la supprimer,
+  # car une source en panne ne doit pas faire disparaitre des offres valides.
+  expiree_apres_jours: 10
+
 recherche:
   # Un filtre trop large vaut mieux qu'un filtre trop etroit : le tri fin est
   # fait par le scoring, pas par la source.

@@ -165,6 +165,14 @@ function Ligne({ candidature, statuts, seuils, onChange, onSupprimer }: {
     <tr className="align-top hover:bg-slate-50/60">
       <td className="px-3 py-2 whitespace-nowrap text-slate-600">
         {dateFr(candidature.date_candidature)}
+        {candidature.relance_conseillee && (
+          <span
+            className="ml-2 px-1.5 py-0.5 rounded text-xs bg-amber-100 text-amber-800 font-medium"
+            title={`Envoyée il y a ${candidature.jours_depuis} jours, sans nouvelle`}
+          >
+            à relancer
+          </span>
+        )}
       </td>
       <td className="px-3 py-2 font-medium">{candidature.entreprise || '—'}</td>
       <td className="px-3 py-2 max-w-[18rem]">

@@ -51,3 +51,51 @@ def detecter(texte: str | None, *, defaut: str = "") -> str:
     if comptes[meilleure] < seconde * 1.3:
         return defaut
     return meilleure
+
+
+# --- Langues EXIGÉES par l'annonce -------------------------------------------
+# Détecter la langue de rédaction ne suffit pas : une offre en français qui
+# réclame « anglais courant » est hors de portée sans anglais, alors que le
+# critère la donnait pour parfaitement accessible.
+
+_NOMS_LANGUES: dict[str, tuple[str, ...]] = {
+    "en": ("anglais", "english"),
+    "de": ("allemand", "german", "deutsch"),
+    "es": ("espagnol", "spanish"),
+    "it": ("italien", "italian"),
+    "nl": ("neerlandais", "dutch"),
+    "fr": ("francais", "french"),
+}
+
+# Mots qui, à proximité d'un nom de langue, en font une exigence et non une
+# simple mention (« équipe internationale, anglais et espagnol parlés »).
+_MARQUEURS_EXIGENCE = (
+    "courant", "couramment", "bilingue", "obligatoire", "exige", "exigee", "requis",
+    "requise", "maitrise", "indispensable", "necessaire", "imperatif", "fluent",
+    "required", "mandatory", "proficiency", "professionnel", "operationnel", "c1", "c2", "b2",
+)
+
+# Fenêtre de mots autour du nom de langue où l'on cherche ces marqueurs.
+_FENETRE = 6
+
+
+def langues_exigees(texte: str | None) -> list[str]:
+    """Codes ISO des langues que l'annonce réclame explicitement.
+
+    Une langue seulement citée, sans marqueur d'exigence à proximité, n'est pas
+    retenue : mieux vaut manquer une exigence que d'écarter une offre à tort.
+    """
+    jetons = mots(texte, garder_vides=True)
+    if not jetons:
+        return []
+
+    exigees: list[str] = []
+    for position, jeton in enumerate(jetons):
+        for code, noms in _NOMS_LANGUES.items():
+            if jeton not in noms or code in exigees:
+                continue
+            debut = max(0, position - _FENETRE)
+            voisinage = jetons[debut:position + _FENETRE + 1]
+            if any(v in _MARQUEURS_EXIGENCE for v in voisinage):
+                exigees.append(code)
+    return exigees

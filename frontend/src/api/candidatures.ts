@@ -16,6 +16,9 @@ export type Candidature = {
   pays: string
   score: number | null
   url: string
+  jours_depuis: number
+  /** Envoyée et sans nouvelle depuis le seuil : une relance s'impose. */
+  relance_conseillee: boolean
 }
 
 export const useCandidatures = () =>

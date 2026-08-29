@@ -190,6 +190,17 @@ Deux règles qui évitent des scores absurdes :
   *et* secteur sont à 0, l'offre est plafonnée : pays, langue et contrat sont des
   filtres administratifs, ils ne doivent pas faire remonter un poste sans rapport.
 
+**Synonymes métier** (`scoring/synonymes.py`) : les offres de ce domaine sont
+massivement bilingues. Sans table d'équivalences, « risques de crédit » ne
+rencontre jamais « credit risk » et la moitié du marché est écartée.
+
+**Langue : deux questions distinctes.** Celle dans laquelle l'annonce est
+écrite, et celles qu'elle **exige** (`langues_exigees`). Une offre en français
+réclamant « anglais courant » était jugée parfaitement accessible. C'est
+l'exigence la plus dure qui décide. Une langue seulement citée, sans marqueur
+d'exigence à proximité, n'est pas retenue : mieux vaut manquer une exigence que
+d'écarter une offre à tort.
+
 Les mots génériques d'une compétence (« gestion », « analyse ») pèsent 0,4 contre
 1 pour les mots spécifiques : dans « gestion de trésorerie », c'est
 « trésorerie » qui compte.
@@ -316,6 +327,36 @@ non temporisée en lançait autant que de caractères tapés.
 Les jokers de `LIKE` sont **échappés** (`echapper_like`) : sans cela, taper
 « % » remontait toute la base et « middle_office » matchait n'importe quel
 caractère à la place du souligné.
+
+---
+
+## Offres retirées du site
+
+Chaque scan qui **revoit** une annonce rafraîchit `Offer.derniere_vue_le` : un
+doublon n'est pas du bruit, c'est la preuve que l'offre tient encore. Passé
+`offres.expiree_apres_jours`, elle est signalée « expirée ? » et peut être
+masquée — jamais supprimée : une source en panne ne doit pas faire disparaître
+des offres valides.
+
+---
+
+## Relances
+
+`candidatures.relance_apres_jours` : une candidature au statut **« Envoyée »**
+et sans nouvelle depuis ce délai porte un badge « à relancer ». Les autres
+statuts sont exclus — relancer un refus n'a aucun sens.
+
+---
+
+## Sauvegarde
+
+`services/sauvegarde.py` copie la base à chaque démarrage dans
+`data/sauvegardes/`, et n'en garde que sept. La copie passe par l'API `backup`
+de SQLite, **jamais par un `copy` de fichier** : en WAL, les écritures récentes
+vivent dans un journal annexe et une copie brute serait amputée.
+
+Le hook `hooks/pre-commit` (activé par `core.hooksPath`) refuse un commit dont
+les tests échouent.
 
 ---
 

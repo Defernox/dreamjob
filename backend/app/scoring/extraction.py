@@ -10,18 +10,22 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass, field
 
 from ..models import Offer
-from .langue import detecter
+from .langue import detecter, langues_exigees
 from .rome import domaine
 from .texte import ensemble_mots, normaliser
 
 # Version des règles d'extraction. L'incrémenter force un recalcul des signaux
 # sans toucher aux offres déjà en base.
-VERSION = 1
+# 2 : ajout des langues exigées par l'annonce.
+VERSION = 2
 
 
 @dataclass
 class Signaux:
     langue: str = ""
+    # Codes ISO des langues que l'annonce réclame explicitement — distinct de
+    # la langue dans laquelle elle est rédigée.
+    exigences_langues: list[str] = field(default_factory=list)
     # Texte servant à reconnaître le secteur : intitulé, libellé ROME, domaine.
     texte_secteur: str = ""
     # Vocabulaire complet de l'offre, pour la recherche de compétences.
@@ -59,6 +63,9 @@ def extraire(offre: Offer) -> Signaux:
 
     return Signaux(
         langue=langue,
+        exigences_langues=langues_exigees(
+            f"{offre.titre} {offre.description_brute}"
+        ),
         texte_secteur=normaliser(texte_secteur),
         vocabulaire=sorted(vocabulaire),
     )

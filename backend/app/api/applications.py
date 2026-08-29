@@ -12,6 +12,7 @@ from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from fastapi.responses import Response
 from sqlmodel import Session, desc, select
 
+from ..config import reglages
 from ..db import get_session
 from ..exports.excel import exporter, lire
 from ..models import Application, Offer
@@ -24,8 +25,20 @@ router = APIRouter(prefix="/api/candidatures", tags=["candidatures"])
 
 
 def _en_lecture(candidature: Application, offre: Offer | None) -> CandidatureLecture:
+    jours = max(0, (maintenant() - candidature.date_candidature).days)
+    seuil = reglages().candidatures.relance_apres_jours
+    # Seul le statut « Envoyée » appelle une relance : une candidature refusée
+    # ou déjà en entretien n'a rien à relancer.
+    relance = (
+        seuil > 0
+        and candidature.statut == StatutCandidature.ENVOYEE.value
+        and jours >= seuil
+    )
+
     return CandidatureLecture(
         **candidature.model_dump(),
+        jours_depuis=jours,
+        relance_conseillee=relance,
         titre=offre.titre if offre else "",
         entreprise=offre.entreprise if offre else "",
         pays=offre.pays if offre else "",

@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+from datetime import datetime, timedelta
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func
 from sqlmodel import Session, select
 
 from ..db import get_session
+from ..config import reglages
 from ..models import Application, Offer
 from ..models.base import maintenant
 from ..schemas.offre import (
@@ -62,6 +65,11 @@ def _filtres(contrats, sources, pays, score_min, recherche, *, sauf: str = "") -
     return conditions
 
 
+def _seuil_expiration() -> datetime:
+    """Une offre revue avant cette date est considérée retirée du site."""
+    return maintenant() - timedelta(days=reglages().offres.expiree_apres_jours)
+
+
 def _compter(session: Session, colonne, conditions) -> dict[str, int]:
     requete = select(colonne, func.count()).group_by(colonne)
     for condition in conditions:
@@ -76,6 +84,8 @@ def lister(
     pays: list[str] | None = Query(None),
     score_min: float | None = Query(None, ge=0, le=100),
     recherche: str | None = None,
+    # None = toutes ; False = seulement les offres encore en ligne.
+    expirees: bool | None = None,
     tri: str = "pertinence",
     # 500 : de quoi tout afficher sur une base locale, sans permettre de
     # demander un volume qui ferait ramer l'interface.
@@ -87,6 +97,11 @@ def lister(
         raise HTTPException(400, f"Tri inconnu. Valeurs possibles : {', '.join(TRIS)}")
 
     conditions = _filtres(contrats, sources, pays, score_min, recherche)
+    if expirees is not None:
+        seuil = _seuil_expiration()
+        conditions.append(
+            Offer.derniere_vue_le < seuil if expirees else Offer.derniere_vue_le >= seuil
+        )
 
     requete = select(Offer)
     for condition in conditions:
@@ -101,11 +116,14 @@ def lister(
     ).all())
 
     candidatures = set(session.exec(select(Application.offer_id)).all())
+    seuil = _seuil_expiration()
 
     return PageOffres(
         total=total,
         offres=[
-            OffreResume(**o.model_dump(), a_candidature=o.id in candidatures) for o in offres
+            OffreResume(**o.model_dump(), a_candidature=o.id in candidatures,
+                        expiree=o.derniere_vue_le < seuil)
+            for o in offres
         ],
         compteurs=Compteurs(
             contrat=_compter(session, Offer.type_contrat,
@@ -137,6 +155,7 @@ def statistiques(session: Session = Depends(get_session)) -> Statistiques:
 
     return Statistiques(
         total=session.exec(select(func.count()).select_from(Offer)).one(),
+        expirees=compter(Offer.derniere_vue_le < _seuil_expiration()),
         aujourd_hui=compter(Offer.date_publication >= debut_journee),
         vie=compter(Offer.type_contrat == "V.I.E"),
         nouvelles=nouvelles,
@@ -168,4 +187,5 @@ def detail(offre_id: int, session: Session = Depends(get_session)) -> OffreDetai
     candidature = session.exec(
         select(Application).where(Application.offer_id == offre_id)
     ).first()
-    return OffreDetail(**offre.model_dump(), a_candidature=candidature is not None)
+    return OffreDetail(**offre.model_dump(), a_candidature=candidature is not None,
+                       expiree=offre.derniere_vue_le < _seuil_expiration())

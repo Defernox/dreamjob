@@ -56,3 +56,8 @@ class CandidatureLecture(BaseModel):
     pays: str = ""
     score: float | None = None
     url: str = ""
+
+    # Calculés : une candidature envoyée et sans nouvelle depuis un moment
+    # mérite une relance, et France Travail attend de voir ce suivi.
+    jours_depuis: int = 0
+    relance_conseillee: bool = False

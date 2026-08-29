@@ -15,6 +15,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from .api import applications, documents, meta, offers, profile, recherches, scans
 from .config import reglages
 from .db import checkpoint, creer_tables
+from .services.sauvegarde import sauvegarder
 from .scheduler import arreter as arreter_planificateur
 from .scheduler import demarrer as demarrer_planificateur
 
@@ -32,6 +33,11 @@ async def cycle_de_vie(app: FastAPI):
     for dossier in (r.chemins.dossier_cache, r.chemins.dossier_logs, r.chemins.candidatures):
         dossier.mkdir(parents=True, exist_ok=True)
     creer_tables()
+
+    # Avant toute écriture : une copie datée de ce qui existe déjà.
+    if r.sauvegardes.a_conserver > 0:
+        sauvegarder(r.chemins.db, r.chemins.dossier_sauvegardes,
+                    r.sauvegardes.a_conserver)
 
     log.info("Base      : %s", r.chemins.db)
     log.info("Dossiers  : %s", r.chemins.candidatures)

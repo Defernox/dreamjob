@@ -60,3 +60,8 @@ class Offer(SQLModel, table=True):
 
     # Badge « X nouvelles offres »
     vue: bool = Field(default=False, index=True)
+
+    # Dernière fois qu'un scan a revu cette annonce chez sa source. Une offre
+    # retirée du site cesse d'être revue : c'est ce qui permet de repérer celles
+    # auxquelles il ne sert plus à rien de postuler.
+    derniere_vue_le: datetime = Field(default_factory=maintenant, index=True)

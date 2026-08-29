@@ -237,6 +237,11 @@ def _stocker(session: Session, offres: list[RawOffer],
             )
         ).first()
         if deja is not None:
+            # Retrouver une annonce, c'est constater qu'elle est toujours en
+            # ligne : c'est cette date qui permettra de repérer celles qui ont
+            # disparu du site.
+            deja.derniere_vue_le = maintenant()
+            session.add(deja)
             doublons += 1
             continue
 

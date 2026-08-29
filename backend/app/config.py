@@ -95,10 +95,15 @@ class Documents(BaseModel):
     ouvrir_le_dossier: bool = True
 
 
+class Sauvegardes(BaseModel):
+    a_conserver: int = 7
+
+
 class Chemins(BaseModel):
     base_donnees: str = "data/dreamjob.db"
     cache: str = "data/cache"
     logs: str = "data/logs"
+    sauvegardes: str = "data/sauvegardes"
     modele_cv: str = "templates/cv_modele.docx"
     dossier_candidatures: str = "~/Jobscout/candidatures"
 
@@ -119,12 +124,24 @@ class Chemins(BaseModel):
         return self._resoudre(self.logs)
 
     @property
+    def dossier_sauvegardes(self) -> Path:
+        return self._resoudre(self.sauvegardes)
+
+    @property
     def cv_modele(self) -> Path:
         return self._resoudre(self.modele_cv)
 
     @property
     def candidatures(self) -> Path:
         return self._resoudre(self.dossier_candidatures)
+
+
+class Candidatures(BaseModel):
+    relance_apres_jours: int = 15
+
+
+class Offres(BaseModel):
+    expiree_apres_jours: int = 10
 
 
 class Recherche(BaseModel):
@@ -166,7 +183,10 @@ class Reglages(BaseModel):
     http: Http = Field(default_factory=Http)
     chemins: Chemins = Field(default_factory=Chemins)
     documents: Documents = Field(default_factory=Documents)
+    sauvegardes: Sauvegardes = Field(default_factory=Sauvegardes)
     recherche: Recherche = Field(default_factory=Recherche)
+    offres: Offres = Field(default_factory=Offres)
+    candidatures: Candidatures = Field(default_factory=Candidatures)
     sources: dict[str, Source] = Field(default_factory=dict)
     planification: Planification = Field(default_factory=Planification)
 

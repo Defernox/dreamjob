@@ -176,10 +176,10 @@ Les erreurs de l'API remontent **telles quelles** à l'utilisateur
 
 | Critère | Source du signal | Particularité |
 |---|---|---|
-| Compétences 35 % | appariement lexical profil ↔ texte de l'offre | 60 % vient de la **meilleure** compétence ancrée, 40 % du nombre d'autres compétences (plafonné à 3). On mesure la **qualité** de la correspondance, jamais le taux de couverture : une annonce ne cite jamais tout un profil |
-| Secteur 25 % | intitulé + `romeLibelle` + famille ROME | reconnu dans l'intitulé = signal fort, dans le corps = 60 % |
+| Compétences 35 % | appariement lexical profil ↔ texte de l'offre | 60 % vient de la **meilleure** compétence ancrée, 40 % du nombre d'autres compétences **réellement retrouvées** (au-dessus de `SEUIL_TROUVEE`, plafonné à 3) — additionner les correspondances sous le seuil laissait dix compétences frôlant un mot générique saturer cette moitié du score. On mesure la **qualité** de la correspondance, jamais le taux de couverture : une annonce ne cite jamais tout un profil |
+| Secteur 25 % | intitulé + `romeLibelle` + famille ROME | se mesure avec `_presence`, comme les compétences : **synonymes et pondération des mots génériques compris**. Reconnu dans l'intitulé = signal fort, dans le corps = 60 %, et l'on retient **le meilleur des deux** — « le titre sauf s'il est muet » faisait qu'un titre à moitié reconnu écrasait un corps qui reconnaissait tout |
 | Pays 15 % | champ structuré de la source | binaire. **Attention** : France Travail publie aussi hors de France (Luxembourg surtout). Le pays se déduit du préfixe de département (« 75 - Paris ») ou du nom de pays dans le libellé — tout étiqueter « France » fausserait le critère |
-| Langue 15 % | mots-outils (`scoring/langue.py`) | texte trop court ⇒ non évalué, jamais pénalisé |
+| Langue 15 % | mots-outils (`scoring/langue.py`) | texte trop court ⇒ non évalué, jamais pénalisé. Le niveau du profil est saisi en texte libre : plusieurs niveaux reconnus dans la même saisie ⇒ on retient **le plus prudent** (« courant (B2) » vaut B2), et une saisie illisible retombe sur `NIVEAU_LANGUE_PAR_DEFAUT` = 70, jamais au-dessus d'« intermédiaire » |
 | Contrat 10 % | champ structuré | l'ordre de `contrats_acceptes` porte la préférence : de 100 à 60, jamais 0 pour un contrat accepté |
 
 Deux règles qui évitent des scores absurdes :
@@ -194,6 +194,17 @@ Deux règles qui évitent des scores absurdes :
 massivement bilingues. Sans table d'équivalences, « risques de crédit » ne
 rencontre jamais « credit risk » et la moitié du marché est écartée.
 
+La table sert **les compétences et le secteur**. Le secteur s'en passait, et
+c'était sa plus grosse faiblesse : « Finance » ne rencontrait pas « financial
+markets », 597 offres sur 2 300 en ressortaient sous-notées sur un critère qui
+pèse 25 %. Les deux critères passent maintenant par la même fonction
+(`_presence`), donc par les mêmes synonymes et la même pondération.
+
+Les familles qui partagent un mot sont fusionnées **avant** la construction de
+l'index inversé (`_index_inverse`) : sinon le mot commun hériterait de l'union
+des deux familles pendant que ses voisins garderaient la leur, et le score
+dépendrait de quel terme se trouve dans le profil plutôt que dans l'annonce.
+
 **Langue : deux questions distinctes.** Celle dans laquelle l'annonce est
 écrite, et celles qu'elle **exige** (`langues_exigees`). Une offre en français
 réclamant « anglais courant » était jugée parfaitement accessible. C'est
@@ -204,6 +215,17 @@ d'écarter une offre à tort.
 Les mots génériques d'une compétence (« gestion », « analyse ») pèsent 0,4 contre
 1 pour les mots spécifiques : dans « gestion de trésorerie », c'est
 « trésorerie » qui compte.
+
+**Deux compteurs de version, deux rôles.** `scoring.version` (dans
+`config.yaml`) marque un changement de **poids** ; `extraction.VERSION` marque un
+changement de **signaux**. `scorer_toutes` interroge les deux — sans quoi
+incrémenter le second ne servait à rien : l'offre déjà scorée n'était jamais
+revisitée et gardait ses signaux périmés, sans le moindre message.
+
+**Le cache de `normaliser` ne sert que les chaînes courtes**
+(`LONGUEUR_CACHABLE`). Il recevait aussi des descriptions d'offres entières,
+uniques par offre : jamais un succès de cache, mais la clé *et* la valeur — le
+texte en double — retenues pour la durée du processus.
 
 ---
 

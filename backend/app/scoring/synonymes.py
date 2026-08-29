@@ -49,12 +49,39 @@ FAMILLES: list[set[str]] = [
     {"modelisation", "modélisation", "modeling", "modelling"},
 ]
 
-# Index inversé : mot normalisé -> tous ses équivalents (lui compris).
-_EQUIVALENTS: dict[str, frozenset[str]] = {}
-for _famille in FAMILLES:
-    _normalisee = frozenset(normaliser(mot) for mot in _famille if normaliser(mot))
-    for _mot in _normalisee:
-        _EQUIVALENTS[_mot] = _EQUIVALENTS.get(_mot, frozenset()) | _normalisee
+def _index_inverse(familles: list[set[str]]) -> dict[str, frozenset[str]]:
+    """Index inversé : mot normalisé -> tous ses équivalents, lui compris.
+
+    Les familles qui partagent un mot sont fusionnées **avant** l'indexation.
+    Sans cela la relation cesserait d'être symétrique : le mot commun hériterait
+    de l'union des deux familles pendant que ses voisins garderaient la leur, et
+    le score dépendrait alors de quel terme se trouve dans le profil plutôt que
+    dans l'annonce.
+    """
+    groupes: list[set[str]] = []
+    for famille in familles:
+        normalisee = {n for n in (normaliser(mot) for mot in famille) if n}
+        if not normalisee:
+            continue
+        # On absorbe tout groupe déjà formé qui partage un mot avec celui-ci.
+        restants = []
+        for groupe in groupes:
+            if groupe & normalisee:
+                normalisee |= groupe
+            else:
+                restants.append(groupe)
+        restants.append(normalisee)
+        groupes = restants
+
+    index: dict[str, frozenset[str]] = {}
+    for groupe in groupes:
+        fige = frozenset(groupe)
+        for mot in fige:
+            index[mot] = fige
+    return index
+
+
+_EQUIVALENTS: dict[str, frozenset[str]] = _index_inverse(FAMILLES)
 
 
 def equivalents(mot: str) -> frozenset[str]:

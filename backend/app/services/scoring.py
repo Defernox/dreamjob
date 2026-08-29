@@ -9,12 +9,14 @@ from __future__ import annotations
 
 import logging
 
+from sqlalchemy import func
 from sqlmodel import Session, select
 
 from ..config import reglages as lire_reglages
 from ..models import Offer, Profile
 from ..models.base import maintenant
 from ..scoring.explain import expliquer
+from ..scoring.extraction import VERSION as VERSION_SIGNAUX
 from ..scoring.extraction import signaux_de
 from ..scoring.score import calculer
 
@@ -66,10 +68,19 @@ def scorer_toutes(session: Session, *, forcer: bool = False) -> dict:
         # `poids_version != version` est FAUX quand la colonne vaut NULL (règle
         # SQL sur les NULL) : sans le test explicite, une offre scorée avant
         # l'introduction du versionnage ne serait jamais rescorée.
+        #
+        # La version des *signaux* est un compteur distinct de celle des poids.
+        # Sans ce second test, incrémenter `extraction.VERSION` ne servait à
+        # rien : l'offre n'était pas revisitée, donc `signaux_de` n'était jamais
+        # rappelé et les signaux périmés restaient en base. `is_(None)` couvre à
+        # la fois une colonne vide et un dictionnaire sans clé `version`.
+        version_signaux = func.json_extract(Offer.extraction, "$.version")
         requete = requete.where(
             Offer.score.is_(None)
             | Offer.poids_version.is_(None)
             | (Offer.poids_version != version)
+            | version_signaux.is_(None)
+            | (version_signaux != VERSION_SIGNAUX)
         )
 
     offres = list(session.exec(requete).all())

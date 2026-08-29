@@ -39,13 +39,26 @@ SEUIL_TROUVEE = 0.5
 # Secteur reconnu seulement dans le corps de l'annonce, pas dans l'intitulé.
 CREDIT_SECTEUR_FAIBLE = 0.6
 
+# Le niveau est saisi en texte libre : il faut couvrir les deux nombres et les
+# deux langues, sans quoi une saisie non reconnue tombe sur le repli.
 NIVEAUX_LANGUE = {
-    "natif": 100.0, "native": 100.0, "bilingue": 100.0, "maternelle": 100.0,
-    "courant": 100.0, "c2": 100.0, "c1": 100.0, "avance": 100.0, "fluent": 100.0,
-    "intermediaire": 70.0, "b2": 70.0, "b1": 70.0, "professionnel": 70.0,
-    "notions": 40.0, "debutant": 40.0, "a2": 40.0, "a1": 40.0, "scolaire": 40.0,
+    "natif": 100.0, "native": 100.0, "bilingue": 100.0, "bilingual": 100.0,
+    "maternelle": 100.0, "maternel": 100.0, "courant": 100.0, "couramment": 100.0,
+    "c2": 100.0, "c1": 100.0, "avance": 100.0, "avancee": 100.0, "fluent": 100.0,
+    "proficient": 100.0,
+    "intermediaire": 70.0, "intermediaires": 70.0, "intermediate": 70.0,
+    "b2": 70.0, "b1": 70.0, "professionnel": 70.0, "professionnelle": 70.0,
+    "operationnel": 70.0, "operationnelle": 70.0, "working": 70.0, "moyen": 70.0,
+    "notions": 40.0, "notion": 40.0, "debutant": 40.0, "debutante": 40.0,
+    "a2": 40.0, "a1": 40.0, "scolaire": 40.0, "scolaires": 40.0,
+    "base": 40.0, "bases": 40.0, "basique": 40.0, "basic": 40.0,
+    "elementaire": 40.0, "beginner": 40.0, "limite": 40.0, "limitee": 40.0,
 }
-NIVEAU_LANGUE_PAR_DEFAUT = 85.0
+# Niveau retenu quand la saisie n'est pas reconnue. Il valait 85 — au-dessus
+# d'« intermédiaire » — ce qui faisait passer une saisie incomprise pour une
+# quasi-maîtrise : « TOEIC 775 » et « Notion » d'allemand étaient tous deux lus
+# comme 85. Deux tiers des offres tiraient leur note de ce repli.
+NIVEAU_LANGUE_PAR_DEFAUT = 70.0
 
 
 @dataclass
@@ -96,7 +109,8 @@ def _presence(terme: str, vocabulaire: set[str], *, flou: bool) -> float:
     return obtenu / total if total else 0.0
 
 
-def score_competences(profil: Profile, signaux: Signaux, resultat: Resultat) -> float | None:
+def score_competences(profil: Profile, signaux: Signaux, resultat: Resultat,
+                      vocabulaire: set[str] | None = None) -> float | None:
     """Qualité de la correspondance, pas taux de couverture.
 
     - 60 % : la **meilleure** compétence ancrée retrouvée. Une signature qui
@@ -108,7 +122,8 @@ def score_competences(profil: Profile, signaux: Signaux, resultat: Resultat) -> 
     if not profil.skills:
         return None
 
-    vocabulaire = set(signaux.vocabulaire)
+    if vocabulaire is None:
+        vocabulaire = set(signaux.vocabulaire)
     meilleure_ancree = 0.0
     a_des_ancrees = False
     somme_autres = 0.0
@@ -126,10 +141,14 @@ def score_competences(profil: Profile, signaux: Signaux, resultat: Resultat) -> 
             meilleure_ancree = max(meilleure_ancree, presence)
             (resultat.ancrees_trouvees if presence >= SEUIL_TROUVEE
              else resultat.ancrees_manquantes).append(nom)
-        else:
+        elif presence >= SEUIL_TROUVEE:
+            # Seules les compétences réellement retrouvées comptent. Additionner
+            # les correspondances sous le seuil laissait dix compétences frôlant
+            # un mot générique saturer cette moitié du score : une offre de
+            # boulangerie atteignait 83/100 sur un profil finance, sans qu'aucune
+            # compétence ne soit rapportée à l'utilisateur.
             somme_autres += presence
-            if presence >= SEUIL_TROUVEE:
-                resultat.autres_trouvees.append(nom)
+            resultat.autres_trouvees.append(nom)
 
     part_autres = min(1.0, somme_autres / NB_AUTRES_ATTENDUES)
     if not a_des_ancrees:
@@ -140,27 +159,32 @@ def score_competences(profil: Profile, signaux: Signaux, resultat: Resultat) -> 
 # ------------------------------------------------------------------- secteur
 
 
-def _couverture(secteur: str, vocabulaire: set[str]) -> float:
-    jetons = mots(secteur)
-    if not jetons:
-        return 0.0
-    return sum(1 for j in jetons if j in vocabulaire) / len(jetons)
+def score_secteur(profil: Profile, signaux: Signaux, resultat: Resultat,
+                  vocabulaire: set[str] | None = None) -> float | None:
+    """Le secteur se mesure comme les compétences, avec `_presence`.
 
-
-def score_secteur(profil: Profile, signaux: Signaux, resultat: Resultat) -> float | None:
+    Il utilisait une simple appartenance d'ensemble, donc sans les synonymes ni
+    la pondération des mots génériques : « Finance » ne rencontrait jamais
+    « financial markets », et un secteur reconnu sur le seul mot « gestion »
+    valait autant qu'un secteur reconnu en entier. Sur un critère qui pèse 25 %,
+    un quart des offres en sortaient sous-notées.
+    """
     if not profil.secteurs:
         return None
 
     mots_titre = set(mots(signaux.texte_secteur))
-    mots_corps = set(signaux.vocabulaire)
+    mots_corps = set(signaux.vocabulaire) if vocabulaire is None else vocabulaire
 
     meilleur = 0.0
     for secteur in profil.secteurs:
         # Reconnu dans l'intitulé ou le libellé ROME : signal fort.
-        valeur = _couverture(secteur, mots_titre) * 100.0
-        if valeur == 0.0:
-            # Seulement dans le corps de l'annonce : signal plus faible.
-            valeur = _couverture(secteur, mots_corps) * 100.0 * CREDIT_SECTEUR_FAIBLE
+        fort = _presence(secteur, mots_titre, flou=False) * 100.0
+        # Seulement dans le corps de l'annonce : signal plus faible.
+        faible = _presence(secteur, mots_corps, flou=False) * 100.0 * CREDIT_SECTEUR_FAIBLE
+        # Le meilleur des deux, et non « le fort sauf s'il est nul » : un titre
+        # à moitié reconnu écrasait un corps qui, lui, reconnaissait tout — le
+        # critère n'était pas monotone, un titre muet valait mieux.
+        valeur = max(fort, faible)
         if valeur > meilleur:
             meilleur, resultat.secteur_reconnu = valeur, secteur
     return meilleur
@@ -176,14 +200,18 @@ def score_pays(profil: Profile, offre: Offer) -> float | None:
 
 
 def _niveau_du_profil(profil: Profile, code: str) -> float | None:
-    """Note du candidat pour cette langue, ou None s'il ne la parle pas."""
+    """Note du candidat pour cette langue, ou None s'il ne la parle pas.
+
+    Plusieurs niveaux reconnus dans la même saisie ⇒ on retient **le plus
+    prudent** : « courant (B2) » vaut B2, pas « courant ». Retenir le premier
+    jeton rencontré surestimait le candidat selon l'ordre de sa frappe.
+    """
     for langue in profil.langues:
         if (langue.get("code") or "").lower() != code:
             continue
-        for jeton in mots(langue.get("niveau") or ""):
-            if jeton in NIVEAUX_LANGUE:
-                return NIVEAUX_LANGUE[jeton]
-        return NIVEAU_LANGUE_PAR_DEFAUT
+        reconnus = [NIVEAUX_LANGUE[j] for j in mots(langue.get("niveau") or "")
+                    if j in NIVEAUX_LANGUE]
+        return min(reconnus) if reconnus else NIVEAU_LANGUE_PAR_DEFAUT
     return None
 
 
@@ -235,9 +263,13 @@ def calculer(
 ) -> Resultat:
     resultat = Resultat(score=0.0)
 
+    # Construit une fois : les deux critères qui s'en servent le reconstruisaient
+    # chacun de leur côté, sur plusieurs centaines de mots, pour chaque offre.
+    vocabulaire = set(signaux.vocabulaire)
+
     sous_scores: dict[str, float | None] = {
-        "competences": score_competences(profil, signaux, resultat),
-        "secteur": score_secteur(profil, signaux, resultat),
+        "competences": score_competences(profil, signaux, resultat, vocabulaire),
+        "secteur": score_secteur(profil, signaux, resultat, vocabulaire),
         "pays": score_pays(profil, offre),
         "langue": score_langue(profil, signaux),
         "contrat": score_contrat(profil, offre),
@@ -259,6 +291,12 @@ def calculer(
     # Ni les compétences ni le secteur ne correspondent : pays, langue et contrat
     # sont des filtres, pas des mérites. Une offre hors cible ne doit pas remonter
     # au seul motif qu'elle est en CDI près de chez soi.
+    #
+    # `None` compte ici comme un 0, volontairement : un critère non évaluable
+    # n'est pas une preuve de pertinence, et une offre dont on ne peut juger ni
+    # les compétences ni le secteur ne doit pas remonter. C'est la seule entorse
+    # assumée à la règle « non évaluable ⇒ pas de pénalité », et elle ne change
+    # rien tant qu'un des deux critères est évaluable.
     pertinence = max(sous_scores.get("competences") or 0.0,
                      sous_scores.get("secteur") or 0.0)
     if pertinence <= 0.0 and brut > plafond_hors_cible:

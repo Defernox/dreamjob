@@ -14,8 +14,10 @@ from .langue import detecter, langues_exigees
 from .rome import domaine
 from .texte import ensemble_mots, normaliser
 
-# Version des règles d'extraction. L'incrémenter force un recalcul des signaux
-# sans toucher aux offres déjà en base.
+# Version des règles d'extraction. L'incrémenter force un recalcul des signaux :
+# `services/scoring.py` sélectionne aussi les offres dont les signaux stockés
+# portent une autre version. Sans ce filtre, l'incrément ne servait à rien — une
+# offre déjà scorée n'était jamais revisitée et gardait ses signaux périmés.
 # 2 : ajout des langues exigées par l'annonce.
 VERSION = 2
 
@@ -55,8 +57,12 @@ def extraire(offre: Offer) -> Signaux:
     ]))
 
     # La langue se juge sur la description : un intitulé est trop court, et
-    # souvent en anglais même dans une offre française.
-    langue = detecter(offre.description_brute, defaut=detecter(offre.titre))
+    # souvent en anglais même dans une offre française. Un repli sur le titre
+    # figurait ici : il ne s'est jamais déclenché — un intitulé compte 6 à 10
+    # jetons quand `MOTS_MINIMUM` en exige 12 — tout en étant calculé à chaque
+    # appel. Une description trop courte laisse la langue non évaluée, et un
+    # critère non évaluable ne pénalise pas l'offre.
+    langue = detecter(offre.description_brute)
 
     vocabulaire = ensemble_mots(f"{offre.titre} {rome_libelle} {appellation} "
                                 f"{offre.description_brute}")

@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from ..models import Offer, Profile
 from .extraction import Signaux
-from .score import Resultat
+from .score import Resultat, _niveau_du_profil
 
 SEPARATEUR = " · "
 MAX_SKILLS_CITEES = 4
@@ -50,16 +50,37 @@ def _fragment_pays(resultat: Resultat, offre: Offer) -> str:
     return f"pays hors liste ({offre.pays})"
 
 
-def _fragment_langue(resultat: Resultat, signaux: Signaux) -> str:
+def _langue_decisive(profil: Profile, signaux: Signaux) -> str:
+    """La langue qui a fixé la note : c'est l'exigence la plus dure qui décide.
+
+    En cas d'égalité, la langue de rédaction l'emporte — elle vient en tête.
+    """
+    candidates = ([signaux.langue] if signaux.langue else []) + list(signaux.exigences_langues)
+    if not candidates:
+        return ""
+    return min(candidates, key=lambda c: _niveau_du_profil(profil, c) or 0.0)
+
+
+def _fragment_langue(resultat: Resultat, profil: Profile, signaux: Signaux) -> str:
     if "langue" in resultat.non_evaluables:
         return "langue non évaluée"
-    code = (signaux.langue or "?").upper()
+
     valeur = resultat.detail.get("langue", 0)
+    # La note peut venir d'une langue **exigée** par l'annonce et non de celle
+    # dans laquelle elle est rédigée. Nommer systématiquement la seconde
+    # annonçait « langue FR non maîtrisée » à un francophone natif devant une
+    # offre en français réclamant un anglais courant.
+    code = _langue_decisive(profil, signaux)
+    libelle = (code or "?").upper()
+
     if valeur >= 100:
-        return f"langue {code} OK"
+        return f"langue {libelle} OK"
+    if code and code != signaux.langue and code in signaux.exigences_langues:
+        return (f"{libelle} exigé, partiellement maîtrisé" if valeur > 0
+                else f"{libelle} exigé, non maîtrisé")
     if valeur > 0:
-        return f"langue {code} partielle"
-    return f"langue {code} non maîtrisée"
+        return f"langue {libelle} partielle"
+    return f"langue {libelle} non maîtrisée"
 
 
 def _fragment_contrat(resultat: Resultat, profil: Profile, offre: Offer) -> str:
@@ -86,6 +107,6 @@ def expliquer(resultat: Resultat, profil: Profile, offre: Offer, signaux: Signau
         _fragment_secteur(resultat),
         _fragment_competences(resultat),
         _fragment_pays(resultat, offre),
-        _fragment_langue(resultat, signaux),
+        _fragment_langue(resultat, profil, signaux),
         _fragment_contrat(resultat, profil, offre),
     ])

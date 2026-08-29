@@ -27,18 +27,34 @@ VIDES = {
 }
 
 
-@lru_cache(maxsize=4096)
+def _normaliser(texte: str) -> str:
+    decompose = unicodedata.normalize("NFKD", texte)
+    sans_accents = "".join(c for c in decompose if not unicodedata.combining(c))
+    return _ESPACES.sub(" ", _NON_ALPHANUM.sub(" ", sans_accents.lower())).strip()
+
+
+# Au-delà, on ne met plus en cache : ce sont des descriptions d'offres, uniques
+# par offre. Les mettre en cache ne fait jamais mouche et retient la clé *et* la
+# valeur — le texte entier, en double — pour toute la vie du processus.
+LONGUEUR_CACHABLE = 200
+
+_normaliser_cache = lru_cache(maxsize=4096)(_normaliser)
+
+
 def normaliser(texte: str | None) -> str:
     """Minuscules, sans accents, ponctuation réduite à des espaces.
 
     `+`, `#` et `.` survivent : ils portent du sens dans les noms techniques
     (C++, C#, node.js, bac+5).
+
+    Le cache ne sert que les chaînes courtes — noms de compétences et de
+    secteurs, renormalisés à chaque offre.
     """
     if not texte:
         return ""
-    decompose = unicodedata.normalize("NFKD", texte)
-    sans_accents = "".join(c for c in decompose if not unicodedata.combining(c))
-    return _ESPACES.sub(" ", _NON_ALPHANUM.sub(" ", sans_accents.lower())).strip()
+    if len(texte) > LONGUEUR_CACHABLE:
+        return _normaliser(texte)
+    return _normaliser_cache(texte)
 
 
 def mots(texte: str | None, *, garder_vides: bool = False) -> list[str]:

@@ -207,8 +207,13 @@ def test_une_offre_scoree_sans_version_de_poids_est_bien_rescoree(client, base_r
 
     assert client.post("/api/offres/scorer").json()["scorees"] == 6
 
+    # La version attendue se lit dans la configuration : la coder en dur faisait
+    # échouer ce test au premier changement de poids, alors qu'il ne parle pas
+    # de leur valeur.
+    from app.config import reglages as lire_reglages
+    attendue = lire_reglages().scoring.version
     with Session(engine) as s:
-        assert all(o.poids_version == 1 for o in s.exec(select(Offer)).all())
+        assert all(o.poids_version == attendue for o in s.exec(select(Offer)).all())
 
 
 # --- Corrections issues de l'audit ------------------------------------------

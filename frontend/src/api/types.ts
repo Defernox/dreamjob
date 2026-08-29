@@ -17,7 +17,12 @@ export type Reglages = {
     poids_normalises: Record<string, number>
     seuils: { bon: number; moyen: number }
   }
-  vocabulaires: { contrats: string[]; statuts: string[]; pays: string[] }
+  vocabulaires: {
+    contrats: string[]
+    statuts: string[]
+    pays: string[]
+    pays_par_zone: Record<string, string[]>
+  }
   recherche: {
     mots_cles: string[]
     pays: string[]

@@ -223,3 +223,28 @@ def test_l_anciennete_est_arrondie_vers_le_haut(demande, attendu):
     c.fetch(SearchQuery(publiee_depuis_jours=demande, max_offres=10))
     params = next(a["params"] for a in c.http.appels if a["url"] == URL_RECHERCHE)
     assert params["publieeDepuis"] == attendu
+
+
+# --- Pays ------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("lieu, attendu", [
+    ({"libelle": "75 - Paris 09", "codePostal": "75009"}, "France"),
+    ({"libelle": "2A - Ajaccio"}, "France"),          # Corse : 2A/2B, pas un nombre
+    ({"libelle": "974 - Saint-Denis"}, "France"),     # outre-mer : 3 chiffres
+    ({"libelle": "Luxembourg"}, "Luxembourg"),
+    ({"libelle": "Bruxelles, Belgique"}, "Belgique"),
+    ({"libelle": "Dublin, Irlande"}, "Irlande"),
+    ({}, "France"),                                    # lieu absent : l'API est française
+    ({"libelle": "Quelque part"}, ""),                 # inconnu : on n'affirme rien
+])
+def test_le_pays_ne_vaut_pas_toujours_france(lieu, attendu):
+    """Étiqueter une offre luxembourgeoise « France » fausserait le critère pays."""
+    assert FranceTravailConnector._pays({"lieuTravail": lieu}) == attendu
+
+
+def test_une_offre_a_l_etranger_conserve_son_pays():
+    brute = {"id": "X", "intitule": "Depositary Bank Agent",
+             "lieuTravail": {"libelle": "Luxembourg"}}
+    c = _connecteur([_jeton(), _page([brute])])
+    assert c.fetch(SearchQuery(max_offres=10))[0].pays == "Luxembourg"

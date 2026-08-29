@@ -46,8 +46,27 @@ class TypeCacheLlm(str, Enum):
 CONTRATS = [c.value for c in TypeContrat]
 STATUTS = [s.value for s in StatutCandidature]
 
-# Ordre d'affichage des pays dans les filtres (écran Offres)
-PAYS_FILTRES = [
-    "Belgique", "Canada", "France", "Luxembourg", "Maroc",
-    "Royaume-Uni", "Sénégal", "Suisse", "Tunisie", "États-Unis",
-]
+# Pays proposés dans les filtres et dans les préférences du profil.
+# Regroupés par zone : quarante chips à plat seraient illisibles.
+# Le choix penche vers les places financières et les pays francophones —
+# c'est ce que vise ce profil, pas une liste exhaustive de l'ONU.
+PAYS_PAR_ZONE: dict[str, list[str]] = {
+    "Europe": [
+        "Allemagne", "Autriche", "Belgique", "Chypre", "Danemark", "Espagne",
+        "France", "Irlande", "Italie", "Liechtenstein", "Luxembourg", "Malte",
+        "Monaco", "Norvège", "Pays-Bas", "Pologne", "Portugal", "Royaume-Uni",
+        "Suède", "Suisse", "Tchéquie",
+    ],
+    "Amérique": ["Brésil", "Canada", "États-Unis", "Mexique"],
+    "Asie-Pacifique": [
+        "Australie", "Chine", "Hong Kong", "Inde", "Japon",
+        "Nouvelle-Zélande", "Singapour",
+    ],
+    "Afrique et Moyen-Orient": [
+        "Afrique du Sud", "Algérie", "Côte d'Ivoire", "Émirats arabes unis",
+        "Israël", "Île Maurice", "Maroc", "Qatar", "Sénégal", "Tunisie",
+    ],
+}
+
+# Liste à plat, pour les filtres de l'écran Offres et la validation.
+PAYS_FILTRES = [pays for zone in PAYS_PAR_ZONE.values() for pays in zone]

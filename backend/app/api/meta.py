@@ -13,6 +13,7 @@ from fastapi import APIRouter
 
 from ..config import RACINE, recharger, reglages
 from ..models import CONTRATS, PAYS_FILTRES, STATUTS
+from ..models.enums import PAYS_PAR_ZONE
 
 router = APIRouter(prefix="/api", tags=["meta"])
 
@@ -80,6 +81,8 @@ def lire_reglages() -> dict:
             "contrats": CONTRATS,
             "statuts": STATUTS,
             "pays": PAYS_FILTRES,
+            # Regroupés pour l'écran Profil : quarante chips à plat sont illisibles.
+            "pays_par_zone": PAYS_PAR_ZONE,
         },
         "recherche": r.recherche.model_dump(),
     }

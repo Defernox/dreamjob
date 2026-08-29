@@ -79,6 +79,65 @@ export function ChoixMultiple({ options, valeurs, onChange }: {
   )
 }
 
+/** Choix multiple groupé par zone : au-delà d'une vingtaine d'options, une
+ *  liste à plat devient illisible. */
+export function ChoixMultipleGroupe({ zones, valeurs, onChange }: {
+  zones: Record<string, string[]>
+  valeurs: string[]
+  onChange: (v: string[]) => void
+}) {
+  const basculer = (pays: string) =>
+    onChange(valeurs.includes(pays) ? valeurs.filter((v) => v !== pays) : [...valeurs, pays])
+
+  return (
+    <div className="space-y-3">
+      {Object.entries(zones).map(([zone, pays]) => {
+        const choisis = pays.filter((p) => valeurs.includes(p)).length
+        const tousChoisis = choisis === pays.length
+        return (
+          <div key={zone}>
+            <div className="flex items-baseline gap-2 mb-1.5">
+              <span className="text-xs font-medium text-slate-500">{zone}</span>
+              <button
+                type="button"
+                onClick={() =>
+                  onChange(tousChoisis
+                    ? valeurs.filter((v) => !pays.includes(v))
+                    : [...new Set([...valeurs, ...pays])])
+                }
+                className="text-xs text-slate-400 hover:text-slate-900"
+              >
+                {tousChoisis ? 'tout retirer' : 'tout choisir'}
+              </button>
+              {choisis > 0 && (
+                <span className="text-xs text-slate-400 tabular-nums">
+                  {choisis}/{pays.length}
+                </span>
+              )}
+            </div>
+            <div className="flex flex-wrap gap-1.5">
+              {pays.map((p) => (
+                <button
+                  key={p}
+                  type="button"
+                  onClick={() => basculer(p)}
+                  className={`px-2.5 py-1 rounded-full text-sm border transition-colors ${
+                    valeurs.includes(p)
+                      ? 'bg-slate-900 text-white border-slate-900'
+                      : 'bg-white text-slate-600 border-slate-300 hover:border-slate-400'
+                  }`}
+                >
+                  {p}
+                </button>
+              ))}
+            </div>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
 /** Choix ORDONNÉ : la position porte la préférence, elle doit être visible et modifiable. */
 export function ChoixOrdonne({ options, valeurs, onChange }: {
   options: string[]

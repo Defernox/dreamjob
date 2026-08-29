@@ -88,6 +88,12 @@ en base.
 détail du score et la charge utile brute des offres sont des colonnes JSON.
 Édités d'un bloc, sans vie propre : pas de tables satellites.
 
+**Pays.** `models/enums.py:PAYS_PAR_ZONE` — 42 pays groupés en quatre zones, orientés
+places financières et pays francophones. `PAYS_FILTRES` en est la mise à plat.
+L'écran Profil affiche les groupes (quarante chips à plat sont illisibles),
+l'écran Offres garde une liste à plat puisque les compteurs de facettes n'y
+montrent que les pays réellement présents.
+
 **Contrats et statuts.** Stockés en texte simple, pas en type ENUM SQL :
 ajouter un statut ne demande aucune migration. Les valeurs de référence sont
 dans `models/enums.py`, la validation se fait dans la couche API.
@@ -154,7 +160,7 @@ Les erreurs de l'API remontent **telles quelles** à l'utilisateur
 |---|---|---|
 | Compétences 35 % | appariement lexical profil ↔ texte de l'offre | 60 % vient de la **meilleure** compétence ancrée, 40 % du nombre d'autres compétences (plafonné à 3). On mesure la **qualité** de la correspondance, jamais le taux de couverture : une annonce ne cite jamais tout un profil |
 | Secteur 25 % | intitulé + `romeLibelle` + famille ROME | reconnu dans l'intitulé = signal fort, dans le corps = 60 % |
-| Pays 15 % | champ structuré de la source | binaire |
+| Pays 15 % | champ structuré de la source | binaire. **Attention** : France Travail publie aussi hors de France (Luxembourg surtout). Le pays se déduit du préfixe de département (« 75 - Paris ») ou du nom de pays dans le libellé — tout étiqueter « France » fausserait le critère |
 | Langue 15 % | mots-outils (`scoring/langue.py`) | texte trop court ⇒ non évalué, jamais pénalisé |
 | Contrat 10 % | champ structuré | l'ordre de `contrats_acceptes` porte la préférence : de 100 à 60, jamais 0 pour un contrat accepté |
 

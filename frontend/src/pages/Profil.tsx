@@ -11,7 +11,7 @@ import {
   type Skill,
 } from '../api/profil'
 import { Bouton, Champ, Section, ZoneTexte } from '../components/champs'
-import { ChoixMultiple, ChoixOrdonne, ListeTags } from '../components/ListeTags'
+import { ChoixMultipleGroupe, ChoixOrdonne, ListeTags } from '../components/ListeTags'
 import { dateHeureFr } from '../lib/format'
 
 /** Remplace un élément d'une liste sans muter l'original. */
@@ -132,8 +132,8 @@ export default function Profil() {
         <div className="space-y-5">
           <div>
             <span className="block text-xs font-medium text-slate-600 mb-2">Pays acceptés</span>
-            <ChoixMultiple
-              options={reglages?.vocabulaires.pays ?? []}
+            <ChoixMultipleGroupe
+              zones={reglages?.vocabulaires.pays_par_zone ?? {}}
               valeurs={profil.pays_acceptes}
               onChange={(v) => maj('pays_acceptes', v)}
             />

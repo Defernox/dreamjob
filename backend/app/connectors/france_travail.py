@@ -13,9 +13,11 @@ from __future__ import annotations
 
 import logging
 import time
+import re
 import unicodedata
 from datetime import datetime, timezone
 
+from ..models.enums import PAYS_FILTRES
 from .base import (
     BaseConnector,
     ConnecteurNonConfigure,
@@ -58,6 +60,11 @@ NATURES_ALTERNANCE = {"E1", "E2"}   # apprentissage, professionnalisation
 
 # Notre vocabulaire vers le filtre `typeContrat` envoyé à l'API.
 FILTRE_CONTRAT = {"CDI": "CDI", "CDD": "CDD", "Intérim": "MIS", "Stage": "STG"}
+
+
+# Un lieu France Travail commence par le numero de departement (« 75 - Paris »)
+# quand l'offre est en France. Les rares offres a l'etranger n'en ont pas.
+DEPARTEMENT = re.compile(r"^\s*(?:\d{2,3}|2[AB])\s*-")
 
 
 def _sans_accents(texte: str) -> str:
@@ -205,6 +212,27 @@ class FranceTravailConnector(BaseConnector):
         return "Autre"
 
     @staticmethod
+    def _pays(brute: dict) -> str:
+        """Pays de l'offre.
+
+        L'API est franco-centrée mais publie aussi des postes à l'étranger — le
+        Luxembourg surtout. Les étiqueter « France » fausserait le critère pays
+        du scoring : une offre à Luxembourg passerait pour nationale.
+        """
+        lieu = (brute.get("lieuTravail") or {})
+        libelle = lieu.get("libelle") or ""
+        if DEPARTEMENT.match(libelle) or lieu.get("codePostal"):
+            return "France"
+
+        normalise = _sans_accents(libelle)
+        for pays in PAYS_FILTRES:
+            if _sans_accents(pays) in normalise:
+                return pays
+        # Lieu inconnu : mieux vaut ne rien affirmer. Le critère pays devient
+        # non évaluable, ce qui ne pénalise pas l'offre.
+        return "France" if not libelle else ""
+
+    @staticmethod
     def _date(valeur: str | None) -> datetime | None:
         """ISO avec fuseau vers UTC naïf (convention de la base, cf. CLAUDE.md)."""
         if not valeur:
@@ -231,9 +259,7 @@ class FranceTravailConnector(BaseConnector):
             url=origine.get("urlOrigine") or url_defaut,
             entreprise=entreprise.get("nom") or "",
             lieu=lieu.get("libelle") or "",
-            # L'API est franco-centrée ; les rares offres hors France se
-            # repèrent au scoring, sur le libellé du lieu.
-            pays="France",
+            pays=self._pays(brute),
             type_contrat=self._contrat(brute),
             date_publication=self._date(brute.get("dateCreation")),
             description_brute=brute.get("description") or "",

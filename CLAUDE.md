@@ -231,10 +231,36 @@ la trace qui justifie chaque décision.
 | France Travail | actif | API officielle v2, validée en réel |
 | Civiweb (V.I.E) | actif | `robots.txt` n'interdit que `/refresh`, aucune clause CGU sur l'extraction ; endpoint JSON du site, clé publiée dans sa configuration front |
 | Adzuna | actif | API publique documentée, validée en réel. 19 pays, un appel par pays. **Descriptions tronquées à 500 caractères par l'API** : le critère compétences y est structurellement plus faible que sur les autres sources |
+| DogFinance | actif | Site spécialisé finance, ~11 000 offres. `robots.txt` autorise `/` et publie trois sitemaps d'offres ; il n'interdit que `/offres?*`, la recherche filtrée — jamais utilisée. Aucune clause CGU sur l'extraction. **Prélèvement plafonné**, voir ci-dessous |
 | Talent.com | **refusé** | `robots.txt` interdit `/services/api-new/search` et `/search-jobs/*` |
 | HelloWork | **refusé** | `robots.txt` interdit `/fr-fr/emploi/recherche.html` et `Disallow: /*?` |
 | Welcome to the Jungle | **refusé** | `robots.txt` interdit `*/jobs?query=*` ; API réservée aux partenaires |
 | APEC | en attente | `robots.txt` permissif, mais le sitemap ne publie que des pages de recherche et il n'existe pas d'API |
+
+**DogFinance : le plafond est juridique, pas technique.** Le site n'a pas d'API.
+Ses sitemaps publient ~11 000 URL et chaque page porte l'offre en JSON
+(`__NEXT_DATA__` → `props.initialProps.pageProps.offreSSR`, 36 champs). Mais ses
+CGU réservent l'usage des textes « sans le consentement écrit de l'Editeur », et
+le droit *sui generis* du producteur de base de données (art. L342-1 CPI)
+interdit d'extraire une **partie substantielle** du fonds — indépendamment de ce
+que `robots.txt` autorise. D'où la conception :
+
+- on ne rapatrie **jamais** le catalogue : les URL du sitemap sont filtrées
+  *localement*, sans rien demander au site ;
+- `PLAFOND_PAGES` (40) borne les pages ouvertes **par scan**, toutes recherches
+  confondues. Le budget est porté par l'instance du connecteur parce que
+  `scan.py` construit une source puis lui passe chaque recherche tour à tour :
+  sans cela, quatre recherches enregistrées ouvriraient quatre fois quarante
+  pages ;
+- la recherche filtrée `/offres?…`, seule chose que `robots.txt` interdise,
+  n'est jamais appelée — un test le vérifie.
+
+Ne pas lever ce plafond sans le consentement écrit que les CGU mentionnent.
+
+Deux limites propres à cette source : la localisation manque une fois sur deux
+(rattrapée depuis l'intitulé, comme chez France Travail — sinon le critère pays
+reste non évaluable), et les sitemaps n'ont pas de `lastmod`, donc aucune
+nouveauté n'est repérable sans ouvrir les pages.
 
 Le corps d'une requête peut être un formulaire (`donnees=`, pour OAuth) ou du
 JSON (`corps_json=`, pour les API modernes) — Civiweb rejette le premier.
@@ -463,3 +489,4 @@ Sans LibreOffice, les documents sont générés en Word uniquement — même pri
 - [x] **8.** Connecteurs — France Travail, Civiweb (V.I.E) et Adzuna actifs ; trois sources refusées, motifs consignés
 - [x] **10.** Recherches enregistrées multiples, jouées ensemble
 - [x] **9.** Scan planifié quotidien + rattrapage au démarrage + badge « X nouvelles offres »
+- [x] **11.** Connecteur DogFinance (spécialisé finance) — validé en réel : 63 offres, 12 vertes, descriptions médianes à 2 300 caractères ; prélèvement plafonné à 40 pages par scan

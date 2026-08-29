@@ -120,6 +120,22 @@ sources:
       renvoient 404 : ils ne sont pas interroges). ATTENTION : l'API tronque les
       descriptions a 500 caracteres, ce qui affaiblit le critere competences du
       scoring sur cette source.
+  dogfinance:
+    actif: true
+    libelle: "DogFinance"
+    remarque: >-
+      Site specialise finance (~11 000 offres, editeur Carrevolutis). robots.txt
+      autorise / et publie trois sitemaps d'offres ; la seule interdiction qui
+      nous concernerait est /offres?* (recherche filtree), que le connecteur
+      n'utilise jamais. Aucune clause CGU sur l'extraction automatisee, les
+      robots ou le moissonnage. En revanche les CGU reservent l'usage des textes
+      "sans le consentement ecrit de l'Editeur", et le droit sui generis du
+      producteur de base de donnees (L342-1 CPI) interdit d'extraire une partie
+      substantielle : on ne rapatrie donc JAMAIS le catalogue. Les sitemaps sont
+      filtres localement et seules 40 pages au plus sont ouvertes par scan
+      (PLAFOND_PAGES). Ce plafond est juridique, pas technique. Limites :
+      localisation absente une fois sur deux, et pas de lastmod dans les
+      sitemaps (impossible de reperer les nouveautes sans ouvrir les pages).
   talent:
     actif: false
     libelle: "Talent.com"

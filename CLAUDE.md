@@ -447,10 +447,12 @@ connaît. La première conversion étant de toute façon nécessaire, la mesure 
 coûte rien dans le cas courant. Sans LibreOffice, on ne mesure pas : le CV part
 entier, ce qui vaut mieux qu'un CV amputé au hasard.
 
-**La mobilité se dit en une ligne** (`MAX_PAYS_AFFICHES`). Les dix-sept pays
-acceptés du profil s'étalaient sur trois lignes de l'en-tête — assez à eux seuls
-pour faire déborder le CV, et personne ne les lit. Le pays de l'offre passe en
-tête quand il est accepté : c'est le seul qui intéresse ce recruteur-là.
+**Le CV ne porte aucune ligne de mobilité.** Les pays acceptés du profil
+servent à filtrer les offres, pas à figurer sur un CV : le recruteur sait où est
+son poste, et le candidat qui postule y est par définition disponible. Cette
+ligne étalait dix-sept pays sur trois lignes d'en-tête — aucune information, et
+assez de place perdue pour faire déborder le document. Seuls les contrats
+recherchés subsistent, sur une ligne.
 
 **Le classement du CV parle la même langue que le score.** `_pertinence`
 (`cv_render.py`) était une **troisième** implémentation de l'appariement, après

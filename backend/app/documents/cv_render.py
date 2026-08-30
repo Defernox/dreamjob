@@ -186,32 +186,6 @@ def _appliquer_blocs(blocs: list[list], donnees: list, remplir) -> None:
 # ------------------------------------------------------------------- sections
 
 
-# Au-delà, la liste cesse d'informer : personne ne lit dix-sept pays, et ils
-# mangeaient trois lignes de l'en-tête — assez pour faire déborder le CV sur
-# une seconde page.
-MAX_PAYS_AFFICHES = 3
-
-
-def _mobilite(profil: Profile, offre: Offer) -> str:
-    """La mobilité, dite en une ligne.
-
-    Le pays de l'offre passe en tête quand il est accepté : c'est le seul qui
-    intéresse ce recruteur-là. Le reste est résumé, jamais énuméré.
-    """
-    acceptes = list(profil.pays_acceptes)
-    if not acceptes:
-        return profil.pays
-
-    if offre.pays and offre.pays in acceptes:
-        acceptes.remove(offre.pays)
-        acceptes.insert(0, offre.pays)
-
-    if len(acceptes) <= MAX_PAYS_AFFICHES:
-        return ", ".join(acceptes)
-    tetes = ", ".join(acceptes[:MAX_PAYS_AFFICHES])
-    return f"{tetes} et {len(acceptes) - MAX_PAYS_AFFICHES} autres pays"
-
-
 def _remplir_entete(entete: list, profil: Profile, offre: Offer) -> None:
     if len(entete) < 4:
         return
@@ -225,18 +199,18 @@ def _remplir_entete(entete: list, profil: Profile, offre: Offer) -> None:
     ]))
     definir_texte(entete[2], contact)
 
+    # **Pas de ligne de mobilité.** Les pays acceptés du profil servent à
+    # filtrer les offres, pas à figurer sur un CV : le recruteur sait où est son
+    # poste, et le candidat qui postule y est par définition disponible. Cette
+    # ligne étalait dix-sept pays sur trois lignes d'en-tête — aucune
+    # information, et assez de place perdue pour faire déborder le CV sur une
+    # seconde page.
+    #
     # Un fragment sans contenu est omis, jamais rempli d'un tiret : « Recherche
     # : — » sous le nom donne l'impression d'un document mal fusionné. Si rien
     # n'est renseigné, la ligne entière disparaît.
-    fragments = []
-    mobilite = _mobilite(profil, offre)
-    if mobilite:
-        fragments.append(f"Mobilité : {mobilite}")
     if profil.contrats_acceptes:
-        fragments.append(f"Recherche : {', '.join(profil.contrats_acceptes)}")
-
-    if fragments:
-        definir_texte(entete[3], " — ".join(fragments))
+        definir_texte(entete[3], f"Recherche : {', '.join(profil.contrats_acceptes)}")
     else:
         supprimer(entete[3])
 

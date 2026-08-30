@@ -237,31 +237,33 @@ def test_le_cv_et_le_score_utilisent_la_meme_mesure():
 # --- Le CV tient sur une page ------------------------------------------------
 
 
-def test_la_mobilite_ne_liste_pas_tous_les_pays(profil, offre):
-    """Dix-sept pays mangeaient trois lignes de l'en-tête — assez pour faire
-    déborder le CV sur une seconde page, et personne ne les lit."""
-    from app.documents.cv_render import MAX_PAYS_AFFICHES, _mobilite
+def test_le_cv_ne_porte_aucune_ligne_de_mobilite(profil, offre, tmp_path):
+    """Les pays acceptés servent à filtrer les offres, pas à figurer sur un CV :
+    le recruteur sait où est son poste. Dix-sept pays s'étalaient sur trois
+    lignes d'en-tête, sans rien apprendre à personne."""
+    from app.documents.cv_render import rendre
 
     profil.pays_acceptes = [f"Pays{i}" for i in range(17)]
-    mobilite = _mobilite(profil, offre)
-    assert "14 autres pays" in mobilite
-    assert mobilite.count(",") < MAX_PAYS_AFFICHES + 1
+    textes = _textes(rendre(profil, offre, MODELE, tmp_path / "CV.docx"))
+    assert not any("Mobilité" in t for t in textes)
+    assert not any("Pays3" in t for t in textes)
 
 
-def test_le_pays_de_l_offre_passe_en_tete(profil, offre):
-    """C'est le seul qui intéresse ce recruteur-là."""
-    from app.documents.cv_render import _mobilite
+def test_les_contrats_recherches_restent_en_entete(profil, offre, tmp_path):
+    from app.documents.cv_render import rendre
 
-    profil.pays_acceptes = ["France", "Belgique", "Luxembourg", "Irlande"]
-    offre.pays = "Luxembourg"
-    assert _mobilite(profil, offre).startswith("Luxembourg")
+    profil.contrats_acceptes = ["CDI", "CDD"]
+    textes = _textes(rendre(profil, offre, MODELE, tmp_path / "CV.docx"))
+    assert any("Recherche : CDI, CDD" in t for t in textes)
 
 
-def test_peu_de_pays_sont_listes_tels_quels(profil, offre):
-    from app.documents.cv_render import _mobilite
+def test_sans_contrat_la_ligne_disparait(profil, offre, tmp_path):
+    """Plutôt qu'un « Recherche : — » qui fait document mal fusionné."""
+    from app.documents.cv_render import rendre
 
-    profil.pays_acceptes = ["France", "Belgique"]
-    assert _mobilite(profil, offre) == "France, Belgique"
+    profil.contrats_acceptes = []
+    textes = _textes(rendre(profil, offre, MODELE, tmp_path / "CV.docx"))
+    assert not any("Recherche" in t for t in textes)
 
 
 def test_le_plafond_de_puces_est_respecte(profil, offre, tmp_path):

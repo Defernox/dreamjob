@@ -228,6 +228,14 @@ def test_un_profil_sans_preference_ne_produit_pas_de_tiret_orphelin(tmp_path):
 
 @avec_modele
 def test_les_preferences_renseignees_apparaissent_toujours(tmp_path):
+    """Les contrats recherchés figurent en en-tête — la mobilité, non.
+
+    Ce test exigeait aussi « Mobilité : France ». La ligne a été retirée depuis :
+    les pays acceptés servent à filtrer les offres, pas à figurer sur un CV. Le
+    recruteur sait où est son poste, et dix-sept pays mangeaient trois lignes.
+    Ce qu'il protège reste entier : une préférence renseignée doit s'afficher,
+    et jamais sous forme de tiret.
+    """
     from app.documents.cv_render import rendre
     from app.models import Profile
 
@@ -235,4 +243,5 @@ def test_les_preferences_renseignees_apparaissent_toujours(tmp_path):
                      pays_acceptes=["France"], contrats_acceptes=["CDI"])
     chemin = rendre(profil, _offre(), MODELE, tmp_path / "CV.docx")
     textes = [p.text for p in docx.Document(str(chemin)).paragraphs]
-    assert any("Mobilité : France" in t and "Recherche : CDI" in t for t in textes)
+    assert any("Recherche : CDI" in t for t in textes)
+    assert not any("Mobilité" in t for t in textes)

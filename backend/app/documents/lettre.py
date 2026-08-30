@@ -6,6 +6,16 @@ aucun diplôme, aucune entreprise absente du profil ne doit apparaître.
 La contrainte est posée dans le prompt système, mais un prompt n'est pas une
 garantie — surtout avec un modèle local. Chaque lettre est donc **vérifiée**, et
 rejetée puis régénérée si elle contient un nom propre ou une date inconnus.
+
+**Trois contrôles, pas un.** Les deux autres attrapent des lettres que le
+premier laisse passer intactes, faute d'y trouver le moindre nom propre inventé :
+
+- la **voix** — un modèle local se met volontiers à la place du recruteur et
+  propose le poste au candidat (« Votre profil correspond… », « je recherche un
+  candidat expérimenté ») ;
+- le **perroquet** — à court de matière, il recopie les exigences de l'annonce
+  et les présente comme le parcours du candidat. Les mots viennent bien de
+  l'offre, mais le candidat s'attribue des compétences qu'il n'a pas.
 """
 
 from __future__ import annotations
@@ -21,25 +31,47 @@ log = logging.getLogger("dreamjob.lettre")
 MOTS_MAX = 320
 MOTS_MIN = 90
 
-PROMPT_SYSTEME = """Tu rédiges une lettre de motivation en français, pour un candidat réel.
+PROMPT_SYSTEME = """Tu ES le candidat. Tu écris TA propre lettre de motivation, en français.
+
+QUI PARLE — LA RÈGLE LA PLUS IMPORTANTE
+Tu écris à la première personne du singulier : « je », « mon », « ma », « mes ».
+« vous » et « votre » désignent TOUJOURS l'entreprise qui recrute — jamais toi.
+Tu ne décris JAMAIS ton propre parcours avec « vous » ou « votre » : ce parcours
+est le tien, tu dis « mon expérience », jamais « votre expérience ».
+Tu postules : tu demandes le poste, tu ne le proposes pas et tu ne recrutes
+personne.
+Le PROFIL ci-dessous parle de toi à la troisième personne (« ses compétences ») :
+c'est une fiche de renseignement, pas ton style. Reprends-en le contenu et
+écris-le à la première personne.
 
 INTERDIT ABSOLU — TU N'INVENTES RIEN.
 Tu ne mentionnes aucune entreprise, école, diplôme, certification, technologie,
 ville ou date qui ne figure pas dans le PROFIL ou dans l'OFFRE ci-dessous. Si une
-information te manque, tu écris la lettre sans elle. Ne suppose jamais qu'un
-candidat a étudié quelque part ou travaillé quelque part sans que ce soit écrit.
+information te manque, tu écris la lettre sans elle. N'affirme jamais avoir
+étudié ou travaillé quelque part sans que ce soit écrit.
+
+TU NE RECOPIES PAS L'ANNONCE.
+Reprendre une phrase de l'offre revient à s'attribuer une compétence que le
+profil ne mentionne pas — et le recruteur reconnaît son propre texte. Dis avec
+tes mots ce que TON parcours apporte à ce poste.
 
 FORME
-- Trois paragraphes, 300 mots maximum au total.
-- Paragraphe 1 : le poste visé et ce qui, dans le parcours, y répond directement.
-- Paragraphe 2 : deux faits concrets tirés des expériences, chiffres compris
-  quand ils sont donnés.
-- Paragraphe 3 : ce que le candidat cherche. N'annonce JAMAIS de date de
-  disponibilité : elle ne figure pas dans le profil, l'inventer serait une faute.
+- Exactement trois paragraphes, 280 mots maximum au total. Pas quatre, pas cinq.
+- Ne redonne pas ton nom : il figure déjà en en-tête de la lettre.
+- Paragraphe 1 : le poste que je vise et ce qui, dans mon parcours, y répond
+  directement.
+- Paragraphe 2 : deux faits concrets tirés de mes expériences, chiffres compris
+  quand ils sont donnés. Des faits reliés entre eux, pas une liste.
+- Paragraphe 3 : ce que je cherche et ce que je peux apporter. N'annonce JAMAIS
+  de date de disponibilité : elle ne figure pas dans le profil, l'inventer
+  serait une faute.
 
 TON
-Sobre et factuel. Pas de superlatif, pas de « passionné depuis toujours », pas de
-« dynamique et motivé ». Aucune formule creuse. Le vouvoiement, et rien d'autre.
+Sobre, direct, professionnel : quelqu'un qui écrit, pas un formulaire qu'on
+remplit. Varie la longueur des phrases. Pas de superlatif, pas de « passionné
+depuis toujours », pas de « dynamique et motivé », aucune formule creuse.
+N'accorde aucun adjectif à ton propre genre — il n'est pas connu. Écris « ce
+poste m'intéresse » plutôt que « je suis ravi » ou « je suis heureuse ».
 
 Rends uniquement le corps de la lettre : ni en-tête, ni adresse, ni date, ni
 objet, ni formule d'appel, ni formule de politesse finale, ni signature. Ces
@@ -180,6 +212,66 @@ def entites_suspectes(lettre: str, profil: Profile, offre: Offer) -> list[str]:
 
     return suspects
 
+# --- La voix de la lettre ----------------------------------------------------
+# Un modèle local se met volontiers du mauvais côté : il devient le recruteur et
+# propose le poste au candidat (« Votre profil correspond… », « je recherche un
+# candidat expérimenté »). La lettre reste pourtant *vraie* — tous les noms
+# propres viennent bien du profil — donc le contrôle anti-invention la laisse
+# passer sans un mot. Il faut un contrôle distinct.
+
+_MARQUES_PREMIERE_PERSONNE = {"je", "j", "mon", "ma", "mes", "moi"}
+
+# Tournures qui ne peuvent désigner que le candidat : les rencontrer au « vous »
+# signifie que la lettre lui est adressée au lieu d'être écrite par lui.
+# « votre entreprise », « votre équipe », « vos besoins » sont parfaitement
+# légitimes et n'ont rien à faire dans cette liste.
+_TOURNURES_INVERSEES = (
+    "votre profil", "votre candidature", "votre cv", "votre curriculum",
+    "votre parcours", "votre carriere", "votre formation", "votre diplome",
+    "vous avez demontre", "vous avez acquis", "vous avez occupe",
+    "vous avez travaille", "vous disposez d",
+    "je recherche un candidat", "nous recherchons un candidat",
+    "je vous propose ce poste", "votre capacite a",
+)
+
+
+def voix_incorrecte(lettre: str) -> list[str]:
+    """Signes que la lettre n'est pas écrite par le candidat lui-même."""
+    nu = normaliser(lettre)
+    fautes = [t for t in _TOURNURES_INVERSEES if t in nu]
+    if not _MARQUES_PREMIERE_PERSONNE & set(nu.split()):
+        fautes.append("aucune marque de première personne (« je », « mon »)")
+    return fautes
+
+
+# --- Le perroquet ------------------------------------------------------------
+# Faute de matière, un modèle recopie les exigences de l'annonce et les présente
+# comme le parcours du candidat. Rien n'est « inventé » au sens du premier
+# contrôle — les mots viennent bien de l'offre — mais le candidat s'attribue des
+# compétences qu'il n'a pas, et un recruteur reconnaît sa propre annonce au
+# premier coup d'œil.
+
+# Huit mots laissent passer un intitulé de poste ou un nom de service, mais pas
+# une phrase entière.
+LONGUEUR_COPIE = 8
+
+
+def _suites(jetons: list[str], longueur: int) -> set[tuple[str, ...]]:
+    return {tuple(jetons[i:i + longueur]) for i in range(len(jetons) - longueur + 1)}
+
+
+def copies_de_l_offre(lettre: str, offre: Offer) -> list[str]:
+    """Passages recopiés mot pour mot depuis l'annonce."""
+    de_la_lettre = mots(lettre, garder_vides=True)
+    de_l_offre = mots(offre.description_brute or "", garder_vides=True)
+    if len(de_la_lettre) < LONGUEUR_COPIE or len(de_l_offre) < LONGUEUR_COPIE:
+        return []
+    communes = (_suites(de_la_lettre, LONGUEUR_COPIE)
+                & _suites(de_l_offre, LONGUEUR_COPIE))
+    # Trois exemples suffisent à faire comprendre le reproche au modèle.
+    return [" ".join(suite) for suite in sorted(communes)][:3]
+
+
 def _message(profil: Profile, offre: Offer) -> str:
     experiences = "\n".join(
         f"- {x.get('poste', '')} — {x.get('entreprise', '')} "
@@ -226,6 +318,26 @@ def _rappel_correction(suspects: list[str]) -> str:
     )
 
 
+def _rappel_copie(passages: list[str]) -> str:
+    return (
+        "Ta version précédente recopiait l'annonce mot pour mot : "
+        + " / ".join(f"« {p} »" for p in passages)
+        + ". Ces phrases décrivent le poste, pas mon parcours : les reprendre "
+        "revient à m'attribuer des compétences que le profil ne mentionne pas. "
+        "Dis avec mes propres mots ce que MON parcours apporte."
+    )
+
+
+def _rappel_voix(fautes: list[str]) -> str:
+    return (
+        "Ta version précédente était écrite du mauvais côté — on y lit : "
+        f"{', '.join(fautes)}. Tu ES le candidat, tu postules. Parle de toi à la "
+        "première personne (« je », « mon parcours », « mon expérience ») et "
+        "réserve « vous » et « votre » à l'entreprise qui recrute. Tu ne "
+        "proposes le poste à personne et tu ne recrutes personne."
+    )
+
+
 def rediger(profil: Profile, offre: Offer, generer, tentatives: int = 3) -> tuple[str, dict]:
     """Génère une lettre vérifiée.
 
@@ -241,26 +353,44 @@ def rediger(profil: Profile, offre: Offer, generer, tentatives: int = 3) -> tupl
 
     for essai in range(1, max(1, tentatives) + 1):
         systeme = PROMPT_SYSTEME
-        if historique and historique[-1]["suspects"]:
-            systeme += "\n\n" + _rappel_correction(historique[-1]["suspects"])
+        if historique:
+            # Les deux reproches se cumulent : une lettre peut être à la fois
+            # inventive et écrite du mauvais côté, et n'en corriger qu'un
+            # ferait perdre un essai sur deux.
+            precedent = historique[-1]
+            if precedent["suspects"]:
+                systeme += "\n\n" + _rappel_correction(precedent["suspects"])
+            if precedent["voix"]:
+                systeme += "\n\n" + _rappel_voix(precedent["voix"])
 
         # Le nettoyage passe AVANT le contrôle : une formule de politesse
         # retirée ne doit pas être comptée comme une invention.
         derniere = nettoyer(generer(systeme, message))
         suspects = entites_suspectes(derniere, profil, offre)
+        voix = voix_incorrecte(derniere)
+        copies = copies_de_l_offre(derniere, offre)
         nb_mots = len(derniere.split())
-        historique.append({"essai": essai, "suspects": suspects, "mots": nb_mots})
+        historique.append({"essai": essai, "suspects": suspects, "voix": voix,
+                           "copies": copies, "mots": nb_mots})
 
-        if not suspects and MOTS_MIN <= nb_mots <= MOTS_MAX:
+        if not (suspects or voix or copies) and MOTS_MIN <= nb_mots <= MOTS_MAX:
             log.info("Lettre acceptée à l'essai %d (%d mots)", essai, nb_mots)
             return derniere, {"essais": essai, "mots": nb_mots, "historique": historique}
 
         log.warning("Lettre rejetée (essai %d) : %s", essai,
-                    suspects or f"longueur {nb_mots} mots hors bornes")
+                    suspects + voix + copies or f"longueur {nb_mots} mots hors bornes")
 
     dernier = historique[-1]
-    raison = (f"noms propres inventés : {', '.join(dernier['suspects'])}"
-              if dernier["suspects"] else f"longueur inadaptée ({dernier['mots']} mots)")
+    if dernier["suspects"]:
+        raison = f"noms propres inventés : {', '.join(dernier['suspects'])}"
+    elif dernier["voix"]:
+        raison = ("lettre écrite du mauvais côté, comme si le recruteur "
+                  f"s'adressait au candidat : {', '.join(dernier['voix'])}")
+    elif dernier["copies"]:
+        raison = ("l'annonce est recopiée mot pour mot : "
+                  + " / ".join(dernier["copies"]))
+    else:
+        raison = f"longueur inadaptée ({dernier['mots']} mots)"
     raise ValueError(
         f"Après {len(historique)} tentatives, la lettre reste inutilisable — {raison}. "
         f"Essayez un modèle plus capable (config.yaml → llm.modele_local) ou "

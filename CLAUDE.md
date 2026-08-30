@@ -356,6 +356,33 @@ déclenche une régénération, en nommant l'erreur au modèle. Après N essais
 (`llm.tentatives_anti_invention`), la lettre est refusée : le CV part seul,
 l'avertissement est remonté. Mieux vaut pas de lettre qu'une lettre qui ment.
 
+**Trois contrôles, pas un.** Les deux autres attrapent des lettres où pas un
+seul nom propre n'est inventé, et que le premier laissait donc passer intactes :
+
+| Contrôle | Ce qu'il attrape |
+|---|---|
+| invention | un nom propre ou une année absents du profil et de l'offre |
+| **voix** | la lettre écrite du mauvais côté — le recruteur s'adresse au candidat |
+| **perroquet** | une phrase de l'annonce recopiée mot pour mot (8 mots d'affilée) |
+
+La **voix** est le défaut le plus embarrassant et le plus fréquent en local :
+mistral rendait « Je suis heureuse de vous présenter une opportunité… je
+recherche un candidat expérimenté… votre MBA à l'ESLSCA ». Trois causes, toutes
+dans le prompt : il disait « pour un candidat » sans jamais dire « **tu es** le
+candidat » ; « Le vouvoiement, et rien d'autre » a été compris comme *vouvoyer
+le candidat* ; et les consignes parlaient de lui à la troisième personne. Le
+prompt impose désormais le « je », et `voix_incorrecte` rejette les tournures
+qui ne peuvent désigner que le candidat (« votre profil », « vous avez
+démontré »). « votre équipe » et « vos besoins » restent permis — c'est la
+raison d'être du vouvoiement.
+
+Le **perroquet** : à court de matière, le modèle recopie les exigences de
+l'annonce et les présente comme le parcours du candidat. Les mots viennent bien
+de l'offre, donc rien n'est « inventé » — mais le candidat s'attribue des
+compétences qu'il n'a pas, et le recruteur reconnaît son propre texte. Le seuil
+est à **8 mots consécutifs** : assez pour laisser passer l'intitulé du poste,
+pas une phrase entière.
+
 ---
 
 ## Recherches enregistrées

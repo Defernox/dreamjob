@@ -139,6 +139,21 @@ export default function OffreDetail() {
                 {documents.data.avertissements.map((a) => (
                   <p key={a} className="mt-1.5 text-amber-800">⚠ {a}</p>
                 ))}
+                {documents.data.mots_cles_non_couverts.length > 0 && (
+                  <div className="mt-2 pt-2 border-t border-emerald-200">
+                    <p className="font-medium text-emerald-900">
+                      Ce que cette offre demande et que votre profil ne couvre pas
+                    </p>
+                    <p className="mt-1 flex flex-wrap gap-1">
+                      {documents.data.mots_cles_non_couverts.map((m) => (
+                        <span key={m}
+                              className="rounded bg-white/70 px-1.5 py-0.5 text-emerald-800">
+                          {m}
+                        </span>
+                      ))}
+                    </p>
+                  </div>
+                )}
               </div>
             )}
           </div>

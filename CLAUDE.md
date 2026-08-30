@@ -52,8 +52,8 @@ DreamJob/
 │     ├─ api/           routeurs HTTP
 │     ├─ connectors/    base · http (débit, cache) · registry · une source = un fichier
 │     ├─ services/      dedup (hash) · scan (orchestration)
-│     ├─ scoring/       extraction LLM (cachée) + calcul du score (pur code)
-│     ├─ documents/     docx_outils · cv_render · lettre · pdf · dossier
+│     ├─ scoring/       extraction + score + couverture — pur code, jamais de LLM
+│     ├─ documents/     docx_outils · cv_render · lettre · controles · exemples · pdf · dossier
 │     ├─ importers/     CV .docx/.pdf → profil structuré
 │     ├─ exports/       export Excel pour France Travail
 │     └─ llm/           client Anthropic + cache
@@ -370,52 +370,77 @@ déclenche une régénération, en nommant l'erreur au modèle. Après N essais
 (`llm.tentatives_anti_invention`), la lettre est refusée : le CV part seul,
 l'avertissement est remonté. Mieux vaut pas de lettre qu'une lettre qui ment.
 
-**Trois contrôles, pas un.** Les deux autres attrapent des lettres où pas un
-seul nom propre n'est inventé, et que le premier laissait donc passer intactes :
+**Cinq contrôles, et deux familles.** `documents/controles.py` les porte tous ;
+`lettre.py` ne garde que les prompts et la boucle. La distinction commande le
+reste :
 
-| Contrôle | Ce qu'il attrape | Effet |
-|---|---|---|
-| invention | un nom propre ou une année absents du profil et de l'offre | **bloquant** |
-| **voix** | la lettre écrite du mauvais côté — le recruteur s'adresse au candidat | **bloquant** |
-| **perroquet** | une phrase de l'annonce recopiée mot pour mot (12 jetons d'affilée) | **bloquant** |
-| **formules creuses** | « relever les défis », « fort de mon expérience »… | signalé |
+| Famille | Contrôle | Ce qu'il attrape | Effet |
+|---|---|---|---|
+| honnêteté | invention | nom propre ou année inconnus | **bloquant** |
+| honnêteté | chiffres | nombre absent du profil et de l'offre | **bloquant** |
+| honnêteté | voix | le recruteur s'adresse au candidat | **bloquant** |
+| honnêteté | contrat | « alternance » sur une offre en CDI | **bloquant** |
+| style | perroquet | 12 jetons recopiés de l'annonce | signalé |
+| style | disponibilité | une date que le profil ne donne pas | signalé |
+| style | formules creuses | 48 tournures passe-partout | signalé |
+| style | ouverture | « C'est avec », « Fort de », « Suite à » | signalé |
+| style | rythme | un paragraphe sans phrase de moins de 12 mots | signalé |
 
-**Bloquant ou signalé : la distinction est délibérée.** Les trois premiers
-rendent la lettre *malhonnête* — elle affirme quelque chose de faux sur le
-candidat. Le quatrième la rend seulement *médiocre*. Refuser une lettre exacte
-pour un « relever les défis » serait disproportionné : elle est livrée, et les
-formules sont nommées dans les avertissements. Mieux vaut pas de lettre qu'une
-lettre qui ment — mais une lettre convenue vaut mieux que pas de lettre.
+Les bloquants rendent la lettre **fausse** : mieux vaut pas de lettre. Les autres
+la rendent seulement **convenue** : on livre, on nomme les défauts dans les
+avertissements, l'utilisateur retouche en dix secondes. Confondre les deux
+faisait refuser des lettres exactes — mesuré, deux offres réelles sur deux sans
+le moindre document produit.
 
-**La détection des clichés est en pur code, et c'est un résultat de mesure.** On
-a d'abord demandé au modèle de relire son propre brouillon (`llm.relecture_lettre`,
-`PROMPT_RELECTURE`) : mistral:7b en conserve la **totalité** des clichés, il ne
-sait pas s'auto-critiquer. Il obéit en revanche quand on lui *nomme* la faute.
-La passe de relecture reste branchable pour un modèle plus capable, désactivée
-par défaut.
+**Le perroquet n'est pas bloquant, et c'est un choix.** Il ne distingue pas
+« j'ai réalisé des travaux de backtesting » — un mensonge — de « je serais amené
+à réaliser des travaux de backtesting », qui décrit le poste. Or le prompt
+DEMANDE de nommer des éléments de l'annonce : le rendre bloquant revenait à
+exiger une chose et à la punir. Son seuil est passé de 8 à 12 jetons pour la
+même raison : à 8, « au sein d'un Middle office Assurance H/F en CDI » (10
+jetons) était refusé, et le candidat ne pouvait plus nommer le poste visé.
 
-**Le seuil du perroquet est passé de 8 à 12 jetons**, également par mesure : à 8,
-« au sein d'un Middle office Assurance H/F en CDI » (10 jetons) était refusé —
-le candidat ne pouvait plus nommer le poste auquel il postulait, et mistral
-n'arrivait jamais au bout de ses essais.
+**La voix** est le défaut le plus embarrassant en local : mistral rendait « Je
+suis heureuse de vous présenter une opportunité… je recherche un candidat
+expérimenté… votre MBA à l'ESLSCA ». Trois causes, toutes dans le prompt : il
+disait « pour un candidat » sans jamais dire « **tu es** le candidat » ; « Le
+vouvoiement, et rien d'autre » a été compris comme *vouvoyer le candidat* ; et
+les consignes parlaient de lui à la troisième personne. « votre équipe » et
+« vos besoins » restent permis — c'est la raison d'être du vouvoiement.
 
-La **voix** est le défaut le plus embarrassant et le plus fréquent en local :
-mistral rendait « Je suis heureuse de vous présenter une opportunité… je
-recherche un candidat expérimenté… votre MBA à l'ESLSCA ». Trois causes, toutes
-dans le prompt : il disait « pour un candidat » sans jamais dire « **tu es** le
-candidat » ; « Le vouvoiement, et rien d'autre » a été compris comme *vouvoyer
-le candidat* ; et les consignes parlaient de lui à la troisième personne. Le
-prompt impose désormais le « je », et `voix_incorrecte` rejette les tournures
-qui ne peuvent désigner que le candidat (« votre profil », « vous avez
-démontré »). « votre équipe » et « vos besoins » restent permis — c'est la
-raison d'être du vouvoiement.
+**Nommer la faute marche ; demander une relecture, non.** On a d'abord confié au
+modèle la critique de son propre brouillon (`PROMPT_RELECTURE`,
+`llm.relecture_lettre`) : mistral:7b en conserve la **totalité** des clichés et
+n'a changé qu'un mot. Il obéit en revanche très bien quand le reproche est
+nommé. D'où la détection en pur code, et ce réglage désactivé par défaut.
 
-Le **perroquet** : à court de matière, le modèle recopie les exigences de
-l'annonce et les présente comme le parcours du candidat. Les mots viennent bien
-de l'offre, donc rien n'est « inventé » — mais le candidat s'attribue des
-compétences qu'il n'a pas, et le recruteur reconnaît son propre texte. Le seuil
-est à **8 mots consécutifs** : assez pour laisser passer l'intitulé du poste,
-pas une phrase entière.
+**Les reproches sont plafonnés à trois** (`MAX_RAPPELS`). Tout lui reprocher
+d'un coup le fait décrocher : au quatrième essai, il rendait la structure du
+prompt (« Informations, Formations, Expériences ») au lieu d'une lettre.
+
+**Le few-shot vient des vraies lettres du candidat** (`documents/exemples.py`),
+volontairement court pour la même raison. Les noms d'entreprises tierces y sont
+remplacés par des marqueurs : cités en clair, le modèle les recopiait, et
+l'anti-invention les rejetait aussitôt — génération en boucle, sans résultat.
+
+**Le profil est le vrai goulot, pas le modèle.** Aucun modèle ne peut écrire
+« un portefeuille de 15 à 25 entreprises représentant 50 à 75 millions d'euros »
+si le profil dit « gestion des flux » — et s'il l'essaie, le garde-fou le rejette
+à raison. Les six faits chiffrés des lettres personnelles du candidat étaient
+absents du profil, et son expérience la plus pertinente tenait en 133 caractères.
+`situation_actuelle` et `disponibilite` ont été ajoutés pour la même raison :
+sans le second, le prompt avait **interdiction** d'annoncer une disponibilité,
+faute de pouvoir la vérifier. Ni l'un ni l'autre ne figure dans les blocs
+d'import — un CV ne les contient pas, les demander au modèle le ferait inventer.
+
+**`mots_cles_non_couverts`** (`scoring/couverture.py`) : les termes récurrents de
+l'annonce qu'aucun élément du profil ne recouvre, synonymes compris. Ce n'est pas
+un jugement sur l'offre — le score s'en charge — mais sur le profil. Répété sur
+vingt candidatures, il dessine la compétence à combler. Pur code, aucun appel.
+
+**`generation.json`** est écrit dans chaque dossier : essais, fautes de chaque
+tentative, défauts restants. Quand une lettre est mauvaise, c'est le seul moyen
+de savoir quelle étape a fauté — ce n'est pas du confort de développeur.
 
 ---
 

@@ -6,6 +6,8 @@ export type ResultatDocuments = {
   fichiers: string[]
   avertissements: string[]
   lettre_essais: number
+  /** Termes récurrents de l'annonce qu'aucun élément du profil ne recouvre. */
+  mots_cles_non_couverts: string[]
   ouvert: boolean
 }
 

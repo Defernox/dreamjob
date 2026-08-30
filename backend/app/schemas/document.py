@@ -11,3 +11,6 @@ class ResultatDocuments(BaseModel):
     avertissements: list[str]
     lettre_essais: int
     ouvert: bool
+    # Ce que l'offre réclame et que le profil ne couvre pas. Ne juge pas
+    # l'offre : dit ce qui manque au candidat pour cette famille de postes.
+    mots_cles_non_couverts: list[str] = []

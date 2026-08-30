@@ -23,6 +23,7 @@ from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.shared import Pt
 
 from ..models import Offer, Profile
+from ..scoring.couverture import mots_cles_non_couverts
 from . import pdf as pdf_outil
 from .cv_render import rendre as rendre_cv
 
@@ -38,6 +39,9 @@ class Resultat:
     fichiers: list[Path] = field(default_factory=list)
     avertissements: list[str] = field(default_factory=list)
     lettre_essais: int = 0
+    # Ce que l'offre réclame et que le profil ne couvre pas. Le signal le plus
+    # utile du dossier : il ne juge pas l'offre, il dit ce qui manque.
+    mots_cles_non_couverts: list[str] = field(default_factory=list)
 
 
 def slug(texte: str, longueur: int = 60) -> str:
@@ -141,7 +145,7 @@ def ouvrir(dossier: Path) -> bool:
 FICHIERS_PRODUITS = (
     "CV.docx", "CV.pdf",
     "Lettre_de_motivation.docx", "Lettre_de_motivation.pdf",
-    "offre.json",
+    "offre.json", "generation.json",
 )
 
 
@@ -192,6 +196,9 @@ def generer(
 
     # --- Lettre (le garde-fou peut légitimement refuser de livrer) ---
     lettre_docx: Path | None = None
+    # Renseigné même en cas d'échec : quand une lettre manque, c'est le seul
+    # endroit qui dit pourquoi.
+    journal: dict = {"essais": 0, "refusee": None}
     try:
         corps, compte_rendu = rediger(profil, offre, redacteur,
                                       tentatives=tentatives_lettre,
@@ -201,16 +208,40 @@ def generer(
                                     dossier / "Lettre_de_motivation.docx")
         resultat.fichiers.append(lettre_docx)
 
-        # Une formule creuse n'empêche pas de livrer — mais elle se relit en
-        # dix secondes, à condition de savoir laquelle chercher.
-        if compte_rendu.get("cliches"):
-            resultat.avertissements.append(
-                "Lettre livrée, mais elle contient des formules convenues à "
-                "retoucher : " + ", ".join(compte_rendu["cliches"])
-            )
+        # Un défaut de style n'empêche pas de livrer — mais il se corrige en
+        # dix secondes, à condition de savoir lequel chercher. On les nomme
+        # tous, la disponibilité en tête : c'est une promesse au recruteur que
+        # le profil ne fonde pas, et elle compte plus qu'un cliché.
+        style = compte_rendu.get("style") or {}
+        for cle, formulation in (
+            ("disponibilite", "elle annonce une disponibilité absente de votre "
+                              "profil : {}"),
+            ("copies", "elle reprend des phrases de l'annonce : {}"),
+            ("cliches", "elle contient des formules convenues : {}"),
+            ("ouverture", "elle s'ouvre par une formule passe-partout : {}"),
+            ("rythme", "son rythme est mécanique — {}"),
+        ):
+            if style.get(cle):
+                resultat.avertissements.append(
+                    "Lettre livrée, mais " + formulation.format(", ".join(style[cle]))
+                )
+        journal = {
+            "essais": compte_rendu.get("essais"),
+            "mots": compte_rendu.get("mots"),
+            "relue": compte_rendu.get("relue"),
+            "defauts_restants": {c: f for c, f in
+                                 (compte_rendu.get("style") or {}).items() if f},
+            "historique": [
+                {"essai": h["essai"], "mots": h["mots"],
+                 "bloquantes": {c: f for c, f in h["bloquantes"].items() if f},
+                 "style": {c: f for c, f in h["style"].items() if f}}
+                for h in compte_rendu.get("historique", [])
+            ],
+        }
     except Exception as e:  # noqa: BLE001 — une lettre manquante ne perd pas le CV
         log.warning("Lettre non générée : %s", e)
         resultat.avertissements.append(f"Lettre non générée — {e}")
+        journal["refusee"] = str(e)
 
     # --- PDF ---
     for source in [cv] + ([lettre_docx] if lettre_docx else []):
@@ -233,6 +264,27 @@ def generer(
         "raw": offre.raw,
     }, ensure_ascii=False, indent=2), encoding="utf-8")
     resultat.fichiers.append(archive)
+
+    # --- Ce qui manque au profil pour cette offre ---
+    # Pur code, aucun appel : ce n'est pas un jugement sur l'offre mais sur le
+    # profil. Répété sur vingt candidatures, il dessine ce qu'il faut combler.
+    resultat.mots_cles_non_couverts = mots_cles_non_couverts(profil, offre)
+    if resultat.mots_cles_non_couverts:
+        resultat.avertissements.append(
+            "L'offre insiste sur des termes que votre profil ne couvre pas : "
+            + ", ".join(resultat.mots_cles_non_couverts[:6])
+        )
+
+    # --- Journal de génération ---
+    # Quand une lettre est mauvaise, c'est le seul moyen de savoir quelle étape
+    # a fauté : ce n'est pas du confort de développeur.
+    journal_fichier = dossier / "generation.json"
+    journal_fichier.write_text(json.dumps({
+        "lettre": journal,
+        "mots_cles_non_couverts": resultat.mots_cles_non_couverts,
+        "cv_reordonne": reordonner_cv,
+    }, ensure_ascii=False, indent=2), encoding="utf-8")
+    resultat.fichiers.append(journal_fichier)
 
     if ouvrir_apres and not ouvrir(dossier):
         resultat.avertissements.append("Le dossier n'a pas pu être ouvert automatiquement.")

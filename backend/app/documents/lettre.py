@@ -1,36 +1,17 @@
-"""Lettre de motivation.
+"""Lettre de motivation : les prompts et la boucle de génération.
 
 **Règle non négociable du projet : le LLM n'invente rien.** Aucune expérience,
 aucun diplôme, aucune entreprise absente du profil ne doit apparaître.
 
 La contrainte est posée dans le prompt système, mais un prompt n'est pas une
-garantie — surtout avec un modèle local. Chaque lettre est donc **vérifiée**, et
-rejetée puis régénérée si elle contient un nom propre ou une date inconnus.
+garantie — surtout avec un modèle local. Chaque lettre est **vérifiée** par
+`controles.py`, puis régénérée en nommant la faute au modèle. Nommer la faute
+est ce qui marche : lui demander de se relire, non (mesuré, cf. `relire`).
 
-**Quatre contrôles, pas un.** Les trois autres attrapent des lettres que le
-premier laisse passer intactes, faute d'y trouver le moindre nom propre inventé.
-Et ils ne pèsent pas tous le même poids :
-
-| Contrôle | Ce qu'il attrape | Effet |
-|---|---|---|
-| invention | un nom propre ou une année inconnus | **bloquant** |
-| voix | le recruteur s'adresse au candidat | **bloquant** |
-| perroquet | l'annonce recopiée mot pour mot | **bloquant** |
-| formules creuses | « relever les défis », « fort de mon expérience » | signalé |
-
-**La distinction est délibérée.** Les trois premiers rendent la lettre
-*malhonnête* : elle affirme quelque chose de faux sur le candidat. Le quatrième
-la rend seulement *médiocre*. Refuser une lettre exacte parce qu'elle contient
-« relever les défis » serait disproportionné : on la livre, et on nomme les
-formules à retoucher. Mieux vaut pas de lettre qu'une lettre qui ment — mais une
-lettre convenue vaut mieux que pas de lettre.
-
-Ce quatrième contrôle a d'abord été tenté comme une **passe de relecture** : on
-demandait au modèle de critiquer son propre brouillon. Mesuré sur mistral:7b, il
-en conserve la totalité des clichés — il ne sait pas s'auto-critiquer. Il obéit
-en revanche très bien quand on lui **nomme** la faute, comme pour la voix et le
-perroquet. La passe de relecture reste disponible (`llm.relecture_lettre`) pour
-un modèle plus capable, mais elle est désactivée par défaut.
+**Deux familles de fautes, deux traitements**, détaillés dans `controles.py` :
+les fautes d'honnêteté refusent la lettre, les fautes de style la font
+seulement retenter, puis sont signalées à l'utilisateur. Refuser une lettre
+exacte pour un « relever les défis » serait disproportionné.
 """
 
 from __future__ import annotations
@@ -39,11 +20,26 @@ import logging
 import re
 
 from ..models import Offer, Profile
-from ..scoring.texte import mots, normaliser
+from ..scoring.texte import normaliser
+from .controles import (  # ré-exportés : l'API publique des contrôles passe par ici
+    LONGUEUR_COPIE,
+    bloquantes,
+    chiffres_inventes,
+    cliches,
+    contrat_incoherent,
+    disponibilite_inventee,
+    copies_de_l_offre,
+    defauts_de_style,
+    entites_suspectes,
+    ouverture_convenue,
+    rythme_mecanique,
+    voix_incorrecte,
+)
+from .exemples import EXEMPLES_STYLE_COURT
 
 log = logging.getLogger("dreamjob.lettre")
 
-MOTS_MAX = 320
+MOTS_MAX = 340
 MOTS_MIN = 90
 
 PROMPT_SYSTEME = """Tu ES le candidat. Tu écris TA propre lettre de motivation, en français.
@@ -61,30 +57,44 @@ c'est une fiche de renseignement, pas ton style. Reprends-en le contenu et
 
 INTERDIT ABSOLU — TU N'INVENTES RIEN.
 Tu ne mentionnes aucune entreprise, école, diplôme, certification, technologie,
-ville ou date qui ne figure pas dans le PROFIL ou dans l'OFFRE ci-dessous. Si une
-information te manque, tu écris la lettre sans elle. N'affirme jamais avoir
-étudié ou travaillé quelque part sans que ce soit écrit.
+ville, date ni CHIFFRE qui ne figure pas dans le PROFIL ou dans l'OFFRE
+ci-dessous. Si une information te manque, tu écris la lettre sans elle.
+N'affirme jamais avoir étudié ou travaillé quelque part sans que ce soit écrit.
 
 TU NE RECOPIES PAS L'ANNONCE.
 Reprendre une phrase de l'offre revient à s'attribuer une compétence que le
 profil ne mentionne pas — et le recruteur reconnaît son propre texte. Dis avec
 tes mots ce que TON parcours apporte à ce poste.
 
+TU EMPLOIES LE BON CONTRAT.
+Celui de l'offre, et lui seul. Si l'offre porte sur un CDI, les mots
+« alternance », « apprentissage » et « stage » n'ont rien à y faire.
+
 FORME
-- Exactement trois paragraphes, 280 mots maximum au total. Pas quatre, pas cinq.
+- Exactement quatre paragraphes, 300 à 340 mots au total.
 - Ne redonne pas ton nom : il figure déjà en en-tête de la lettre.
-- Paragraphe 1 : le poste que je vise et ce qui, dans mon parcours, y répond
-  directement.
-- Paragraphe 2 : deux faits concrets tirés de mes expériences, chiffres compris
-  quand ils sont donnés. Des faits reliés entre eux, pas une liste.
-- Paragraphe 3 : ce que je cherche et ce que je peux apporter. N'annonce JAMAIS
-  de date de disponibilité : elle ne figure pas dans le profil, l'inventer
-  serait une faute.
+- P1 : ta situation actuelle et le poste visé, nommé exactement. Une accroche
+  factuelle, pas une déclaration d'intérêt. Tu ne commences JAMAIS par
+  « C'est avec », « Actuellement », « Fort de », « Passionné par », « Suite à »,
+  « Je me permets » ni « Veuillez trouver ».
+- P2 : UNE expérience, développée. Chiffres, périmètre, décisions prises. Pas
+  d'énumération de qualités : on les déduit des faits.
+- P3 : le lien avec CETTE offre. Nomme au moins deux éléments propres à
+  l'annonce — un outil, une mission, une contrainte — mais AVEC TES MOTS : ne
+  recopie pas ses phrases. Une lettre qui pourrait partir chez un concurrent
+  est un échec.
+- P4 : disponibilité et clôture, deux phrases au plus. N'annonce une
+  disponibilité que si le profil en indique une.
+
+RYTHME
+- Chaque paragraphe contient au moins une phrase de moins de douze mots.
+- Jamais trois phrases de suite de longueur voisine.
+- Aucune énumération de trois adjectifs.
 
 TON
-Sobre, direct, professionnel : quelqu'un qui écrit, pas un formulaire qu'on
-remplit. Varie la longueur des phrases. Pas de superlatif, pas de « passionné
-depuis toujours », pas de « dynamique et motivé », aucune formule creuse.
+Sobre. Tu exposes des faits et tu laisses le lecteur en tirer les conclusions.
+Aucun superlatif sur l'entreprise, aucune auto-évaluation (« je suis rigoureux »),
+aucune déférence excessive.
 N'accorde aucun adjectif à ton propre genre — il n'est pas connu. Écris « ce
 poste m'intéresse » plutôt que « je suis ravi » ou « je suis heureuse ».
 
@@ -111,32 +121,21 @@ CE QUE TU NE TOUCHES PAS
   inventer — c'est la règle absolue.
 - La voix : première personne du singulier ; « vous » désigne l'entreprise qui
   recrute, jamais le candidat.
-- La structure : trois paragraphes, et la même longueur d'ensemble.
+- La structure : quatre paragraphes, et la même longueur d'ensemble.
+
+Supprime plutôt que de remplacer : une lettre de 300 mots dense vaut mieux
+qu'une lettre de 340 dont 40 sont du remplissage.
 
 Rends uniquement la lettre réécrite, sans commentaire ni explication."""
-
-# Mots qui portent une majuscule sans être des noms propres à vérifier.
-COURANTS = {
-    "je", "j", "vous", "votre", "vos", "nous", "notre", "nos", "madame", "monsieur",
-    "mesdames", "messieurs", "cordialement", "objet", "candidature", "lettre",
-    "le", "la", "les", "un", "une", "ce", "cette", "mon", "ma", "mes", "au", "aux",
-    "en", "dans", "pour", "avec", "sur", "par", "depuis", "apres", "avant", "enfin",
-    "aujourd", "hui", "actuellement", "ainsi", "cependant", "toutefois",
-    "titulaire", "diplome", "master", "licence", "bachelor", "bac", "mba", "bts", "dut",
-    "janvier", "fevrier", "mars", "avril", "mai", "juin", "juillet", "aout",
-    "septembre", "octobre", "novembre", "decembre",
-    "cdi", "cdd", "stage", "alternance", "interim", "vie", "france", "europe",
-    "anglais", "francais", "allemand", "espagnol", "italien",
-}
-
-_DEBUT_PHRASE = re.compile(r"(?:^|[.!?:;]\s+|\n\s*)$")
-_MOT_CAPITALISE = re.compile(r"\b[A-ZÀ-Þ][\wÀ-ÿ'’.-]{2,}")
-_ANNEE = re.compile(r"\b(?:19|20)\d{2}\b")
 
 # Formules d'appel et de politesse : le modèle en ajoute malgré la consigne, et
 # le document les met en page lui-même. On les retire plutôt que de rejeter.
 _APPEL = re.compile(
-    r"^\s*(?:cher|chère|chere|madame|monsieur|mesdames|messieurs)[^\n]{0,60}[,:]\s*",
+    # « Mon cher directeur, » et « Salutations cher recruteur, » passaient au
+    # travers : le modèle invente des formules d'appel que la consigne interdit.
+    r"^\s*(?:mon\s+|ma\s+)?"
+    r"(?:bonjour|salutations?|cher|chère|chere|madame|monsieur|mesdames|messieurs)"
+    r"[^\n]{0,60}[,:]\s*",
     re.IGNORECASE,
 )
 # Le modèle produit parfois un objet malgré la consigne, et le document en pose
@@ -149,12 +148,28 @@ _FORMULES_FINALES = (
     "je vous prie de recevoir", "dans l attente", "dans cette attente",
     "en vous remerciant", "restant a votre disposition",
 )
+
+
 def _est_formule_finale(texte: str) -> bool:
     debut = normaliser(texte)
     return any(debut.startswith(normaliser(f)) for f in _FORMULES_FINALES)
 
 
-def nettoyer(lettre: str) -> str:
+def _retirer_signature(paragraphes: list[str], profil: Profile | None) -> list[str]:
+    """Retire le nom du candidat s'il termine la lettre.
+
+    Le modèle signe malgré la consigne, et le document appose déjà une
+    signature : les deux se retrouvaient l'une sous l'autre.
+    """
+    if profil is None or not (profil.prenom or profil.nom):
+        return paragraphes
+    nom = normaliser(f"{profil.prenom} {profil.nom}")
+    while len(paragraphes) > 1 and normaliser(paragraphes[-1]) == nom:
+        paragraphes.pop()
+    return paragraphes
+
+
+def nettoyer(lettre: str, profil: Profile | None = None) -> str:
     """Retire ce que le document met en page lui-même.
 
     **On ne coupe qu'à la fin.** Une version antérieure supprimait tout à partir
@@ -180,175 +195,21 @@ def nettoyer(lettre: str) -> str:
     while len(paragraphes) > 1 and _est_formule_finale(paragraphes[-1]):
         paragraphes.pop()
 
+    paragraphes = _retirer_signature(paragraphes, profil)
+
     # Formule collée en fin du dernier paragraphe : on coupe la ligne, pas tout.
     if paragraphes:
-        lignes = [l for l in paragraphes[-1].split("\n")]
-        while len(lignes) > 1 and _est_formule_finale(lignes[-1]):
+        lignes = list(paragraphes[-1].split("\n"))
+        nom = normaliser(f"{profil.prenom} {profil.nom}") if profil else ""
+        while len(lignes) > 1 and (_est_formule_finale(lignes[-1])
+                                   or (nom and normaliser(lignes[-1]) == nom)):
             lignes.pop()
         paragraphes[-1] = "\n".join(lignes).strip()
 
     return "\n\n".join(p for p in paragraphes if p).strip()
 
 
-def _sources_texte(profil: Profile, offre: Offer) -> list[str]:
-    """Tout ce que le candidat et l'offre mentionnent réellement."""
-    morceaux: list[str] = [
-        profil.prenom, profil.nom, profil.ville, profil.pays, profil.titre_vise,
-        profil.resume, offre.titre, offre.entreprise, offre.lieu, offre.pays,
-        offre.description_brute,
-    ]
-    morceaux += profil.secteurs
-    morceaux += [s.get("nom", "") for s in profil.skills]
-    morceaux += [lg.get("libelle", "") for lg in profil.langues]
-    for experience in profil.experiences:
-        morceaux += [experience.get("entreprise", ""), experience.get("poste", ""),
-                     experience.get("lieu", ""), experience.get("description", ""),
-                     experience.get("debut", ""), experience.get("fin", "")]
-        morceaux += experience.get("tags", [])
-    for formation in profil.formations:
-        morceaux += [formation.get("etablissement", ""), formation.get("diplome", ""),
-                     formation.get("lieu", ""), formation.get("details", ""),
-                     formation.get("annee", "")]
-    return [m for m in morceaux if m]
-
-
-def _vocabulaire_autorise(profil: Profile, offre: Offer) -> set[str]:
-    autorise = set(COURANTS)
-    for morceau in _sources_texte(profil, offre):
-        autorise.update(normaliser(morceau).split())
-    return autorise
-
-
-def entites_suspectes(lettre: str, profil: Profile, offre: Offer) -> list[str]:
-    """Noms propres et années de la lettre absents du profil et de l'offre.
-
-    Les mots en début de phrase sont ignorés : leur majuscule y est
-    grammaticale, pas significative.
-    """
-    autorise = _vocabulaire_autorise(profil, offre)
-    suspects: list[str] = []
-
-    for correspondance in _MOT_CAPITALISE.finditer(lettre):
-        if _DEBUT_PHRASE.search(lettre[:correspondance.start()]):
-            continue
-        mot = correspondance.group()
-        # `mots()` retire la ponctuation de bord : « Exemple. » doit être reconnu
-        # comme « Exemple », sinon toute fin de phrase devient suspecte.
-        jetons = mots(mot) or [normaliser(mot)]
-        if all(j in autorise for j in jetons):
-            continue
-        if mot not in suspects:
-            suspects.append(mot)
-
-    # Les dates aussi s'inventent : un modèle annonce volontiers une
-    # disponibilité que le candidat n'a jamais donnée.
-    annees_connues = {a.group() for morceau in _sources_texte(profil, offre)
-                      for a in _ANNEE.finditer(morceau)}
-    for annee in _ANNEE.finditer(lettre):
-        if annee.group() not in annees_connues and annee.group() not in suspects:
-            suspects.append(annee.group())
-
-    return suspects
-
-# --- La voix de la lettre ----------------------------------------------------
-# Un modèle local se met volontiers du mauvais côté : il devient le recruteur et
-# propose le poste au candidat (« Votre profil correspond… », « je recherche un
-# candidat expérimenté »). La lettre reste pourtant *vraie* — tous les noms
-# propres viennent bien du profil — donc le contrôle anti-invention la laisse
-# passer sans un mot. Il faut un contrôle distinct.
-
-_MARQUES_PREMIERE_PERSONNE = {"je", "j", "mon", "ma", "mes", "moi"}
-
-# Tournures qui ne peuvent désigner que le candidat : les rencontrer au « vous »
-# signifie que la lettre lui est adressée au lieu d'être écrite par lui.
-# « votre entreprise », « votre équipe », « vos besoins » sont parfaitement
-# légitimes et n'ont rien à faire dans cette liste.
-_TOURNURES_INVERSEES = (
-    "votre profil", "votre candidature", "votre cv", "votre curriculum",
-    "votre parcours", "votre carriere", "votre formation", "votre diplome",
-    "vous avez demontre", "vous avez acquis", "vous avez occupe",
-    "vous avez travaille", "vous disposez d",
-    "je recherche un candidat", "nous recherchons un candidat",
-    "je vous propose ce poste", "votre capacite a",
-)
-
-
-def voix_incorrecte(lettre: str) -> list[str]:
-    """Signes que la lettre n'est pas écrite par le candidat lui-même."""
-    nu = normaliser(lettre)
-    fautes = [t for t in _TOURNURES_INVERSEES if t in nu]
-    if not _MARQUES_PREMIERE_PERSONNE & set(nu.split()):
-        fautes.append("aucune marque de première personne (« je », « mon »)")
-    return fautes
-
-
-# --- Le perroquet ------------------------------------------------------------
-# Faute de matière, un modèle recopie les exigences de l'annonce et les présente
-# comme le parcours du candidat. Rien n'est « inventé » au sens du premier
-# contrôle — les mots viennent bien de l'offre — mais le candidat s'attribue des
-# compétences qu'il n'a pas, et un recruteur reconnaît sa propre annonce au
-# premier coup d'œil.
-
-# Le seuil est un compromis, mesuré sur des lettres réelles :
-#
-#   « au sein d'un Middle office Assurance H/F en CDI »            10 jetons
-#   « à l'aise à l'oral, notamment au téléphone, que par écrit »   11 jetons
-#   « la conformité et la complétude des actes de gestion… »       14 jetons
-#   « polyvalent sur tous les actes concernant l'assurance vie… »  15 jetons
-#
-# Les deux premières sont légitimes — on doit pouvoir nommer le poste auquel on
-# postule — les deux dernières sont de vraies recopies. À huit jetons, tout
-# était refusé et mistral n'arrivait jamais au bout. Douze sépare correctement.
-# Le prix : une reprise courte passe encore, mais elle porte rarement une
-# compétence revendiquée.
-LONGUEUR_COPIE = 12
-
-
-def _suites(jetons: list[str], longueur: int) -> set[tuple[str, ...]]:
-    return {tuple(jetons[i:i + longueur]) for i in range(len(jetons) - longueur + 1)}
-
-
-def copies_de_l_offre(lettre: str, offre: Offer) -> list[str]:
-    """Passages recopiés mot pour mot depuis l'annonce."""
-    de_la_lettre = mots(lettre, garder_vides=True)
-    de_l_offre = mots(offre.description_brute or "", garder_vides=True)
-    if len(de_la_lettre) < LONGUEUR_COPIE or len(de_l_offre) < LONGUEUR_COPIE:
-        return []
-    communes = (_suites(de_la_lettre, LONGUEUR_COPIE)
-                & _suites(de_l_offre, LONGUEUR_COPIE))
-    # Trois exemples suffisent à faire comprendre le reproche au modèle.
-    return [" ".join(suite) for suite in sorted(communes)][:3]
-
-
-# --- Les formules creuses ----------------------------------------------------
-# On a d'abord demandé au modèle de relire son propre brouillon et d'en retirer
-# les clichés. Mesuré : mistral:7b en conserve la totalité — il ne sait pas
-# s'auto-critiquer. Il obéit en revanche très bien quand on lui NOMME la faute,
-# comme pour la voix et le perroquet. D'où cette liste, en pur code.
-#
-# Elle reste volontairement courte et sans ambiguïté : chaque entrée est une
-# phrase qui resterait vraie dans n'importe quelle lettre, pour n'importe quel
-# poste. Une liste trop large ferait refuser des lettres correctes.
-_CLICHES = (
-    "fort de mon experience", "fort de mes experiences",
-    "je suis convaincu", "je suis persuade",
-    "n hesitez pas a", "je reste a votre entiere disposition",
-    "dynamique et motive", "rigoureux et motive",
-    "relever les defis", "relever de nouveaux defis", "relever ce defi",
-    "apporter mes talents", "ma devotion",
-    "resultats exceptionnels", "resultats remarquables",
-    "j attends avec impatience", "j attends donc avec impatience",
-    "depuis toujours passionne", "passionne depuis toujours",
-    "mener a bien les taches", "avec succes les taches",
-    "veritable atout", "atout majeur pour votre entreprise",
-    "contribuer a la reussite de votre entreprise",
-)
-
-
-def cliches(lettre: str) -> list[str]:
-    """Formules creuses repérées dans la lettre."""
-    nu = normaliser(lettre)
-    return [c for c in _CLICHES if c in nu]
+# ------------------------------------------------------------------- le message
 
 
 def _message(profil: Profile, offre: Offer) -> str:
@@ -358,7 +219,8 @@ def _message(profil: Profile, offre: Offer) -> str:
         for x in profil.experiences
     ) or "- (aucune expérience renseignée)"
     formations = "\n".join(
-        f"- {f.get('diplome', '')} — {f.get('etablissement', '')} ({f.get('annee', '')})"
+        f"- {f.get('diplome', '')} — {f.get('etablissement', '')} "
+        f"({f.get('annee', '')}) {f.get('details', '')}".rstrip()
         for f in profil.formations
     ) or "- (aucune formation renseignée)"
     langues = ", ".join(
@@ -366,10 +228,19 @@ def _message(profil: Profile, offre: Offer) -> str:
     ) or "non renseignées"
     competences = ", ".join(s.get("nom", "") for s in profil.skills) or "non renseignées"
 
-    return f"""PROFIL
+    # Une disponibilité absente doit se voir : sans cette mention, le modèle en
+    # invente une, et le dernier paragraphe promet une date que le candidat n'a
+    # jamais donnée.
+    disponibilite = profil.disponibilite or "(non renseignée — n'en annonce aucune)"
+
+    return f"""{EXEMPLES_STYLE_COURT}
+
+PROFIL
 Nom : {profil.prenom} {profil.nom}
-Titre : {profil.titre_vise}
+Situation actuelle : {profil.situation_actuelle or '(non renseignée)'}
+Titre visé : {profil.titre_vise}
 Ville : {profil.ville}
+Disponibilité : {disponibilite}
 Résumé : {profil.resume}
 Compétences : {competences}
 Langues : {langues}
@@ -384,9 +255,12 @@ OFFRE
 Intitulé : {offre.titre}
 Entreprise : {offre.entreprise or '(non précisée)'}
 Lieu : {offre.lieu} {offre.pays}
-Contrat : {offre.type_contrat}
+Contrat : {offre.type_contrat or '(non précisé)'}
 Description :
 {offre.description_brute[:2500]}"""
+
+
+# ------------------------------------------------------- les reproches au modèle
 
 
 def _rappel_correction(suspects: list[str]) -> str:
@@ -394,6 +268,14 @@ def _rappel_correction(suspects: list[str]) -> str:
         "Ta version précédente mentionnait ceci, qui ne figure NI dans le profil NI "
         f"dans l'offre : {', '.join(suspects)}. "
         "Réécris la lettre sans ces éléments. N'invente aucun nom propre."
+    )
+
+
+def _rappel_chiffres(nombres: list[str]) -> str:
+    return (
+        f"Ta version précédente avançait des chiffres absents du profil et de "
+        f"l'offre : {', '.join(nombres)}. Un chiffre inventé est un mensonge sur "
+        "mon parcours. N'emploie que les nombres qui figurent dans le PROFIL."
     )
 
 
@@ -407,6 +289,22 @@ def _rappel_copie(passages: list[str]) -> str:
     )
 
 
+def _rappel_contrat(mots_fautifs: list[str], offre: Offer) -> str:
+    return (
+        f"Ta version précédente parlait de « {', '.join(mots_fautifs)} » alors que "
+        f"cette offre porte sur un contrat de type {offre.type_contrat}. "
+        "N'emploie que le type de contrat de l'offre."
+    )
+
+
+def _rappel_disponibilite(annonces: list[str]) -> str:
+    return (
+        f"Ta version précédente annonçait une disponibilité (« {annonces[0]} ») "
+        "alors que mon profil n'en indique aucune. Promettre une date que je n'ai "
+        "pas donnée est une invention. Termine sans parler de disponibilité."
+    )
+
+
 def _rappel_cliches(formules: list[str]) -> str:
     return (
         "Ta version précédente contenait des formules creuses : "
@@ -414,6 +312,22 @@ def _rappel_cliches(formules: list[str]) -> str:
         + ". Chacune resterait vraie dans n'importe quelle lettre, pour "
         "n'importe quel poste. Réécris ces passages avec un fait précis tiré de "
         "mon parcours, ou supprime-les."
+    )
+
+
+def _rappel_ouverture(ouvertures: list[str]) -> str:
+    return (
+        f"Ta version précédente ouvrait par « {ouvertures[0]} ». Le recruteur en a "
+        "déjà lu trois cents. Commence par un fait : ta situation actuelle et le "
+        "poste visé, sans formule d'amorçage."
+    )
+
+
+def _rappel_rythme(fautes: list[str]) -> str:
+    return (
+        "Ta version précédente avait un rythme mécanique — " + " ; ".join(fautes)
+        + ". Coupe une phrase longue en deux. Une phrase brève par paragraphe "
+        "suffit à casser la régularité."
     )
 
 
@@ -427,130 +341,161 @@ def _rappel_voix(fautes: list[str]) -> str:
     )
 
 
-def _defauts(lettre: str, profil: Profile, offre: Offer) -> list[str]:
-    """Les trois contrôles réunis, plus la longueur."""
-    nb_mots = len(lettre.split())
-    defauts = (entites_suspectes(lettre, profil, offre)
-               + voix_incorrecte(lettre)
-               + copies_de_l_offre(lettre, offre)
-               + cliches(lettre))
-    if not MOTS_MIN <= nb_mots <= MOTS_MAX:
-        defauts.append(f"longueur {nb_mots} mots hors bornes")
-    return defauts
+# Au-delà, le prompt gonfle plus vite que le modèle ne corrige : mesuré, mistral
+# finit par rendre la structure du prompt au lieu d'une lettre. Les reproches
+# bloquants passent devant, le style attendra l'essai suivant.
+MAX_RAPPELS = 3
+
+
+def _consignes(bloc: dict[str, list[str]], style: dict[str, list[str]],
+               offre: Offer) -> list[str]:
+    """Les reproches à joindre au prompt, les plus graves d'abord.
+
+    Une lettre peut être à la fois inventive, mal orientée et convenue : n'en
+    corriger qu'un ferait perdre un essai par faute. Mais tout lui reprocher
+    d'un coup la fait décrocher — d'où le plafond.
+    """
+    rappels = []
+    if bloc["inventions"]:
+        rappels.append(_rappel_correction(bloc["inventions"]))
+    if bloc["chiffres"]:
+        rappels.append(_rappel_chiffres(bloc["chiffres"]))
+    if bloc["voix"]:
+        rappels.append(_rappel_voix(bloc["voix"]))
+    if bloc["contrat"]:
+        rappels.append(_rappel_contrat(bloc["contrat"], offre))
+    if style["copies"]:
+        rappels.append(_rappel_copie(style["copies"]))
+    if style["disponibilite"]:
+        rappels.append(_rappel_disponibilite(style["disponibilite"]))
+    if style["cliches"]:
+        rappels.append(_rappel_cliches(style["cliches"]))
+    if style["ouverture"]:
+        rappels.append(_rappel_ouverture(style["ouverture"]))
+    if style["rythme"]:
+        rappels.append(_rappel_rythme(style["rythme"]))
+    return rappels[:MAX_RAPPELS]
+
+
+# ------------------------------------------------------------------- relecture
 
 
 def relire(lettre: str, generer, profil: Profile, offre: Offer) -> tuple[str, bool]:
     """Réécriture critique du brouillon. Renvoie (texte retenu, réécrit ?).
 
-    Un modèle repère bien mieux le générique qu'il ne l'évite du premier coup :
-    c'est cette passe qui retire les formules toutes faites et casse le rythme
-    mécanique. Elle coûte un appel local de plus, donc rien.
+    L'idée est juste — un modèle repère mieux le générique qu'il ne l'évite —
+    mais **mesurée sans effet sur mistral:7b** : il conserve la totalité des
+    clichés qu'on lui demande de traquer, et n'a changé qu'un mot. D'où la
+    détection en pur code, et ce réglage désactivé par défaut
+    (`llm.relecture_lettre`), gardé pour un modèle plus capable.
 
     **La relecture ne doit jamais coûter une bonne lettre.** Si la réécriture
-    échoue à l'un des trois contrôles — le modèle « améliore » volontiers en
+    échoue à un contrôle bloquant — le modèle « améliore » volontiers en
     inventant — on garde le brouillon, qui, lui, était accepté.
     """
     try:
-        reecrite = nettoyer(generer(PROMPT_RELECTURE, lettre))
+        reecrite = nettoyer(generer(PROMPT_RELECTURE, lettre), profil)
     except Exception as e:  # noqa: BLE001 — une relecture ratée n'est pas fatale
         log.warning("Relecture impossible, brouillon conservé : %s", e)
         return lettre, False
 
-    defauts = _defauts(reecrite, profil, offre)
-    if defauts:
-        log.info("Relecture écartée (%s), brouillon conservé.", ", ".join(defauts))
+    fautes = [f for liste in bloquantes(reecrite, profil, offre).values() for f in liste]
+    nb_mots = len(reecrite.split())
+    if fautes or not MOTS_MIN <= nb_mots <= MOTS_MAX:
+        log.info("Relecture écartée (%s), brouillon conservé.",
+                 ", ".join(fautes) or f"{nb_mots} mots")
         return lettre, False
 
-    log.info("Relecture retenue (%d mots).", len(reecrite.split()))
+    log.info("Relecture retenue (%d mots).", nb_mots)
     return reecrite, True
+
+
+# ------------------------------------------------------------------- rédaction
 
 
 def rediger(profil: Profile, offre: Offer, generer, tentatives: int = 3,
             relecture: bool = False) -> tuple[str, dict]:
     """Génère une lettre vérifiée.
 
-    `generer(systeme, message) -> str` isole le fournisseur : Ollama ou Anthropic,
-    la vérification reste la même.
+    `generer(systeme, message) -> str` isole le fournisseur : Ollama ou
+    Anthropic, la vérification reste la même.
 
-    Renvoie (lettre, compte rendu). Lève si aucune tentative ne passe le contrôle
-    — mieux vaut pas de lettre qu'une lettre qui ment sur le parcours.
+    Renvoie (lettre, compte rendu). Lève si aucune tentative n'a produit de
+    lettre **honnête** — mieux vaut pas de lettre qu'une lettre qui ment. Une
+    lettre honnête mais convenue est livrée, avec ses défauts nommés dans le
+    compte rendu.
     """
     message = _message(profil, offre)
     historique: list[dict] = []
-    derniere = ""
     # Meilleure lettre honnête rencontrée, même si elle reste convenue.
-    secours: tuple[str, int, list[str]] | None = None
+    secours: tuple[str, int, dict] | None = None
 
     for essai in range(1, max(1, tentatives) + 1):
         systeme = PROMPT_SYSTEME
         if historique:
-            # Les deux reproches se cumulent : une lettre peut être à la fois
-            # inventive et écrite du mauvais côté, et n'en corriger qu'un
-            # ferait perdre un essai sur deux.
             precedent = historique[-1]
-            if precedent["suspects"]:
-                systeme += "\n\n" + _rappel_correction(precedent["suspects"])
-            if precedent["voix"]:
-                systeme += "\n\n" + _rappel_voix(precedent["voix"])
+            rappels = _consignes(precedent["bloquantes"], precedent["style"], offre)
+            if rappels:
+                systeme += "\n\n" + "\n\n".join(rappels)
 
-        # Le nettoyage passe AVANT le contrôle : une formule de politesse
+        # Le nettoyage passe AVANT les contrôles : une formule de politesse
         # retirée ne doit pas être comptée comme une invention.
-        derniere = nettoyer(generer(systeme, message))
-        suspects = entites_suspectes(derniere, profil, offre)
-        voix = voix_incorrecte(derniere)
-        copies = copies_de_l_offre(derniere, offre)
-        formules = cliches(derniere)
-        nb_mots = len(derniere.split())
-        historique.append({"essai": essai, "suspects": suspects, "voix": voix,
-                           "copies": copies, "cliches": formules, "mots": nb_mots})
+        lettre = nettoyer(generer(systeme, message), profil)
+        bloc = bloquantes(lettre, profil, offre)
+        style = defauts_de_style(lettre, profil, offre)
+        nb_mots = len(lettre.split())
+        historique.append({"essai": essai, "bloquantes": bloc, "style": style,
+                           "mots": nb_mots})
 
-        # Deux familles de fautes, deux traitements. Invention, voix inversée et
-        # recopie de l'annonce rendent la lettre MALHONNÊTE : elles bloquent.
-        # Une formule creuse la rend seulement médiocre — refuser toute une
-        # lettre exacte pour « relever les défis » serait disproportionné.
-        bloquantes = suspects + voix + copies
-        if not bloquantes and MOTS_MIN <= nb_mots <= MOTS_MAX:
-            if not formules:
-                log.info("Lettre acceptée à l'essai %d (%d mots)", essai, nb_mots)
-                retenue, reecrite = ((relire(derniere, generer, profil, offre))
-                                     if relecture else (derniere, False))
-                return retenue, {"essais": essai, "mots": len(retenue.split()),
-                                 "relue": reecrite, "cliches": [],
-                                 "historique": historique}
-            # Honnête mais convenue : on retente pour le style, en la gardant
-            # sous le coude. Un essai suivant peut très bien être pire.
-            if secours is None:
-                secours = (derniere, essai, formules)
+        fautes_bloquantes = [f for liste in bloc.values() for f in liste]
+        fautes_de_style = [f for liste in style.values() for f in liste]
 
-        log.warning("Lettre rejetée (essai %d) : %s", essai,
-                    suspects + voix + copies + formules
-                    or f"longueur {nb_mots} mots hors bornes")
+        if fautes_bloquantes or not MOTS_MIN <= nb_mots <= MOTS_MAX:
+            log.warning("Lettre rejetée (essai %d) : %s", essai,
+                        fautes_bloquantes or f"longueur {nb_mots} mots hors bornes")
+            continue
 
-    # Aucune lettre irréprochable, mais une lettre honnête a été produite :
-    # elle vaut mieux que pas de lettre du tout. L'utilisateur est prévenu des
-    # formules qui restent — c'est à lui de les retoucher, pas au programme de
-    # lui refuser le document.
+        if not fautes_de_style:
+            log.info("Lettre acceptée à l'essai %d (%d mots)", essai, nb_mots)
+            retenue, reecrite = ((relire(lettre, generer, profil, offre))
+                                 if relecture else (lettre, False))
+            return retenue, {"essais": essai, "mots": len(retenue.split()),
+                             "relue": reecrite, "style": {}, "cliches": [],
+                             "historique": historique}
+
+        # Honnête mais convenue : on retente pour le style, en la gardant sous
+        # le coude. Un essai suivant peut très bien être pire.
+        log.info("Lettre honnête mais convenue (essai %d) : %s", essai,
+                 ", ".join(fautes_de_style))
+        if secours is None:
+            secours = (lettre, essai, style)
+
+    # Aucune lettre irréprochable, mais une lettre honnête a été produite : elle
+    # vaut mieux que pas de lettre du tout. L'utilisateur est prévenu de ce qui
+    # reste — c'est à lui de retoucher, pas au programme de lui refuser le
+    # document.
     if secours is not None:
-        texte, essai, formules = secours
-        log.warning("Lettre livrée avec des formules convenues : %s",
-                    ", ".join(formules))
-        return texte, {"essais": essai, "mots": len(texte.split()),
-                       "relue": False, "cliches": formules,
+        texte, essai, style = secours
+        restants = [f for liste in style.values() for f in liste]
+        log.warning("Lettre livrée avec des défauts de style : %s", ", ".join(restants))
+        return texte, {"essais": essai, "mots": len(texte.split()), "relue": False,
+                       "style": style, "cliches": style["cliches"],
                        "historique": historique}
 
-    dernier = historique[-1]
-    if dernier["suspects"]:
-        raison = f"noms propres inventés : {', '.join(dernier['suspects'])}"
-    elif dernier["voix"]:
-        raison = ("lettre écrite du mauvais côté, comme si le recruteur "
-                  f"s'adressait au candidat : {', '.join(dernier['voix'])}")
-    elif dernier["copies"]:
-        raison = ("l'annonce est recopiée mot pour mot : "
-                  + " / ".join(dernier["copies"]))
-    elif dernier["cliches"]:
-        raison = "formules creuses : " + " / ".join(dernier["cliches"])
+    dernier = historique[-1]["bloquantes"]
+    for cle, libelle in (
+        ("inventions", "noms propres inventés"),
+        ("chiffres", "chiffres inventés"),
+        ("voix", "lettre écrite du mauvais côté, comme si le recruteur s'adressait "
+                 "au candidat"),
+        ("contrat", "le type de contrat ne correspond pas à l'offre"),
+    ):
+        if dernier[cle]:
+            raison = f"{libelle} : {', '.join(dernier[cle])}"
+            break
     else:
-        raison = f"longueur inadaptée ({dernier['mots']} mots)"
+        raison = f"longueur inadaptée ({historique[-1]['mots']} mots)"
+
     raise ValueError(
         f"Après {len(historique)} tentatives, la lettre reste inutilisable — {raison}. "
         f"Essayez un modèle plus capable (llm.modele_local dans config.yaml) ou "

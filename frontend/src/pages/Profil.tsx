@@ -117,6 +117,12 @@ export default function Profil() {
           <Champ libelle="Titre visé" valeur={profil.titre_vise} onChange={(v) => maj('titre_vise', v)}
                  placeholder="Analyste financier, Chef de projet…" />
           <ZoneTexte libelle="Résumé" valeur={profil.resume} onChange={(v) => maj('resume', v)} lignes={3} />
+          <Champ libelle="Situation actuelle" valeur={profil.situation_actuelle}
+                 onChange={(v) => maj('situation_actuelle', v)}
+                 placeholder="Diplômé du Master 2 Finance, en MBA à l'ESLSCA" />
+          <Champ libelle="Disponibilité" valeur={profil.disponibilite}
+                 onChange={(v) => maj('disponibilite', v)}
+                 placeholder="Immédiate — laissez vide si vous préférez ne rien annoncer" />
           <div>
             <span className="block text-xs font-medium text-slate-600 mb-1">Secteurs cibles</span>
             <ListeTags valeurs={profil.secteurs} onChange={(v) => maj('secteurs', v)}

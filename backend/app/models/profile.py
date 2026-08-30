@@ -32,6 +32,15 @@ class Profile(SQLModel, table=True):
     # --- Cible ---
     titre_vise: str = ""
     resume: str = ""
+    # Où en est le candidat aujourd'hui, en une ligne — « Diplômé du Master 2
+    # PGE Finance (EM Normandie), en MBA Trading à l'ESLSCA ». La lettre ouvrait
+    # sur du vide faute de cette information : le modèle la déduisait, donc
+    # l'inventait.
+    situation_actuelle: str = ""
+    # Sans ce champ, le prompt de la lettre INTERDISAIT d'annoncer une
+    # disponibilité — une date inventée est une faute. Renseigné, le dernier
+    # paragraphe peut enfin conclure.
+    disponibilite: str = ""
 
     # ["communication digitale", "gestion de projet"]
     secteurs: list = Field(default_factory=list, sa_column=colonne_json())

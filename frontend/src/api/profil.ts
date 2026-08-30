@@ -30,6 +30,10 @@ export type Profil = {
   pays: string
   linkedin: string
   titre_vise: string
+  /** Où j'en suis aujourd'hui, en une ligne. Ouvre la lettre de motivation. */
+  situation_actuelle: string
+  /** Laissé vide, la lettre a interdiction d'annoncer une disponibilité. */
+  disponibilite: string
   resume: string
   secteurs: string[]
   langues: Langue[]

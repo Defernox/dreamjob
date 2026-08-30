@@ -171,13 +171,18 @@ def test_une_lettre_toujours_inversee_est_refusee(profil, offre):
         rediger(profil, offre, lambda s, m: LETTRE_INVERSEE, tentatives=2)
 
 
-def test_une_copie_persistante_est_refusee(profil, offre):
+def test_une_copie_persistante_est_signalee_mais_livree(profil, offre):
+    """Le perroquet ne distingue pas « j'ai fait X » de « je ferais X » : la
+    seconde décrit le poste, et le prompt demande justement de nommer des
+    éléments de l'annonce. Le rendre bloquant refusait deux offres réelles sur
+    deux, sans produire le moindre document. On livre, on signale."""
     copie = _assez_longue(
         "Je serai polyvalent sur tous les actes concernant l'assurance vie de "
         "manière générale, souscription, versements, arbitrages et rachats."
     )
-    with pytest.raises(ValueError, match="recopiée|recopie"):
-        rediger(profil, offre, lambda s, m: copie, tentatives=2)
+    lettre, compte_rendu = rediger(profil, offre, lambda s, m: copie, tentatives=2)
+    assert lettre
+    assert compte_rendu["style"]["copies"]
 
 
 def _assez_longue(corps: str) -> str:

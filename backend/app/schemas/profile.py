@@ -110,8 +110,19 @@ class BlocCompetences(BaseModel):
 
 
 class ProfilMaj(ProfilStructure):
-    """Édition depuis l'interface : le profil complet, préférences comprises."""
+    """Édition depuis l'interface : le profil complet, préférences comprises.
 
+    `situation_actuelle` et `disponibilite` ne figurent volontairement PAS dans
+    les blocs d'import : un CV ne contient ni l'une ni l'autre, et les demander
+    au modèle reviendrait à lui faire inventer une date. Ils se saisissent à la
+    main, et la lettre s'en sert — sans `disponibilite`, elle a interdiction
+    d'en annoncer une.
+    """
+
+    situation_actuelle: str = Field(
+        default="", description="Où j'en suis aujourd'hui, en une ligne")
+    disponibilite: str = Field(
+        default="", description="Laissé vide, aucune disponibilité ne sera annoncée")
     pays_acceptes: list[str] = Field(default_factory=list)
     contrats_acceptes: list[str] = Field(default_factory=list)
 

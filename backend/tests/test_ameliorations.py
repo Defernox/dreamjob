@@ -131,8 +131,18 @@ def test_les_synonymes_relevent_le_score_d_une_offre_anglaise():
                   description_brute="You will monitor credit risk exposures of our "
                                     "counterparties and report to the management team.")
     resultat = calculer(profil, offre, extraire(offre), PoidsScoring())
-    assert resultat.detail["competences"] > 50
+
+    # Comparatif plutôt qu'un seuil absolu : ce que ce test prouve, c'est que
+    # la table de synonymes fait la différence, pas qu'un nombre dépasse une
+    # valeur — laquelle bouge dès qu'on retouche la pondération du critère.
+    sans_synonymes = Offer(source="t", source_id="2", titre="Poultry Line Operator",
+                           description_brute="You will supervise the packaging line "
+                                             "and report to the management team.")
+    temoin = calculer(profil, sans_synonymes, extraire(sans_synonymes), PoidsScoring())
+
+    assert resultat.detail["competences"] > temoin.detail["competences"]
     assert "Gestion des risques de crédit" in resultat.ancrees_trouvees
+    assert "Gestion des risques de crédit" not in temoin.ancrees_trouvees
 
 
 # --- Exigences linguistiques -------------------------------------------------

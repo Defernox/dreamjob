@@ -13,7 +13,7 @@ from app.config import PoidsScoring
 from app.models import Offer, Profile
 from app.scoring.explain import expliquer
 from app.scoring.extraction import extraire
-from app.scoring.score import calculer
+from app.scoring.score import LOC_MEME_PAYS, calculer
 
 POIDS = PoidsScoring()
 
@@ -71,7 +71,9 @@ def test_changer_les_poids_change_le_score_sans_rien_reextraire():
     a = calculer(profil(), o, signaux, tout_competences)
     b = calculer(profil(), o, signaux, tout_pays)
     assert a.score != b.score
-    assert b.score == 100.0            # pays accepté, et lui seul compte
+    # Le profil de test n'a pas de ville : l'offre vaut le palier « même pays »,
+    # plus 100 depuis que le lieu compte quatre paliers.
+    assert b.score == LOC_MEME_PAYS
 
 
 # --- Compétences -----------------------------------------------------------
@@ -130,9 +132,31 @@ def test_secteur_hors_cible():
 # --- Pays, langue, contrat -------------------------------------------------
 
 
-def test_pays_binaire():
-    assert scorer().detail["pays"] == 100.0
-    assert scorer(o=offre(pays="Allemagne")).detail["pays"] == 0.0
+def test_le_lieu_compte_quatre_paliers():
+    """Le critere etait binaire : 99 % des offres retenues valaient 100, et
+    15 % du poids ne departageait rien — un poste a Morristown notait comme un
+    poste a Paris."""
+    from app.scoring.score import LOC_MEME_PAYS, LOC_MEME_VILLE, LOC_PAYS_ACCEPTE
+
+    p = profil(ville="Paris", pays="France")
+    # La ville du profil se retrouve dans le lieu de l'offre.
+    assert scorer(p=p, o=offre(lieu="75 - Paris", pays="France")).detail["pays"] == LOC_MEME_VILLE
+    # Meme pays, autre ville.
+    assert scorer(p=p, o=offre(lieu="69 - Lyon", pays="France")).detail["pays"] == LOC_MEME_PAYS
+    # Pays accepte, mais a l'etranger.
+    assert scorer(p=p, o=offre(lieu="Luxembourg", pays="Luxembourg")).detail["pays"] == LOC_PAYS_ACCEPTE
+    # Pays refuse.
+    assert scorer(p=p, o=offre(pays="Allemagne")).detail["pays"] == 0.0
+
+
+def test_sans_pays_de_residence_aucune_offre_n_est_penalisee():
+    """On ne devine pas ou habite le candidat : toutes les offres acceptees
+    valent alors le palier du meme pays, la ville restant le seul depart."""
+    from app.scoring.score import LOC_MEME_PAYS, LOC_MEME_VILLE
+
+    p = profil(ville="Paris", pays="")
+    assert scorer(p=p, o=offre(lieu="Luxembourg", pays="Luxembourg")).detail["pays"] == LOC_MEME_PAYS
+    assert scorer(p=p, o=offre(lieu="75 - Paris", pays="France")).detail["pays"] == LOC_MEME_VILLE
 
 
 def test_langue_selon_le_niveau_declare():
@@ -202,7 +226,9 @@ def test_une_offre_hors_cible_ne_remonte_pas_grace_au_contrat_et_au_pays():
     sans_plafond = calculer(profil(), boulanger, extraire(boulanger), POIDS, 100.0)
     avec_plafond = calculer(profil(), boulanger, extraire(boulanger), POIDS, 25.0)
 
-    assert sans_plafond.score >= 40.0, "sans plafond, pays+langue+contrat suffisent à 40 %"
+    # Le seuil était calibré quand le pays valait 100 pour toute offre
+    # acceptée ; il en vaut 80 au mieux depuis que le lieu est gradué.
+    assert sans_plafond.score >= 30.0, "sans plafond, pays+langue+contrat portent l'offre"
     assert avec_plafond.score == 25.0
     assert avec_plafond.hors_cible is True
 
@@ -226,7 +252,7 @@ def test_l_explication_nomme_les_faits_qui_ont_compte():
     texte = _expliquer()
     assert "secteur banque et assurance" in texte
     assert "skills ancrées" in texte
-    assert "pays OK" in texte
+    assert "pays OK" in texte or "votre ville" in texte
     assert "langue FR OK" in texte
     assert "CDI prioritaire" in texte
 

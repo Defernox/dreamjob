@@ -8,7 +8,13 @@ from __future__ import annotations
 
 from ..models import Offer, Profile
 from .extraction import Signaux
-from .score import Resultat, _niveau_du_profil
+from .score import (
+    LOC_MEME_PAYS,
+    LOC_MEME_VILLE,
+    LOC_PAYS_ACCEPTE,
+    Resultat,
+    _niveau_du_profil,
+)
 
 SEPARATEUR = " · "
 MAX_SKILLS_CITEES = 4
@@ -43,10 +49,18 @@ def _fragment_competences(resultat: Resultat) -> str:
 
 
 def _fragment_pays(resultat: Resultat, offre: Offer) -> str:
+    """Le lieu compte quatre paliers depuis qu'il n'est plus binaire : dire
+    seulement « pays OK » ferait passer un poste à São Paulo pour un poste à
+    côté de chez soi."""
     if "pays" in resultat.non_evaluables:
         return "pays non évalué"
-    if resultat.detail.get("pays", 0) >= 100:
-        return "pays OK"
+    valeur = resultat.detail.get("pays", 0)
+    if valeur >= LOC_MEME_VILLE:
+        return f"{offre.lieu or offre.pays} — votre ville"
+    if valeur >= LOC_MEME_PAYS:
+        return f"pays OK ({offre.pays})"
+    if valeur >= LOC_PAYS_ACCEPTE:
+        return f"{offre.pays} — accepté, mais à l'étranger"
     return f"pays hors liste ({offre.pays})"
 
 

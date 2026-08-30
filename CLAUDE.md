@@ -265,11 +265,31 @@ Les erreurs de l'API remontent **telles quelles** à l'utilisateur
 
 | Critère | Source du signal | Particularité |
 |---|---|---|
-| Compétences 35 % | appariement lexical profil ↔ texte de l'offre | 60 % vient de la **meilleure** compétence ancrée, 40 % du nombre d'autres compétences **réellement retrouvées** (au-dessus de `SEUIL_TROUVEE`, plafonné à 3) — additionner les correspondances sous le seuil laissait dix compétences frôlant un mot générique saturer cette moitié du score. On mesure la **qualité** de la correspondance, jamais le taux de couverture : une annonce ne cite jamais tout un profil |
+| Compétences 35 % | appariement lexical profil ↔ texte de l'offre | 50 % vient de la **meilleure** compétence ancrée, 25 % de **combien d'autres ancrées** sont reconnues (plafonné à deux), 40 % du nombre d'autres compétences **réellement retrouvées** (au-dessus de `SEUIL_TROUVEE`, plafonné à 3) — additionner les correspondances sous le seuil laissait dix compétences frôlant un mot générique saturer cette moitié du score. On mesure la **qualité** de la correspondance, jamais le taux de couverture : une annonce ne cite jamais tout un profil |
 | Secteur 25 % | intitulé + `romeLibelle` + famille ROME | se mesure avec `_presence`, comme les compétences : **synonymes et pondération des mots génériques compris**. Reconnu dans l'intitulé = signal fort, dans le corps = 60 %, et l'on retient **le meilleur des deux** — « le titre sauf s'il est muet » faisait qu'un titre à moitié reconnu écrasait un corps qui reconnaissait tout |
-| Pays 15 % | champ structuré de la source | binaire. **Attention** : France Travail publie aussi hors de France (Luxembourg surtout). Le pays se déduit du préfixe de département (« 75 - Paris ») ou du nom de pays dans le libellé — tout étiqueter « France » fausserait le critère |
+| Lieu 15 % | `offre.lieu` + `offre.pays` | **quatre paliers** : votre ville 100, même pays 80, pays accepté à l'étranger 60, refusé 0. **Attention** : France Travail publie aussi hors de France (Luxembourg surtout). Le pays se déduit du préfixe de département (« 75 - Paris ») ou du nom de pays dans le libellé — tout étiqueter « France » fausserait le critère |
 | Langue 15 % | mots-outils (`scoring/langue.py`) | texte trop court ⇒ non évalué, jamais pénalisé. Le niveau du profil est saisi en texte libre : plusieurs niveaux reconnus dans la même saisie ⇒ on retient **le plus prudent** (« courant (B2) » vaut B2), et une saisie illisible retombe sur `NIVEAU_LANGUE_PAR_DEFAUT` = 70, jamais au-dessus d'« intermédiaire » |
 | Contrat 10 % | champ structuré | l'ordre de `contrats_acceptes` porte la préférence : de 100 à 60, jamais 0 pour un contrat accepté |
+
+**Le nombre d'ancrées reconnues compte, pas seulement la meilleure.** La
+première version ne retenait que `max(présence)` pour 60 % du critère. Mesuré
+sur 2 490 offres, le résultat était perverti : une offre reconnaissant **trois**
+compétences signature obtenait 40 sur ce critère, moins que la moyenne (36,1) de
+celles qui n'en reconnaissaient qu'une. Et 83 des 84 offres à égalité sur 76
+points avaient exactement une ancrée trouvée — c'était la machine à égalités.
+
+**Le lieu n'est plus binaire.** Il valait 100 pour 99 % des offres retenues :
+15 % du poids qui ne départageait rien, un poste à Morristown notant comme un
+poste à Paris. Il compte désormais quatre paliers, sur un signal renseigné à
+99,9 %. Deux précautions : sans `profil.pays`, on ne sait pas distinguer « chez
+moi » de « à l'étranger » — on ne le devine pas et on ne pénalise personne, tout
+ce qui est accepté vaut le palier du même pays ; et un pays accepté reste noté
+haut (60), car le candidat a dit oui.
+
+**Un secteur d'un seul mot ne prouve presque rien dans le corps.** « Finance »
+croisé une fois dans deux mille mots donnait 60 sur ce critère à un poste de
+pharmacovigilance. Dans l'intitulé, le même mot reste un signal fort — c'est le
+sujet de l'annonce. D'où `CREDIT_SECTEUR_UN_MOT`.
 
 Deux règles qui évitent des scores absurdes :
 

@@ -28,7 +28,19 @@ CRITERES = ("competences", "secteur", "pays", "langue", "contrat")
 # Une annonce ne cite jamais tout un profil : on mesure la QUALITÉ des meilleures
 # correspondances, pas la proportion de compétences citées. Sans quoi le score
 # serait mécaniquement plafonné à 20 % pour un profil un peu fourni.
-PART_ANCREES = 0.6           # ce que pèse la meilleure compétence signature
+# Trois parts, et non deux. La première version ne retenait QUE la meilleure
+# ancrée pour 60 % du critère : le nombre d'ancrées reconnues était ignoré.
+# Mesuré sur 2 490 offres, le résultat était perverti — une offre reconnaissant
+# trois compétences signature obtenait 40 sur ce critère, MOINS que la moyenne
+# (36,1) de celles qui n'en reconnaissaient qu'une, et 83 des 84 offres à
+# égalité sur 76 points avaient exactement une ancrée trouvée. C'était la
+# machine à égalités.
+PART_MEILLEURE_ANCREE = 0.50   # la signature qui colle le mieux
+PART_AUTRES_ANCREES = 0.25     # combien d'AUTRES signatures collent aussi
+PART_PERIPHERIQUES = 0.25      # les compétences non ancrées
+# Au-delà de la meilleure, deux ancrées supplémentaires suffisent : une annonce
+# ne cite jamais tout un profil.
+NB_ANCREES_ATTENDUES = 2
 NB_AUTRES_ATTENDUES = 3      # au-delà, une annonce n'en dit pas plus
 # Ressemblance minimale pour accepter une variante (gestion / gestionnaire).
 SEUIL_FLOU = 88
@@ -38,6 +50,11 @@ CREDIT_FLOU = 0.8
 SEUIL_TROUVEE = 0.5
 # Secteur reconnu seulement dans le corps de l'annonce, pas dans l'intitulé.
 CREDIT_SECTEUR_FAIBLE = 0.6
+# Un secteur d'UN SEUL mot reconnu dans le corps n'est presque pas une preuve :
+# « Finance » cité une fois dans deux mille mots donnait 60 sur ce critère à un
+# poste de pharmacovigilance. Dans l'intitulé, en revanche, le même mot reste un
+# signal fort — c'est le sujet de l'annonce.
+CREDIT_SECTEUR_UN_MOT = 0.3
 
 # Le niveau est saisi en texte libre : il faut couvrir les deux nombres et les
 # deux langues, sans quoi une saisie non reconnue tombe sur le repli.
@@ -113,11 +130,18 @@ def score_competences(profil: Profile, signaux: Signaux, resultat: Resultat,
                       vocabulaire: set[str] | None = None) -> float | None:
     """Qualité de la correspondance, pas taux de couverture.
 
-    - 60 % : la **meilleure** compétence ancrée retrouvée. Une signature qui
-      colle vaut plus que dix compétences périphériques.
-    - 40 % : le nombre d'autres compétences retrouvées, plafonné à trois.
+    - 50 % : la **meilleure** compétence ancrée retrouvée. Une signature qui
+      colle vaut toujours plus que dix compétences périphériques.
+    - 25 % : combien d'AUTRES ancrées sont reconnues, plafonné à deux. C'est
+      cette part qui départage : sans elle, reconnaître trois signatures
+      rapportait autant qu'en reconnaître une seule.
+    - 25 % : les compétences non ancrées retrouvées, plafonné à trois.
 
-    Un profil sans compétence ancrée est jugé sur la seconde moitié seule.
+    On mesure toujours la qualité, jamais le taux de couverture — une annonce
+    ne cite jamais tout un profil. Mais à qualité égale, en reconnaître
+    davantage doit valoir davantage.
+
+    Un profil sans compétence ancrée est jugé sur la dernière part seule.
     """
     if not profil.skills:
         return None
@@ -125,6 +149,7 @@ def score_competences(profil: Profile, signaux: Signaux, resultat: Resultat,
     if vocabulaire is None:
         vocabulaire = set(signaux.vocabulaire)
     meilleure_ancree = 0.0
+    ancrees_trouvees = 0
     a_des_ancrees = False
     somme_autres = 0.0
 
@@ -139,8 +164,11 @@ def score_competences(profil: Profile, signaux: Signaux, resultat: Resultat,
         if ancree:
             a_des_ancrees = True
             meilleure_ancree = max(meilleure_ancree, trouvee)
-            (resultat.ancrees_trouvees if trouvee >= SEUIL_TROUVEE
-             else resultat.ancrees_manquantes).append(nom)
+            if trouvee >= SEUIL_TROUVEE:
+                ancrees_trouvees += 1
+                resultat.ancrees_trouvees.append(nom)
+            else:
+                resultat.ancrees_manquantes.append(nom)
         elif trouvee >= SEUIL_TROUVEE:
             # Seules les compétences réellement retrouvées comptent. Additionner
             # les correspondances sous le seuil laissait dix compétences frôlant
@@ -153,7 +181,15 @@ def score_competences(profil: Profile, signaux: Signaux, resultat: Resultat,
     part_autres = min(1.0, somme_autres / NB_AUTRES_ATTENDUES)
     if not a_des_ancrees:
         return 100.0 * part_autres
-    return 100.0 * (PART_ANCREES * meilleure_ancree + (1 - PART_ANCREES) * part_autres)
+
+    # La meilleure ancrée est déjà comptée par `meilleure_ancree` : on ne
+    # dénombre ici que les SUIVANTES.
+    part_ancrees = min(1.0, max(0, ancrees_trouvees - 1) / NB_ANCREES_ATTENDUES)
+    return 100.0 * (
+        PART_MEILLEURE_ANCREE * meilleure_ancree
+        + PART_AUTRES_ANCREES * part_ancrees
+        + PART_PERIPHERIQUES * part_autres
+    )
 
 
 # ------------------------------------------------------------------- secteur
@@ -163,11 +199,15 @@ def score_secteur(profil: Profile, signaux: Signaux, resultat: Resultat,
                   vocabulaire: set[str] | None = None) -> float | None:
     """Le secteur se mesure comme les compétences, avec `presence`.
 
-    Il utilisait une simple appartenance d'ensemble, donc sans les synonymes ni
+Il utilisait une simple appartenance d'ensemble, donc sans les synonymes ni
     la pondération des mots génériques : « Finance » ne rencontrait jamais
     « financial markets », et un secteur reconnu sur le seul mot « gestion »
     valait autant qu'un secteur reconnu en entier. Sur un critère qui pèse 25 %,
     un quart des offres en sortaient sous-notées.
+
+    Le crédit accordé au corps de l'annonce dépend de la **spécificité** du
+    secteur : « Banque et assurance » reconnu en entier est une preuve,
+    « Finance » croisé une fois dans deux mille mots n'en est pas une.
     """
     if not profil.secteurs:
         return None
@@ -179,8 +219,12 @@ def score_secteur(profil: Profile, signaux: Signaux, resultat: Resultat,
     for secteur in profil.secteurs:
         # Reconnu dans l'intitulé ou le libellé ROME : signal fort.
         fort = presence(secteur, mots_titre, flou=False) * 100.0
-        # Seulement dans le corps de l'annonce : signal plus faible.
-        faible = presence(secteur, mots_corps, flou=False) * 100.0 * CREDIT_SECTEUR_FAIBLE
+        # Seulement dans le corps de l'annonce : signal plus faible, et plus
+        # faible encore si le secteur tient en un mot — un terme courant croisé
+        # au détour d'une longue annonce ne dit rien du métier.
+        credit = (CREDIT_SECTEUR_FAIBLE if len(mots(secteur)) > 1
+                  else CREDIT_SECTEUR_UN_MOT)
+        faible = presence(secteur, mots_corps, flou=False) * 100.0 * credit
         # Le meilleur des deux, et non « le fort sauf s'il est nul » : un titre
         # à moitié reconnu écrasait un corps qui, lui, reconnaissait tout — le
         # critère n'était pas monotone, un titre muet valait mieux.
@@ -193,10 +237,44 @@ def score_secteur(profil: Profile, signaux: Signaux, resultat: Resultat,
 # ----------------------------------------------------- pays, langue, contrat
 
 
+# Quatre paliers plutôt qu'un oui/non. Le critère était binaire : 99 % des
+# offres retenues valaient 100, si bien que 15 % du poids ne départageait
+# strictement rien — un poste à Morristown, New Jersey, notait exactement comme
+# un poste à Paris. Le lieu est pourtant renseigné sur 99,9 % des offres, et
+# déménager n'est pas un détail.
+LOC_MEME_VILLE = 100.0
+LOC_MEME_PAYS = 80.0
+LOC_PAYS_ACCEPTE = 60.0     # accepté, donc pas pénalisé — mais pas équivalent
+LOC_REFUSE = 0.0
+
+
 def score_pays(profil: Profile, offre: Offer) -> float | None:
+    """À quel point l'offre est commodément située, de 0 à 100.
+
+    Un pays accepté reste noté haut : le candidat a dit oui, on ne le punit
+    pas. Mais « oui, j'irais » et « c'est à côté de chez moi » ne sont pas la
+    même chose, et le score doit savoir les distinguer.
+
+    La ville se reconnaît par appariement de jetons, sans table de communes :
+    les sources écrivent « 75 - Paris », « Paris, Ile-de-France » ou « Paris »
+    selon leur humeur, et le nom suffit à les rapprocher.
+    """
     if not profil.pays_acceptes or not offre.pays:
         return None
-    return 100.0 if offre.pays in profil.pays_acceptes else 0.0
+    if offre.pays not in profil.pays_acceptes:
+        return LOC_REFUSE
+
+    ville = set(mots(profil.ville))
+    if ville and ville & set(mots(offre.lieu)):
+        return LOC_MEME_VILLE
+
+    # Sans pays de résidence renseigné, on ne sait pas distinguer « chez moi »
+    # de « à l'étranger » : on ne le devine pas, et on ne pénalise personne.
+    # Toutes les offres acceptées valent alors le palier du même pays, la ville
+    # restant le seul moyen de se démarquer.
+    if not profil.pays or offre.pays == profil.pays:
+        return LOC_MEME_PAYS
+    return LOC_PAYS_ACCEPTE
 
 
 def _niveau_du_profil(profil: Profile, code: str) -> float | None:

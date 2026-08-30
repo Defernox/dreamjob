@@ -16,15 +16,15 @@ export function ListeTags({ valeurs, onChange, placeholder }: {
   }
 
   return (
-    <div className="flex flex-wrap items-center gap-1.5 rounded-md border border-slate-300 px-2 py-1.5
-                    focus-within:ring-2 focus-within:ring-slate-900/10 focus-within:border-slate-400">
+    <div className="flex flex-wrap items-center gap-1.5 rounded-md border border-craie-300 px-2 py-1.5
+                    focus-within:ring-2 focus-within:ring-encre-900/10 focus-within:border-encre-400">
       {valeurs.map((v) => (
-        <span key={v} className="inline-flex items-center gap-1 bg-slate-100 rounded px-2 py-0.5 text-sm">
+        <span key={v} className="inline-flex items-center gap-1 bg-craie-200 rounded px-2 py-0.5 text-sm">
           {v}
           <button
             type="button"
             onClick={() => onChange(valeurs.filter((x) => x !== v))}
-            className="text-slate-400 hover:text-slate-900 leading-none"
+            className="text-encre-400 hover:text-encre-900 leading-none"
             aria-label={`Retirer ${v}`}
           >
             ×
@@ -67,8 +67,8 @@ export function ChoixMultiple({ options, valeurs, onChange }: {
             onClick={() => onChange(actif ? valeurs.filter((v) => v !== o) : [...valeurs, o])}
             className={`px-2.5 py-1 rounded-full text-sm border transition-colors ${
               actif
-                ? 'bg-slate-900 text-white border-slate-900'
-                : 'bg-white text-slate-600 border-slate-300 hover:border-slate-400'
+                ? 'bg-ambre-500 text-white border-ambre-500'
+                : 'bg-white text-encre-600 border-craie-300 hover:border-encre-400'
             }`}
           >
             {o}
@@ -97,7 +97,7 @@ export function ChoixMultipleGroupe({ zones, valeurs, onChange }: {
         return (
           <div key={zone}>
             <div className="flex items-baseline gap-2 mb-1.5">
-              <span className="text-xs font-medium text-slate-500">{zone}</span>
+              <span className="text-xs font-medium text-encre-500">{zone}</span>
               <button
                 type="button"
                 onClick={() =>
@@ -105,12 +105,12 @@ export function ChoixMultipleGroupe({ zones, valeurs, onChange }: {
                     ? valeurs.filter((v) => !pays.includes(v))
                     : [...new Set([...valeurs, ...pays])])
                 }
-                className="text-xs text-slate-400 hover:text-slate-900"
+                className="text-xs text-encre-400 hover:text-encre-900"
               >
                 {tousChoisis ? 'tout retirer' : 'tout choisir'}
               </button>
               {choisis > 0 && (
-                <span className="text-xs text-slate-400 tabular-nums">
+                <span className="text-xs text-encre-400 tabular-nums">
                   {choisis}/{pays.length}
                 </span>
               )}
@@ -123,8 +123,8 @@ export function ChoixMultipleGroupe({ zones, valeurs, onChange }: {
                   onClick={() => basculer(p)}
                   className={`px-2.5 py-1 rounded-full text-sm border transition-colors ${
                     valeurs.includes(p)
-                      ? 'bg-slate-900 text-white border-slate-900'
-                      : 'bg-white text-slate-600 border-slate-300 hover:border-slate-400'
+                      ? 'bg-ambre-500 text-white border-ambre-500'
+                      : 'bg-white text-encre-600 border-craie-300 hover:border-encre-400'
                   }`}
                 >
                   {p}
@@ -158,16 +158,16 @@ export function ChoixOrdonne({ options, valeurs, onChange }: {
         <ol className="space-y-1">
           {valeurs.map((v, i) => (
             <li key={v} className="flex items-center gap-2 text-sm">
-              <span className="w-5 text-right text-slate-400 tabular-nums">{i + 1}.</span>
+              <span className="w-5 text-right text-encre-400 tabular-nums">{i + 1}.</span>
               <span className="flex-1 font-medium">{v}</span>
               <button type="button" onClick={() => deplacer(i, -1)} disabled={i === 0}
-                className="px-1.5 text-slate-400 hover:text-slate-900 disabled:opacity-25"
+                className="px-1.5 text-encre-400 hover:text-encre-900 disabled:opacity-25"
                 aria-label="Monter">↑</button>
               <button type="button" onClick={() => deplacer(i, 1)} disabled={i === valeurs.length - 1}
-                className="px-1.5 text-slate-400 hover:text-slate-900 disabled:opacity-25"
+                className="px-1.5 text-encre-400 hover:text-encre-900 disabled:opacity-25"
                 aria-label="Descendre">↓</button>
               <button type="button" onClick={() => onChange(valeurs.filter((x) => x !== v))}
-                className="px-1.5 text-slate-400 hover:text-red-600"
+                className="px-1.5 text-encre-400 hover:text-red-600"
                 aria-label={`Retirer ${v}`}>×</button>
             </li>
           ))}
@@ -179,8 +179,8 @@ export function ChoixOrdonne({ options, valeurs, onChange }: {
             key={o}
             type="button"
             onClick={() => onChange([...valeurs, o])}
-            className="px-2.5 py-1 rounded-full text-sm border border-dashed border-slate-300
-                       text-slate-500 hover:border-slate-400 hover:text-slate-900"
+            className="px-2.5 py-1 rounded-full text-sm border border-dashed border-craie-300
+                       text-encre-500 hover:border-encre-400 hover:text-encre-900"
           >
             + {o}
           </button>

@@ -32,17 +32,17 @@ export function Recherches() {
   }
 
   return (
-    <details className="bg-white rounded-lg border border-slate-200 px-4 py-3">
+    <details className="bg-white rounded-carte border border-craie-200 shadow-carte px-4 py-3">
       <summary className="cursor-pointer select-none text-sm font-medium flex items-center gap-2">
         Recherches enregistrées
-        <span className="text-slate-400 font-normal">
+        <span className="text-encre-400 font-normal">
           {recherches?.length
             ? `${actives} active${actives > 1 ? 's' : ''} sur ${recherches.length}`
             : 'aucune — le profil sert de recherche par défaut'}
         </span>
       </summary>
 
-      <p className="text-xs text-slate-500 mt-2 mb-3">
+      <p className="text-xs text-encre-500 mt-2 mb-3">
         Chaque recherche active est jouée à chaque scan, manuel comme automatique.
         Laisser les pays ou les contrats vides reprend ceux de votre profil.
       </p>
@@ -60,13 +60,13 @@ export function Recherches() {
         ))}
       </div>
 
-      <div className="flex gap-2 mt-3 pt-3 border-t border-slate-100">
+      <div className="flex gap-2 mt-3 pt-3 border-t border-craie-200">
         <input
           value={nouveauNom}
           onChange={(e) => setNouveauNom(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && ajouter()}
           placeholder="Nom d'une nouvelle recherche — ex. « V.I.E finance »"
-          className="flex-1 rounded-md border border-slate-300 px-2.5 py-1.5 text-sm"
+          className="flex-1 rounded-md border border-craie-300 px-2.5 py-1.5 text-sm"
         />
         <Bouton onClick={ajouter} disabled={!nouveauNom.trim() || creer.isPending}>
           Ajouter
@@ -90,7 +90,7 @@ function Ligne({ recherche, pays, contrats, onChange, onSupprimer }: {
 
   return (
     <div className={`rounded-md border p-3 ${
-      recherche.active ? 'border-slate-200' : 'border-slate-200 bg-slate-50/60'
+      recherche.active ? 'border-craie-200' : 'border-craie-200 bg-craie-50/60'
     }`}>
       <div className="flex items-center gap-3">
         <label className="flex items-center gap-2 text-sm" title="Jouer cette recherche">
@@ -99,24 +99,24 @@ function Ligne({ recherche, pays, contrats, onChange, onSupprimer }: {
             checked={recherche.active}
             onChange={(e) => onChange({ active: e.target.checked })}
           />
-          <span className={recherche.active ? 'font-medium' : 'text-slate-500'}>
+          <span className={recherche.active ? 'font-medium' : 'text-encre-500'}>
             {recherche.nom}
           </span>
         </label>
-        <span className="text-xs text-slate-400 truncate flex-1">
+        <span className="text-xs text-encre-400 truncate flex-1">
           {recherche.mots_cles.join(', ') || 'aucun mot-clé — toutes les offres'}
         </span>
         <button
           type="button"
           onClick={() => setOuverte(!ouverte)}
-          className="text-xs text-slate-500 hover:text-slate-900"
+          className="text-xs text-encre-500 hover:text-encre-900"
         >
           {ouverte ? 'replier' : 'régler'}
         </button>
         <button
           type="button"
           onClick={onSupprimer}
-          className="text-slate-400 hover:text-red-600"
+          className="text-encre-400 hover:text-red-600"
           title="Supprimer cette recherche"
         >
           ×
@@ -124,9 +124,9 @@ function Ligne({ recherche, pays, contrats, onChange, onSupprimer }: {
       </div>
 
       {ouverte && (
-        <div className="mt-3 space-y-3 pt-3 border-t border-slate-100">
+        <div className="mt-3 space-y-3 pt-3 border-t border-craie-200">
           <div>
-            <span className="block text-xs font-medium text-slate-600 mb-1">Mots-clés</span>
+            <span className="block text-xs font-medium text-encre-600 mb-1">Mots-clés</span>
             <ListeTags
               valeurs={recherche.mots_cles}
               onChange={(v) => onChange({ mots_cles: v })}
@@ -134,8 +134,8 @@ function Ligne({ recherche, pays, contrats, onChange, onSupprimer }: {
             />
           </div>
           <div>
-            <span className="block text-xs font-medium text-slate-600 mb-1.5">
-              Pays <span className="font-normal text-slate-400">— vide : ceux du profil</span>
+            <span className="block text-xs font-medium text-encre-600 mb-1.5">
+              Pays <span className="font-normal text-encre-400">— vide : ceux du profil</span>
             </span>
             <ChoixMultiple
               options={pays}
@@ -144,8 +144,8 @@ function Ligne({ recherche, pays, contrats, onChange, onSupprimer }: {
             />
           </div>
           <div>
-            <span className="block text-xs font-medium text-slate-600 mb-1.5">
-              Contrats <span className="font-normal text-slate-400">— vide : ceux du profil</span>
+            <span className="block text-xs font-medium text-encre-600 mb-1.5">
+              Contrats <span className="font-normal text-encre-400">— vide : ceux du profil</span>
             </span>
             <ChoixMultiple
               options={contrats}

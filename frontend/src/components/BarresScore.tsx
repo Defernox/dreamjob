@@ -1,3 +1,5 @@
+import { verdictScore } from '../lib/format'
+
 const LIBELLES: Record<string, string> = {
   competences: 'Compétences',
   secteur: 'Secteur',
@@ -15,29 +17,34 @@ export function BarresScore({ detail, poids, explication }: {
   explication: string
 }) {
   return (
-    <div className="space-y-3">
+    <div className="space-y-3.5">
       {Object.keys(LIBELLES).map((critere) => {
         const valeur = detail[critere]
         const evalue = valeur !== undefined && valeur !== null
+        const verdict = verdictScore(evalue ? valeur : null)
         return (
           <div key={critere}>
-            <div className="flex items-baseline justify-between text-sm mb-1">
-              <span className="font-medium">
+            <div className="flex items-baseline justify-between text-sm mb-1.5">
+              <span className="font-medium text-encre-800">
                 {LIBELLES[critere]}
-                <span className="text-slate-400 font-normal ml-1.5">
+                {/* Le poids en petit : il explique la barre sans la concurrencer. */}
+                <span className="text-encre-400 font-normal ml-1.5 text-xs">
                   {poids[critere] ?? 0} %
                 </span>
               </span>
-              <span className={`tabular-nums ${evalue ? 'font-medium' : 'text-slate-400 text-xs'}`}>
-                {evalue ? `${Math.round(valeur)} / 100` : 'non évalué'}
+              <span
+                className={`tabular-nums text-sm ${
+                  evalue ? `font-semibold ${verdict.texte}` : 'text-encre-400 text-xs'
+                }`}
+              >
+                {evalue ? `${Math.round(valeur)}` : 'non évalué'}
+                {evalue && <span className="text-encre-300 font-normal"> / 100</span>}
               </span>
             </div>
-            <div className="h-2 rounded-full bg-slate-100 overflow-hidden">
+            <div className="h-1.5 rounded-full bg-craie-200 overflow-hidden">
               {evalue && (
                 <div
-                  className={`h-full rounded-full ${
-                    valeur >= 75 ? 'bg-emerald-500' : valeur >= 50 ? 'bg-amber-500' : 'bg-slate-400'
-                  }`}
+                  className={`h-full rounded-full transition-[width] duration-500 ${verdict.fond}`}
                   style={{ width: `${Math.max(valeur, 1)}%` }}
                 />
               )}
@@ -47,7 +54,7 @@ export function BarresScore({ detail, poids, explication }: {
       })}
 
       {explication && (
-        <p className="text-sm text-slate-600 pt-2 border-t border-slate-100 leading-relaxed">
+        <p className="text-sm text-encre-600 pt-3 mt-1 border-t border-craie-200 leading-relaxed">
           {explication}
         </p>
       )}

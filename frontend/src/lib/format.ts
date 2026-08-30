@@ -28,12 +28,46 @@ export function anciennete(iso: string | null | undefined): string {
   return d ? `il y a ${formatDistanceToNowStrict(d, { locale: fr })}` : '—'
 }
 
-/** Couleur de la pastille de score. Les seuils viennent de config.yaml. */
-export function couleurScore(score: number | null, bon = 75, moyen = 50): string {
-  if (score === null || score === undefined) return 'bg-slate-300 text-slate-700'
-  if (score >= bon) return 'bg-emerald-500 text-white'
-  if (score >= moyen) return 'bg-amber-500 text-white'
-  return 'bg-slate-400 text-white'
+/** Lecture d'un score : la couleur, et le mot. Les seuils viennent de
+ *  `config.yaml` — l'interface ne les décide pas.
+ *
+ *  `trait` est une valeur CSS et non une classe Tailwind : un trait de SVG
+ *  se colore par attribut, pas par classe utilitaire. `fond` et `texte`
+ *  servent aux pastilles et aux barres, qui restent en HTML.
+ */
+export type Verdict = { trait: string; fond: string; texte: string; libelle: string }
+
+export function verdictScore(score: number | null, bon = 75, moyen = 50): Verdict {
+  if (score === null || score === undefined) {
+    return {
+      trait: 'var(--color-encre-300)',
+      fond: 'bg-craie-200',
+      texte: 'text-encre-400',
+      libelle: 'pas encore scorée',
+    }
+  }
+  if (score >= bon) {
+    return {
+      trait: 'var(--color-verdict-fort)',
+      fond: 'bg-[var(--color-verdict-fort)]',
+      texte: 'text-[var(--color-verdict-fort)]',
+      libelle: 'correspond bien',
+    }
+  }
+  if (score >= moyen) {
+    return {
+      trait: 'var(--color-verdict-moyen)',
+      fond: 'bg-[var(--color-verdict-moyen)]',
+      texte: 'text-[var(--color-verdict-moyen)]',
+      libelle: 'à regarder',
+    }
+  }
+  return {
+    trait: 'var(--color-verdict-faible)',
+    fond: 'bg-[var(--color-verdict-faible)]',
+    texte: 'text-[var(--color-verdict-faible)]',
+    libelle: 'éloignée du profil',
+  }
 }
 
 export const nombreFr = (n: number): string => new Intl.NumberFormat('fr-FR').format(n)

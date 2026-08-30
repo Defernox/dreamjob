@@ -35,7 +35,7 @@ export default function Profil() {
   }, [distant, modifie])
 
   if (isLoading || !profil) {
-    return <p className="text-sm text-slate-500">Chargement du profil…</p>
+    return <p className="text-sm text-encre-500">Chargement du profil…</p>
   }
 
   const maj = <K extends keyof TypeProfil>(champ: K, valeur: TypeProfil[K]) => {
@@ -58,8 +58,8 @@ export default function Profil() {
     <div className="max-w-4xl space-y-5 pb-24">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-semibold">Profil</h1>
-          <p className="text-sm text-slate-500">
+          <h1 className="text-[26px] font-bold tracking-tight text-encre-950">Profil</h1>
+          <p className="text-sm text-encre-500">
             La base du scoring : ce que vous savez faire, et ce que vous acceptez.
           </p>
         </div>
@@ -92,7 +92,7 @@ export default function Profil() {
             Relisez et corrigez avant d'enregistrer.
           </div>
           {importer.data.avertissements.map((a) => (
-            <div key={a} className="mt-1 text-amber-800">⚠ {a}</div>
+            <div key={a} className="mt-1 text-alerte-800">⚠ {a}</div>
           ))}
         </Encart>
       )}
@@ -124,7 +124,7 @@ export default function Profil() {
                  onChange={(v) => maj('disponibilite', v)}
                  placeholder="Immédiate — laissez vide si vous préférez ne rien annoncer" />
           <div>
-            <span className="block text-xs font-medium text-slate-600 mb-1">Secteurs cibles</span>
+            <span className="block text-xs font-medium text-encre-600 mb-1">Secteurs cibles</span>
             <ListeTags valeurs={profil.secteurs} onChange={(v) => maj('secteurs', v)}
                        placeholder="Tapez un secteur puis Entrée" />
           </div>
@@ -137,7 +137,7 @@ export default function Profil() {
       >
         <div className="space-y-5">
           <div>
-            <span className="block text-xs font-medium text-slate-600 mb-2">Pays acceptés</span>
+            <span className="block text-xs font-medium text-encre-600 mb-2">Pays acceptés</span>
             <ChoixMultipleGroupe
               zones={reglages?.vocabulaires.pays_par_zone ?? {}}
               valeurs={profil.pays_acceptes}
@@ -145,9 +145,9 @@ export default function Profil() {
             />
           </div>
           <div>
-            <span className="block text-xs font-medium text-slate-600 mb-2">
+            <span className="block text-xs font-medium text-encre-600 mb-2">
               Contrats acceptés —{' '}
-              <span className="font-normal text-slate-500">du plus souhaité au moins souhaité</span>
+              <span className="font-normal text-encre-500">du plus souhaité au moins souhaité</span>
             </span>
             <ChoixOrdonne
               options={reglages?.vocabulaires.contrats ?? []}
@@ -177,15 +177,15 @@ export default function Profil() {
                   value={s.nom}
                   onChange={(e) => maj('skills', remplacer(profil.skills, i, { nom: e.target.value }))}
                   placeholder="Compétence"
-                  className="flex-1 rounded-md border border-slate-300 px-2.5 py-1.5 text-sm"
+                  className="flex-1 rounded-md border border-craie-300 px-2.5 py-1.5 text-sm"
                 />
                 <input
                   value={s.niveau}
                   onChange={(e) => maj('skills', remplacer(profil.skills, i, { niveau: e.target.value }))}
                   placeholder="niveau"
-                  className="w-32 rounded-md border border-slate-300 px-2.5 py-1.5 text-sm"
+                  className="w-32 rounded-md border border-craie-300 px-2.5 py-1.5 text-sm"
                 />
-                <label className="flex items-center gap-1.5 text-sm text-slate-600 select-none">
+                <label className="flex items-center gap-1.5 text-sm text-encre-600 select-none">
                   <input
                     type="checkbox"
                     checked={s.ancree}
@@ -221,19 +221,19 @@ export default function Profil() {
                   value={l.code}
                   onChange={(e) => maj('langues', remplacer(profil.langues, i, { code: e.target.value }))}
                   placeholder="fr"
-                  className="w-16 rounded-md border border-slate-300 px-2.5 py-1.5 text-sm"
+                  className="w-16 rounded-md border border-craie-300 px-2.5 py-1.5 text-sm"
                 />
                 <input
                   value={l.libelle}
                   onChange={(e) => maj('langues', remplacer(profil.langues, i, { libelle: e.target.value }))}
                   placeholder="Français"
-                  className="flex-1 rounded-md border border-slate-300 px-2.5 py-1.5 text-sm"
+                  className="flex-1 rounded-md border border-craie-300 px-2.5 py-1.5 text-sm"
                 />
                 <input
                   value={l.niveau}
                   onChange={(e) => maj('langues', remplacer(profil.langues, i, { niveau: e.target.value }))}
                   placeholder="natif, courant, TOEIC 775…"
-                  className="flex-1 rounded-md border border-slate-300 px-2.5 py-1.5 text-sm"
+                  className="flex-1 rounded-md border border-craie-300 px-2.5 py-1.5 text-sm"
                 />
                 <Bouton variante="danger" onClick={() => maj('langues', profil.langues.filter((_, j) => j !== i))}>
                   ×
@@ -260,7 +260,7 @@ export default function Profil() {
         ) : (
           <div className="space-y-4">
             {profil.experiences.map((x: Experience, i) => (
-              <div key={i} className="rounded-md border border-slate-200 p-3 space-y-2.5">
+              <div key={i} className="rounded-md border border-craie-200 p-3 space-y-2.5">
                 <div className="grid grid-cols-2 gap-2.5">
                   <Champ libelle="Poste" valeur={x.poste}
                          onChange={(v) => maj('experiences', remplacer(profil.experiences, i, { poste: v }))} />
@@ -278,7 +278,7 @@ export default function Profil() {
                 <ZoneTexte libelle="Missions" valeur={x.description} lignes={3}
                            onChange={(v) => maj('experiences', remplacer(profil.experiences, i, { description: v }))} />
                 <div>
-                  <span className="block text-xs font-medium text-slate-600 mb-1">Mots-clés</span>
+                  <span className="block text-xs font-medium text-encre-600 mb-1">Mots-clés</span>
                   <ListeTags valeurs={x.tags}
                              onChange={(v) => maj('experiences', remplacer(profil.experiences, i, { tags: v }))}
                              placeholder="Tapez un mot-clé puis Entrée" />
@@ -310,7 +310,7 @@ export default function Profil() {
         ) : (
           <div className="space-y-4">
             {profil.formations.map((f: Formation, i) => (
-              <div key={i} className="rounded-md border border-slate-200 p-3 space-y-2.5">
+              <div key={i} className="rounded-md border border-craie-200 p-3 space-y-2.5">
                 <div className="grid grid-cols-4 gap-2.5">
                   <div className="col-span-2">
                     <Champ libelle="Diplôme" valeur={f.diplome}
@@ -336,7 +336,7 @@ export default function Profil() {
       </Section>
 
       {profil.cv_importe_le && (
-        <p className="text-xs text-slate-400">
+        <p className="text-xs text-encre-400">
           Dernier import de CV : {dateHeureFr(profil.cv_importe_le)} — {profil.cv_source_path}
         </p>
       )}
@@ -348,15 +348,15 @@ export default function Profil() {
 
 function Encart({ ton, children }: { ton: 'vert' | 'ambre' | 'rouge'; children: React.ReactNode }) {
   const styles = {
-    vert: 'bg-emerald-50 border-emerald-200 text-emerald-900',
-    ambre: 'bg-amber-50 border-amber-200 text-amber-900',
+    vert: 'bg-succes-50 border-succes-200 text-succes-900',
+    ambre: 'bg-alerte-50 border-alerte-200 text-alerte-900',
     rouge: 'bg-red-50 border-red-200 text-red-900',
   }[ton]
   return <div className={`rounded-md border px-4 py-2.5 text-sm ${styles}`}>{children}</div>
 }
 
 function Vide({ children }: { children: React.ReactNode }) {
-  return <p className="text-sm text-slate-400">{children}</p>
+  return <p className="text-sm text-encre-400">{children}</p>
 }
 
 /** L'état de l'installation, replié : utile quand quelque chose ne marche pas. */
@@ -366,9 +366,9 @@ function Diagnostic() {
   if (!sante) return null
 
   return (
-    <details className="bg-white rounded-lg border border-slate-200 p-5">
+    <details className="bg-white rounded-carte border border-craie-200 shadow-carte p-5">
       <summary className="font-semibold cursor-pointer select-none">Diagnostic de l'installation</summary>
-      <dl className="mt-4 divide-y divide-slate-100 text-sm border-t border-slate-100">
+      <dl className="mt-4 divide-y divide-craie-200 text-sm border-t border-craie-200">
         <Ligne libelle="Base de données" valeur={sante.base_donnees} ok={sante.base_existe} />
         <Ligne libelle="Modèle Word du CV" valeur={sante.modele_cv.chemin} ok={sante.modele_cv.present} />
         <Ligne libelle="Conversion PDF (LibreOffice)" valeur={sante.pdf.chemin ?? 'introuvable'} ok={sante.pdf.disponible} />
@@ -377,20 +377,20 @@ function Diagnostic() {
         <Ligne libelle="Dossiers de candidature" valeur={sante.dossier_candidatures} ok />
       </dl>
 
-      <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500 mt-5 mb-2">
+      <h3 className="text-xs font-semibold uppercase tracking-wide text-encre-500 mt-5 mb-2">
         Sources d'offres
       </h3>
-      <div className="divide-y divide-slate-100 text-sm border-t border-slate-100">
+      <div className="divide-y divide-craie-200 text-sm border-t border-craie-200">
         {sante.sources.map((s) => (
           <div key={s.cle} className="py-2.5 flex items-start gap-3">
             <span className={`mt-0.5 shrink-0 px-2 py-0.5 rounded text-xs font-medium ${
-              s.actif ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-500'
+              s.actif ? 'bg-succes-100 text-succes-800' : 'bg-craie-200 text-encre-500'
             }`}>
               {s.actif ? 'actif' : 'inactif'}
             </span>
             <div>
               <div className="font-medium">{s.libelle}</div>
-              <div className="text-slate-500 text-xs">{s.remarque}</div>
+              <div className="text-encre-500 text-xs">{s.remarque}</div>
             </div>
           </div>
         ))}
@@ -398,18 +398,18 @@ function Diagnostic() {
 
       {reglages && (
         <>
-          <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500 mt-5 mb-2">
+          <h3 className="text-xs font-semibold uppercase tracking-wide text-encre-500 mt-5 mb-2">
             Poids du scoring (version {reglages.scoring.version})
           </h3>
           <div className="flex flex-wrap gap-x-6 gap-y-1 text-sm">
             {Object.entries(reglages.scoring.poids).map(([critere, poids]) => (
               <span key={critere}>
-                <span className="text-slate-500">{critere}</span>{' '}
+                <span className="text-encre-500">{critere}</span>{' '}
                 <span className="font-medium tabular-nums">{poids} %</span>
               </span>
             ))}
           </div>
-          <p className="text-xs text-slate-400 mt-2">
+          <p className="text-xs text-encre-400 mt-2">
             Modifiables dans <code>config.yaml</code> — le score est recalculé en pur code,
             sans rappeler le LLM.
           </p>
@@ -422,10 +422,10 @@ function Diagnostic() {
 function Ligne({ libelle, valeur, ok }: { libelle: string; valeur?: string; ok?: boolean }) {
   return (
     <div className="py-2.5 flex items-center justify-between gap-4">
-      <dt className="text-slate-600 shrink-0">{libelle}</dt>
+      <dt className="text-encre-600 shrink-0">{libelle}</dt>
       <dd className="flex items-center gap-2 min-w-0">
-        <span className="truncate text-slate-500 text-xs font-mono">{valeur ?? '…'}</span>
-        <span className={ok ? 'text-emerald-600' : 'text-amber-600'}>{ok ? '✓' : '⚠'}</span>
+        <span className="truncate text-encre-500 text-xs font-mono">{valeur ?? '…'}</span>
+        <span className={ok ? 'text-succes-600' : 'text-alerte-600'}>{ok ? '✓' : '⚠'}</span>
       </dd>
     </div>
   )

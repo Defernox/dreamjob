@@ -59,15 +59,16 @@ export default function Offres() {
     <div className="space-y-5">
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
-          <h1 className="text-2xl font-semibold">Offres</h1>
-          <p className="text-sm text-slate-500 mt-0.5">
+          <h1 className="text-[26px] font-bold tracking-tight text-encre-950">Offres</h1>
+          <p className="text-sm text-encre-500 mt-0.5">
             {stats ? (
               <>
-                <strong className="text-slate-700">{nombreFr(stats.total)}</strong> offres
+                <strong className="text-encre-700">{nombreFr(stats.total)}</strong> offres
                 {' · '}{nombreFr(stats.aujourd_hui)} aujourd&apos;hui
                 {' · '}{nombreFr(stats.vie)} V.I.E
                 {stats.nouvelles > 0 && (
-                  <span className="ml-2 px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-xs font-medium">
+                  <span className="ml-2 px-2 py-0.5 rounded-full bg-ambre-100 text-ambre-800
+                                   text-xs font-semibold">
                     {nombreFr(stats.nouvelles)} nouvelles
                   </span>
                 )}
@@ -88,7 +89,7 @@ export default function Offres() {
       </div>
 
       {planification && (
-        <p className="text-xs text-slate-400 -mt-2">
+        <p className="text-xs text-encre-400 -mt-2">
           {planification.actif
             ? `Recherche automatique chaque jour à ${planification.heure}, et au démarrage si aucune n'a eu lieu depuis ${planification.rattrapage_apres_heures} h.`
             : 'Recherche automatique désactivée (config.yaml → planification).'}
@@ -118,20 +119,23 @@ export default function Offres() {
 
       <Recherches />
 
-      <div className="bg-white rounded-lg border border-slate-200 p-4 space-y-3">
+      <div className="bg-white/70 rounded-carte border border-craie-200 p-4 space-y-3">
         <div className="flex gap-3 flex-wrap items-center">
           <input
             value={filtres.recherche}
             onChange={(e) => maj('recherche', e.target.value)}
             placeholder="Rechercher dans les intitulés, entreprises, descriptions…"
-            className="flex-1 min-w-[16rem] rounded-md border border-slate-300 px-3 py-1.5 text-sm"
+            className="flex-1 min-w-[16rem] rounded-lg border border-craie-300 bg-white px-3.5 py-2
+                       text-sm transition-colors placeholder:text-encre-300
+                       focus:border-ambre-400 focus:outline-none"
           />
           <label className="flex items-center gap-2 text-sm">
-            <span className="text-slate-500">Tri</span>
+            <span className="text-encre-500">Tri</span>
             <select
               value={filtres.tri}
               onChange={(e) => maj('tri', e.target.value)}
-              className="rounded-md border border-slate-300 px-2 py-1.5 text-sm bg-white"
+              className="rounded-lg border border-craie-300 px-2.5 py-2 text-sm bg-white
+                         focus:border-ambre-400 focus:outline-none"
             >
               {TRIS.map((t) => <option key={t.cle} value={t.cle}>{t.libelle}</option>)}
             </select>
@@ -162,8 +166,8 @@ export default function Offres() {
 
         {stats && stats.expirees > 0 && (
           <div className="flex items-center gap-3">
-            <span className="text-xs font-medium text-slate-500 w-16 shrink-0">En ligne</span>
-            <label className="flex items-center gap-2 text-sm text-slate-600">
+            <span className="text-xs font-medium text-encre-500 w-16 shrink-0">En ligne</span>
+            <label className="flex items-center gap-2 text-sm text-encre-600">
               <input
                 type="checkbox"
                 checked={filtres.expirees === false}
@@ -175,19 +179,19 @@ export default function Offres() {
         )}
 
         <div className="flex items-center gap-3">
-          <span className="text-xs font-medium text-slate-500 w-16 shrink-0">Score ≥</span>
+          <span className="text-xs font-medium text-encre-500 w-16 shrink-0">Score ≥</span>
           <input
             type="range" min={0} max={100} step={5}
             value={filtres.score_min}
             onChange={(e) => maj('score_min', Number(e.target.value))}
-            className="w-56 accent-slate-900"
+            className="w-56 accent-encre-900"
           />
           <span className="text-sm tabular-nums font-medium w-8">{filtres.score_min}</span>
           {filtreActif && (
             <button
               type="button"
               onClick={() => setFiltres({ ...FILTRES_VIDES, tri: filtres.tri })}
-              className="text-sm text-slate-500 hover:text-slate-900 ml-auto"
+              className="text-sm text-encre-500 hover:text-encre-900 ml-auto"
             >
               Tout effacer
             </button>
@@ -196,7 +200,7 @@ export default function Offres() {
       </div>
 
       {page && (
-        <p className="text-sm text-slate-500">
+        <p className="text-sm text-encre-500">
           {page.offres.length < page.total
             ? `${nombreFr(page.offres.length)} offres affichées sur ${nombreFr(page.total)}`
             : `${nombreFr(page.total)} offre${page.total > 1 ? 's' : ''}`}
@@ -204,7 +208,7 @@ export default function Offres() {
         </p>
       )}
 
-      {isLoading && <p className="text-sm text-slate-500">Chargement…</p>}
+      {isLoading && <p className="text-sm text-encre-500">Chargement…</p>}
       {page?.total === 0 && <Vide filtreActif={filtreActif} />}
 
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
@@ -229,36 +233,38 @@ function Carte({ offre, seuils }: { offre: OffreResume; seuils?: { bon: number; 
   return (
     <Link
       to={`/offres/${offre.id}`}
-      className="bg-white rounded-lg border border-slate-200 p-4 flex gap-3
-                 hover:border-slate-400 hover:shadow-sm transition-all"
+      className="group bg-white rounded-carte border border-craie-200 shadow-carte
+                 p-4 flex gap-3.5 transition-all duration-150
+                 hover:border-ambre-300 hover:shadow-carte-levee hover:-translate-y-0.5"
     >
       <ScoreBadge score={offre.score} seuils={seuils} />
       <div className="min-w-0 flex-1">
-        <h3 className="font-medium leading-snug line-clamp-2">{offre.titre}</h3>
-        <p className="text-sm text-slate-600 truncate">{offre.entreprise || '—'}</p>
-        <p className="text-xs text-slate-500 truncate">
+        <h3 className="font-semibold leading-snug line-clamp-2 text-encre-900
+                       group-hover:text-ambre-700 transition-colors">
+          {offre.titre}
+        </h3>
+        <p className="text-sm text-encre-600 truncate mt-0.5">{offre.entreprise || '—'}</p>
+        <p className="text-xs text-encre-500 truncate">
           {[offre.lieu, offre.pays].filter(Boolean).join(' · ') || '—'}
         </p>
         <div className="flex flex-wrap items-center gap-1.5 mt-2">
           <Etiquette>{offre.source}</Etiquette>
           {offre.type_contrat && <Etiquette>{offre.type_contrat}</Etiquette>}
           {offre.a_candidature && (
-            <span className="px-1.5 py-0.5 rounded text-xs bg-emerald-100 text-emerald-800">
-              candidature
-            </span>
+            <Pastille ton="verte">candidature</Pastille>
           )}
           {!offre.vue && !offre.expiree && (
-            <span className="px-1.5 py-0.5 rounded text-xs bg-sky-100 text-sky-800">nouvelle</span>
+            <Pastille ton="neuve">nouvelle</Pastille>
           )}
           {offre.expiree && (
-            <span
-              className="px-1.5 py-0.5 rounded text-xs bg-amber-100 text-amber-800"
-              title="Aucun scan ne l'a revue depuis un moment : sans doute retirée du site"
+            <Pastille
+              ton="fanee"
+              titre="Aucun scan ne l'a revue depuis un moment : sans doute retirée du site"
             >
               expirée ?
-            </span>
+            </Pastille>
           )}
-          <span className="text-xs text-slate-400 ml-auto shrink-0">
+          <span className="text-xs text-encre-400 ml-auto shrink-0">
             {anciennete(offre.date_publication ?? offre.date_recuperation)}
           </span>
         </div>
@@ -268,13 +274,40 @@ function Carte({ offre, seuils }: { offre: OffreResume; seuils?: { bon: number; 
 }
 
 const Etiquette = ({ children }: { children: React.ReactNode }) => (
-  <span className="px-1.5 py-0.5 rounded text-xs bg-slate-100 text-slate-600">{children}</span>
+  <span className="px-2 py-0.5 rounded-md text-[11px] font-medium bg-craie-200 text-encre-600">
+    {children}
+  </span>
 )
+
+/** Les états d'une offre : un point de couleur et un mot, pas un pavillon.
+ *  Trois pavillons pleins sur une carte se disputaient l'attention avec le
+ *  score, qui est la seule information qui doive ressortir. */
+function Pastille({ ton, titre, children }: {
+  ton: 'verte' | 'neuve' | 'fanee'
+  titre?: string
+  children: React.ReactNode
+}) {
+  const points = {
+    verte: 'bg-[var(--color-verdict-fort)]',
+    neuve: 'bg-ambre-500',
+    fanee: 'bg-encre-300',
+  }[ton]
+  return (
+    <span
+      title={titre}
+      className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[11px]
+                 font-medium bg-white border border-craie-300 text-encre-600"
+    >
+      <span className={`w-1.5 h-1.5 rounded-full ${points}`} />
+      {children}
+    </span>
+  )
+}
 
 function Message({ ton, children }: { ton: 'vert' | 'ambre' | 'rouge'; children: React.ReactNode }) {
   const styles = {
-    vert: 'bg-emerald-50 border-emerald-200 text-emerald-900',
-    ambre: 'bg-amber-50 border-amber-200 text-amber-900',
+    vert: 'bg-succes-50 border-succes-200 text-succes-900',
+    ambre: 'bg-alerte-50 border-alerte-200 text-alerte-900',
     rouge: 'bg-red-50 border-red-200 text-red-900',
   }[ton]
   return <div className={`rounded-md border px-4 py-2.5 text-sm ${styles}`}>{children}</div>
@@ -282,11 +315,11 @@ function Message({ ton, children }: { ton: 'vert' | 'ambre' | 'rouge'; children:
 
 function Vide({ filtreActif }: { filtreActif: boolean }) {
   return (
-    <div className="bg-white rounded-lg border border-dashed border-slate-300 p-10 text-center">
-      <p className="text-slate-600 font-medium">
+    <div className="bg-white rounded-lg border border-dashed border-craie-300 p-10 text-center">
+      <p className="text-encre-600 font-medium">
         {filtreActif ? 'Aucune offre ne correspond à ces filtres.' : 'Aucune offre en base.'}
       </p>
-      <p className="text-sm text-slate-500 mt-1">
+      <p className="text-sm text-encre-500 mt-1">
         {filtreActif
           ? 'Élargissez les filtres, ou baissez le score minimum.'
           : 'Lancez une recherche pour interroger les sources actives.'}

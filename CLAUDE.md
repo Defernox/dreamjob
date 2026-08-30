@@ -97,6 +97,45 @@ DreamJob/
 
 ---
 
+## Identité visuelle
+
+Les jetons vivent dans `frontend/src/index.css`, dans un bloc `@theme` — jamais
+en dur dans les composants. La palette reprend celle de l'icône du raccourci
+(`outils/icone.py`) : le bureau et l'application parlent la même langue.
+
+| Jeton | Rôle |
+|---|---|
+| `encre` | la structure : en-tête sombre, titres, texte |
+| `ambre` | **l'action, et rien d'autre** : postuler, générer, filtrer |
+| `craie` | les fonds — un blanc cassé chaud, pas un gris bleuté |
+| `verdict` | la lecture d'un score : fort, moyen, faible |
+| `succes` / `alerte` | états de réussite et d'avertissement |
+
+**L'ambre ne désigne que ce qui se clique.** Un avertissement en ambre se
+confondrait avec un bouton, d'où la famille `alerte`, franchement jaune. Le vert
+de Tailwind jurait avec une palette chaude : `succes` reprend le vert profond du
+verdict.
+
+**Les gris sont chauds.** `craie` plutôt que `slate` : sur un écran qu'on fixe
+des heures, le gris bleuté fatigue. C'est le seul motif du remplacement des 158
+classes `slate-` d'origine.
+
+**Le score est un anneau, pas une pastille.** Une pastille ne donne qu'un
+chiffre ; l'anneau montre la proportion, donc se lit sans être lu. Il reprend la
+figure du viseur de la marque (`components/Marque.tsx`), qui est aussi celle de
+l'icône. Sur la fiche détail, le verdict est doublé **en toutes lettres** :
+« 91 » ne se lit qu'en connaissant les seuils, « correspond bien » se lit seul.
+
+**Les listes de chips se replient au-delà de dix** (`Chips.tsx`). Vingt-cinq
+pays alignés forment un mur qu'on ne parcourt pas. Les options actives sont
+remontées en tête : replié, on doit voir ce qu'on filtre.
+
+**Aucune police n'est téléchargée.** Le projet ne sort pas de la machine ;
+charger Google Fonts enverrait une requête à chaque ouverture. La hiérarchie
+vient du poids, de l'interlettrage et de l'espacement, pas d'un caractère exotique.
+
+---
+
 ## Conventions
 
 **Langue.** Interface, messages d'erreur, noms de champs en base et

@@ -1,10 +1,124 @@
 @import "tailwindcss";
 
+/* ============================================================
+   Jetons de design DreamJob
+
+   La palette reprend celle de l'icône du raccourci (outils/icone.py) :
+   encre, ambre, blanc cassé. Le bureau et l'application parlent ainsi la
+   même langue — l'icône n'est pas un décor séparé.
+
+   Trois couleurs, pas davantage. L'encre porte la structure, l'ambre
+   désigne ce sur quoi on agit, et rien d'autre n'a le droit d'attirer
+   l'œil. Un outil qu'on regarde tous les jours doit se taire.
+   ============================================================ */
+
+@theme {
+  /* Encre — la structure : en-tête, titres, texte. Bleu très désaturé,
+     plus chaud que le gris ardoise par défaut, qui tire au bleu froid. */
+  --color-encre-50: #f5f6f8;
+  --color-encre-100: #e8eaee;
+  --color-encre-200: #d2d7de;
+  --color-encre-300: #aab3c0;
+  --color-encre-400: #7b8798;
+  --color-encre-500: #5a6779;
+  --color-encre-600: #465162;
+  --color-encre-700: #384150;
+  --color-encre-800: #2a3342;
+  --color-encre-900: #1e293b;
+  --color-encre-950: #131c29;
+
+  /* Ambre — l'action, et elle seule : postuler, générer, filtrer.
+     Réservée à ce qui se clique, jamais décorative. */
+  --color-ambre-50: #fdf5ef;
+  --color-ambre-100: #fae7d7;
+  --color-ambre-200: #f4cbae;
+  --color-ambre-300: #eeac82;
+  --color-ambre-400: #e78f5c;
+  --color-ambre-500: #e07a3c;
+  --color-ambre-600: #c9682f;
+  --color-ambre-700: #a35327;
+  --color-ambre-800: #7d4020;
+  --color-ambre-900: #5c301a;
+
+  /* Craie — le fond. Un blanc cassé chaud plutôt qu'un gris bleuté :
+     sur un écran qu'on fixe des heures, le froid fatigue. */
+  --color-craie-50: #fbfaf8;
+  --color-craie-100: #f6f4f1;
+  --color-craie-200: #ece8e3;
+  --color-craie-300: #ddd7d0;
+
+  /* Verdict — la lecture d'un score. Un vert profond plutôt que le vert
+     vif par défaut, qui hurle sur une page qu'on parcourt longtemps. */
+  --color-verdict-fort: #12806a;
+  --color-verdict-moyen: #c9682f;
+  --color-verdict-faible: #8a93a3;
+
+  /* Succes — le meme vert que le verdict fort, decline en fonds. Le vert
+     de Tailwind jurait avec une palette chaude. */
+  --color-succes-50: #eff7f4;
+  --color-succes-100: #d8ece5;
+  --color-succes-200: #b2dbcf;
+  --color-succes-600: #12806a;
+  --color-succes-700: #0f6b58;
+  --color-succes-800: #0d5849;
+  --color-succes-900: #0a4239;
+
+  /* Alerte — franchement jaune, pour ne PAS se confondre avec l'ambre, qui
+     ne designe que ce sur quoi on peut cliquer. */
+  --color-alerte-50: #fdf8e7;
+  --color-alerte-100: #faeec4;
+  --color-alerte-200: #f2dc90;
+  --color-alerte-600: #a17a12;
+  --color-alerte-700: #85640f;
+  --color-alerte-800: #6b500d;
+  --color-alerte-900: #523d0a;
+
+  --radius-carte: 0.75rem;
+
+  /* Ombres à peine perceptibles : la profondeur vient de la couleur des
+     bordures, pas d'un halo gris. */
+  --shadow-carte: 0 1px 2px 0 rgb(19 28 41 / 0.04);
+  --shadow-carte-levee: 0 4px 16px -4px rgb(19 28 41 / 0.12);
+}
+
 :root {
   color-scheme: light;
 }
 
 body {
-  @apply bg-slate-50 text-slate-900 antialiased;
-  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  @apply bg-craie-100 text-encre-900 antialiased;
+  font-family: "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system,
+    Roboto, sans-serif;
+}
+
+/* Les chiffres d'un tableau doivent s'aligner : un score, un compteur et
+   une date changent de largeur d'une ligne à l'autre sans cela. */
+.tabular-nums,
+input[type="number"],
+th,
+td {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Titres : un peu plus resserrés que le réglage par défaut, ce qui les
+   fait lire comme des titres et non comme du texte en gras. */
+h1,
+h2,
+h3 {
+  letter-spacing: -0.015em;
+}
+
+/* Le focus au clavier doit rester visible partout — c'est une question
+   d'accessibilité, pas d'esthétique. On l'harmonise plutôt que de le
+   supprimer champ par champ. */
+:focus-visible {
+  outline: 2px solid var(--color-ambre-500);
+  outline-offset: 2px;
+}
+
+/* La barre de défilement des zones de contenu, discrète mais présente :
+   sans elle, on ne devine pas qu'une liste continue. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-craie-300) transparent;
 }

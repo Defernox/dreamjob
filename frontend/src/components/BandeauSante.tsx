@@ -24,7 +24,7 @@ export function BandeauSante() {
   if (alertes.length === 0) return null
 
   return (
-    <div className="bg-amber-50 border-b border-amber-200 px-6 py-2 text-sm text-amber-900">
+    <div className="bg-alerte-50 border-b border-alerte-200 px-6 py-2 text-sm text-alerte-900">
       {alertes.map((a) => (
         <div key={a}>⚠ {a}</div>
       ))}

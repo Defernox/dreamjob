@@ -186,6 +186,26 @@ def _appliquer_blocs(blocs: list[list], donnees: list, remplir) -> None:
 # ------------------------------------------------------------------- sections
 
 
+def _recherche(profil: Profile, offre: Offer) -> str:
+    """Le contrat annoncé en en-tête : celui de l'offre, quand il convient.
+
+    Un CV envoyé pour un CDI n'a pas à annoncer qu'on cherche aussi un stage :
+    la liste complète dilue la candidature et laisse penser qu'on postule à
+    tout. Quand l'offre porte sur un contrat que le profil accepte, on ne
+    mentionne que celui-là — c'est vrai, et c'est ce que le recruteur veut lire.
+
+    Le reste du temps — contrat non précisé par la source, ou hors des
+    préférences — on retombe sur la liste du profil : mieux vaut dire ce qu'on
+    cherche que de taire l'information.
+    """
+    acceptes = profil.contrats_acceptes
+    if not acceptes:
+        return ""
+    if offre.type_contrat and offre.type_contrat in acceptes:
+        return offre.type_contrat
+    return ", ".join(acceptes)
+
+
 def _remplir_entete(entete: list, profil: Profile, offre: Offer) -> None:
     if len(entete) < 4:
         return
@@ -209,8 +229,9 @@ def _remplir_entete(entete: list, profil: Profile, offre: Offer) -> None:
     # Un fragment sans contenu est omis, jamais rempli d'un tiret : « Recherche
     # : — » sous le nom donne l'impression d'un document mal fusionné. Si rien
     # n'est renseigné, la ligne entière disparaît.
-    if profil.contrats_acceptes:
-        definir_texte(entete[3], f"Recherche : {', '.join(profil.contrats_acceptes)}")
+    recherche = _recherche(profil, offre)
+    if recherche:
+        definir_texte(entete[3], f"Recherche : {recherche}")
     else:
         supprimer(entete[3])
 

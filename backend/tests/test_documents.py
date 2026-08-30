@@ -249,10 +249,33 @@ def test_le_cv_ne_porte_aucune_ligne_de_mobilite(profil, offre, tmp_path):
     assert not any("Pays3" in t for t in textes)
 
 
-def test_les_contrats_recherches_restent_en_entete(profil, offre, tmp_path):
+def test_la_recherche_s_aligne_sur_le_contrat_de_l_offre(profil, offre, tmp_path):
+    """Un CV envoyé pour un CDI n'annonce pas qu'on cherche aussi un stage :
+    la liste complète dilue la candidature."""
+    from app.documents.cv_render import rendre
+
+    profil.contrats_acceptes = ["CDI", "V.I.E", "Stage", "CDD"]
+    offre.type_contrat = "CDI"
+    textes = _textes(rendre(profil, offre, MODELE, tmp_path / "CV.docx"))
+    assert any("Recherche : CDI" in t for t in textes)
+    assert not any("Stage" in t and "Recherche" in t for t in textes)
+
+
+def test_un_contrat_hors_preferences_laisse_la_liste(profil, offre, tmp_path):
+    """Mieux vaut dire ce qu'on cherche que de taire l'information."""
     from app.documents.cv_render import rendre
 
     profil.contrats_acceptes = ["CDI", "CDD"]
+    offre.type_contrat = "Freelance"
+    textes = _textes(rendre(profil, offre, MODELE, tmp_path / "CV.docx"))
+    assert any("Recherche : CDI, CDD" in t for t in textes)
+
+
+def test_une_offre_sans_contrat_laisse_la_liste(profil, offre, tmp_path):
+    from app.documents.cv_render import rendre
+
+    profil.contrats_acceptes = ["CDI", "CDD"]
+    offre.type_contrat = ""
     textes = _textes(rendre(profil, offre, MODELE, tmp_path / "CV.docx"))
     assert any("Recherche : CDI, CDD" in t for t in textes)
 

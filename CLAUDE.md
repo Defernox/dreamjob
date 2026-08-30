@@ -451,8 +451,14 @@ entier, ce qui vaut mieux qu'un CV amputé au hasard.
 servent à filtrer les offres, pas à figurer sur un CV : le recruteur sait où est
 son poste, et le candidat qui postule y est par définition disponible. Cette
 ligne étalait dix-sept pays sur trois lignes d'en-tête — aucune information, et
-assez de place perdue pour faire déborder le document. Seuls les contrats
-recherchés subsistent, sur une ligne.
+assez de place perdue pour faire déborder le document.
+
+**La ligne « Recherche » s'aligne sur le contrat de l'offre.** Un CV envoyé pour
+un CDI n'a pas à annoncer qu'on cherche aussi un stage : la liste complète dilue
+la candidature et laisse penser qu'on postule à tout. Quand l'offre porte un
+contrat que le profil accepte, seul celui-là est mentionné. Contrat non précisé
+par la source, ou hors des préférences : on retombe sur la liste — mieux vaut
+dire ce qu'on cherche que de taire l'information.
 
 **Le classement du CV parle la même langue que le score.** `_pertinence`
 (`cv_render.py`) était une **troisième** implémentation de l'appariement, après

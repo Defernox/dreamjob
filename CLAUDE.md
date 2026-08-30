@@ -243,7 +243,16 @@ compétence. Découpé, il devient exploitable. Chaque passe a sa propre entrée
 cache (`variante`) : une passe qui échoue ne fait pas perdre les autres.
 
 **L'application doit rester gratuite.** Le compte Anthropic n'a pas de crédits :
-la rédaction passe par **Ollama en local** (`mistral:7b`, RTX 3060, ~100 tok/s).
+la rédaction passe par **Ollama en local** (`mistral:7b`, RTX 3060 **Laptop 6 Go**).
+
+**Le modèle ne tient pas entièrement dans la carte, et tout en découle.**
+mistral:7b réclame ~5,1 Go quand la carte n'offre que 4,6 Go libres : Ollama
+place **28 couches sur 33** sur le GPU, les 5 autres sur le processeur. Débit
+mesuré : **25 jetons/s**, pas les ~100 longtemps annoncés ici. Pire, quand une
+autre application réclame de la mémoire vidéo, Windows migre silencieusement
+celle d'Ollama vers la RAM au lieu d'échouer : le débit s'effondre **d'un
+facteur cent, par à-coups**. Constaté sur une génération réelle — six blocs de
+512 jetons ont mis 15, 76, 43, 60, 74 puis 3 secondes pour un travail identique.
 Anthropic reste branchable pour qui veut une meilleure qualité de lettre.
 Attention : un modèle local invente plus facilement — le garde-fou
 anti-invention doit **rejeter et régénérer**, pas seulement avertir.
@@ -256,6 +265,33 @@ Un compte sans crédits répond `400 Your credit balance is too low` : la clé e
 valide, l'authentification passe, seul l'appel échoue. Ces deux pannes sont
 traduites en français dans `app/llm/client.py` et couvertes par des tests.
 
+**Le client Ollama travaille en flux, et surveille le silence.** Un mur
+d'horloge est le mauvais outil : la limite de 300 s a coupé une génération après
+271 s de traitement de prompt, alors qu'il restait une trentaine de secondes —
+271 secondes de calcul jetées et **aucune lettre**. `httpx` applique son délai
+`read` à chaque fragment, ce qui donne exactement la sémantique voulue : un
+modèle lent mais vivant va au bout, un modèle bloqué échoue. `DELAI_TOTAL` reste
+en garde-fou contre un flux qui goutte indéfiniment.
+
+**Le message d'erreur nomme la cause, pas le symptôme.** « Ollama a échoué :
+timed out » n'apprend rien. `_diagnostic_lenteur` dit ce qui se passe — la carte
+graphique est saturée — et ce qu'on peut y faire.
+
+**`keep_alive` est envoyé à chaque appel.** Sans lui, Ollama décharge le modèle
+après cinq minutes ; entre la génération du CV (LibreOffice, une trentaine de
+secondes) et celle de la lettre, il avait le temps de partir, et chaque document
+rechargeait 4,4 Go depuis le disque.
+
+**Les reproches à la lettre vont à la FIN du message, jamais dans le prompt
+système.** Le cache de llama.cpp est un cache de **préfixe** : toucher au début
+de la conversation l'invalide, et les 3 088 jetons du prompt étaient retraités
+de zéro à chaque tentative — trois tentatives, trois fois le coût complet. Après
+correction, mesuré sur l'offre qui échouait : essai 1 à 2,5 s de prompt, essais
+2 et 3 à **0,4 s**. Lettre produite en 65 s au lieu d'un échec à 300 s. Un test
+(`test_le_prompt_systeme_ne_bouge_pas_d_une_tentative_a_l_autre`) verrouille
+l'invariant. Bénéfice secondaire : un petit modèle obéit mieux à ce qu'il vient
+de lire qu'à une consigne enfouie dans 767 jetons de prompt système.
+
 Les erreurs de l'API remontent **telles quelles** à l'utilisateur
 (`app/llm/client.py`) : reformuler la cause fait perdre du temps au diagnostic.
 
@@ -267,9 +303,32 @@ Les erreurs de l'API remontent **telles quelles** à l'utilisateur
 |---|---|---|
 | Compétences 35 % | appariement lexical profil ↔ texte de l'offre | 50 % vient de la **meilleure** compétence ancrée, 25 % de **combien d'autres ancrées** sont reconnues (plafonné à deux), 40 % du nombre d'autres compétences **réellement retrouvées** (au-dessus de `SEUIL_TROUVEE`, plafonné à 3) — additionner les correspondances sous le seuil laissait dix compétences frôlant un mot générique saturer cette moitié du score. On mesure la **qualité** de la correspondance, jamais le taux de couverture : une annonce ne cite jamais tout un profil |
 | Secteur 25 % | intitulé + `romeLibelle` + famille ROME | se mesure avec `_presence`, comme les compétences : **synonymes et pondération des mots génériques compris**. Reconnu dans l'intitulé = signal fort, dans le corps = 60 %, et l'on retient **le meilleur des deux** — « le titre sauf s'il est muet » faisait qu'un titre à moitié reconnu écrasait un corps qui reconnaissait tout |
-| Lieu 15 % | `offre.lieu` + `offre.pays` | **quatre paliers** : votre ville 100, même pays 80, pays accepté à l'étranger 60, refusé 0. **Attention** : France Travail publie aussi hors de France (Luxembourg surtout). Le pays se déduit du préfixe de département (« 75 - Paris ») ou du nom de pays dans le libellé — tout étiqueter « France » fausserait le critère |
-| Langue 15 % | mots-outils (`scoring/langue.py`) | texte trop court ⇒ non évalué, jamais pénalisé. Le niveau du profil est saisi en texte libre : plusieurs niveaux reconnus dans la même saisie ⇒ on retient **le plus prudent** (« courant (B2) » vaut B2), et une saisie illisible retombe sur `NIVEAU_LANGUE_PAR_DEFAUT` = 70, jamais au-dessus d'« intermédiaire » |
-| Contrat 10 % | champ structuré | l'ordre de `contrats_acceptes` porte la préférence : de 100 à 60, jamais 0 pour un contrat accepté |
+| Lieu 12 % | `offre.lieu` + `offre.pays` | **quatre paliers** : votre ville 100, même pays 80, pays accepté à l'étranger 60, refusé 0. **Attention** : France Travail publie aussi hors de France (Luxembourg surtout). Le pays se déduit du préfixe de département (« 75 - Paris ») ou du nom de pays dans le libellé — tout étiqueter « France » fausserait le critère |
+| Séniorité 8 % | années chiffrées de l'annonce, sinon son vocabulaire | `annees_experience` du profil, **saisi à la main** : les dates d'un CV sont trop partielles pour une somme automatique. À 0 le critère se tait — on ne note personne débutant faute de réponse. Les chiffres priment sur les mots : « junior » dans un intitulé qui réclame ensuite huit ans ne trompe pas. Un écart d'un an vaut 100, de six vaut 0 ; sans chiffre, « senior » face à un profil junior vaut 40 et non 0, les intitulés mentent trop souvent. Évalué sur **552 offres sur 2 490** |
+| Langue 7 % | mots-outils (`scoring/langue.py`) | texte trop court ⇒ non évalué, jamais pénalisé. Le niveau du profil est saisi en texte libre : plusieurs niveaux reconnus dans la même saisie ⇒ on retient **le plus prudent** (« courant (B2) » vaut B2), et une saisie illisible retombe sur `NIVEAU_LANGUE_PAR_DEFAUT` = 70, jamais au-dessus d'« intermédiaire » |
+| Contrat 8 % | champ structuré | l'ordre de `contrats_acceptes` porte la préférence : de 100 à 60, jamais 0 pour un contrat accepté |
+| Fraîcheur 5 % | `date_publication`, sinon `date_recuperation` | décroissance **linéaire** de 7 à 120 jours. Renseigné sur **100 %** des offres et étalé sur 1 072 jours : le seul départageur continu dont on dispose, d'où le refus des paliers, qui recréeraient les égalités qu'on défait. **Seul critère exclu du fond** (`CRITERES_DE_FOND`) : il dit si l'annonce est encore ouverte, pas si le poste convient |
+
+**Compétences + secteur pèsent 60 % : c'est le métier qui décide.** Les trois
+critères administratifs — lieu, langue, contrat — ont financé la hausse ; les
+deux départageurs gardent l'essentiel du leur, sans quoi le mur d'égalités
+reviendrait. Mesuré : plus grosse égalité tombée de 147 à **61**, et 90 des 100
+premières offres inchangées — on affine un classement, on ne le refait pas.
+
+**Le dénominateur d'un critère est ce que le PROFIL peut offrir.** Le quart
+« compétences périphériques » divisait par 3 un profil qui n'en comptait que 2 :
+plafonné à 2/3 quelle que soit l'offre. Le critère culminait à 77,6 sur 2 490
+annonces là où tous les autres atteignent 100 — et une moyenne pondérée qui
+mélange deux échelles est fausse : donner 35 % à ce critère réservait des points
+que personne ne pouvait gagner. On pénalisait le candidat pour la forme de son
+profil, pas pour l'adéquation de l'annonce.
+
+**Le vrai plafond reste le profil, et c'est mesurable.** À poids identiques,
+un profil de 6 compétences donne 66 offres vertes et un plafond de 85 ; le même
+profil enrichi à 14 compétences en donne **242**, et le critère atteint 100.
+Aucun réglage de poids ne rattrape une liste de compétences trop courte — ni
+une compétence rédigée en phrase (« Esprit d'analyse et de synthèse » n'est
+reconnue par aucune annonce).
 
 **Le nombre d'ancrées reconnues compte, pas seulement la meilleure.** La
 première version ne retenait que `max(présence)` pour 60 % du critère. Mesuré
@@ -277,6 +336,27 @@ sur 2 490 offres, le résultat était perverti : une offre reconnaissant **trois
 compétences signature obtenait 40 sur ce critère, moins que la moyenne (36,1) de
 celles qui n'en reconnaissaient qu'une. Et 83 des 84 offres à égalité sur 76
 points avaient exactement une ancrée trouvée — c'était la machine à égalités.
+
+**Deux critères ont été ajoutés pour départager, pas pour juger.** Le score
+avait un défaut de résolution avant d'avoir un défaut de justesse : 252 offres
+sur 2 490 partageaient exactement la même note, et l'écran affichait un mur de
+« 76 ». Sur la centaine de signaux disponibles, deux seulement couvrent assez
+d'offres pour trancher — la date de publication (100 % des offres, 1 072 jours
+d'amplitude) et l'ancienneté demandée (22 %). Mesuré après : **562 notes
+distinctes** au dixième près, plus grosse égalité tombée de 252 à 149, et **16**
+seulement parmi les 180 offres vertes — celles qu'on lit vraiment.
+
+**La fraîcheur ne dit rien de l'adéquation, et le code doit le savoir.** C'est le
+seul critère toujours évaluable ; la redistribution des poids lui donnait donc
+la totalité sur un profil dont aucun autre critère n'était jugeable, et sortait
+100 sur une offre que personne n'a pu évaluer. D'où `CRITERES_DE_FOND` : si
+aucun critère **de fond** ne se prononce, le score est nul, fraîcheur ou pas.
+
+**Un score de fraîcheur vieillit en base.** La promesse « mêmes entrées, même
+score » tient — la date du jour EST une entrée — mais une note stockée devient
+fausse le lendemain. `services/scoring.py` rescore donc ce qui a plus d'un jour,
+en plus des deux compteurs de version. L'opération prend une seconde pour 2 490
+offres.
 
 **Le lieu n'est plus binaire.** Il valait 100 pour 99 % des offres retenues :
 15 % du poids qui ne départageait rien, un poste à Morristown notant comme un
@@ -576,6 +656,16 @@ absents du profil, et son expérience la plus pertinente tenait en 133 caractèr
 sans le second, le prompt avait **interdiction** d'annoncer une disponibilité,
 faute de pouvoir la vérifier. Ni l'un ni l'autre ne figure dans les blocs
 d'import — un CV ne les contient pas, les demander au modèle le ferait inventer.
+`annees_experience` s'ajoute à cette liste pour une troisième raison : les
+dates d'un CV sont souvent partielles (« Septembre 2021 » sans fin) et les
+périodes se chevauchent — une somme automatique se tromperait sans le dire.
+Le champ est borné 0–60 côté schéma **et** côté saisie : hors bornes, c'est
+l'enregistrement du profil entier qui échouait en 422.
+
+**Un critère ajouté au back doit l'être aussi dans `BarresScore.tsx`.** Le
+composant n'affiche que les clés qu'il connaît : les deux nouveaux critères y
+étaient invisibles, donc le score baissait sans que rien ne l'explique. C'est
+le genre d'oubli qu'aucun test backend n'attrape.
 
 **`mots_cles_non_couverts`** (`scoring/couverture.py`) : les termes récurrents de
 l'annonce qu'aucun élément du profil ne recouvre, synonymes compris. Ce n'est pas

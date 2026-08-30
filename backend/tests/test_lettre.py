@@ -109,8 +109,10 @@ def test_une_lettre_inventee_est_rejetee_puis_regeneree(profil, offre):
     ]
     appels = []
 
+    # Le reproche est appendu au MESSAGE : le prompt système est le préfixe de la
+    # conversation, et y toucher invalidait le cache de llama.cpp.
     def faux_modele(systeme, message):
-        appels.append(systeme)
+        appels.append(message)
         return reponses.pop(0)
 
     lettre, compte_rendu = rediger(profil, offre, faux_modele, tentatives=3)
@@ -146,3 +148,36 @@ def test_le_prompt_porte_la_contrainte_anti_invention():
 
 def test_la_longueur_minimale_reste_raisonnable():
     assert 50 <= MOTS_MIN <= 150
+
+
+def test_le_prompt_systeme_ne_bouge_pas_d_une_tentative_a_l_autre(profil, offre):
+    """Le cache de llama.cpp est un cache de PRÉFIXE.
+
+    Toucher au prompt système entre deux tentatives l'invalide : les 3 088
+    jetons du prompt sont alors retraités de zéro. Mesuré sur la machine de
+    l'utilisateur, ce retraitement prend 271 s — trois tentatives faisaient
+    quatre minutes de calcul pure perte, et la génération expirait sans
+    produire la moindre lettre.
+
+    L'invariant tient en une ligne : le premier argument doit être identique à
+    chaque appel, et c'est le second qui porte les reproches.
+    """
+    reponses = [
+        _lettre("J'ai travaillé chez Goldman Sachs."),
+        _lettre("Mon passage au Crédit Mutuel m'a formé."),
+    ]
+    systemes, messages = [], []
+
+    def faux_modele(systeme, message):
+        systemes.append(systeme)
+        messages.append(message)
+        return reponses.pop(0)
+
+    rediger(profil, offre, faux_modele, tentatives=3)
+
+    assert len(systemes) == 2
+    assert systemes[0] == systemes[1], "le prompt système doit rester identique"
+    assert messages[1].startswith(messages[0]), (
+        "le message doit être le précédent AUGMENTÉ du reproche : seul un "
+        "préfixe conservé permet au cache de servir")
+    assert "Goldman" in messages[1]

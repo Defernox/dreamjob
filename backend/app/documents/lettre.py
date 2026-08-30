@@ -431,16 +431,28 @@ def rediger(profil: Profile, offre: Offer, generer, tentatives: int = 3,
     secours: tuple[str, int, dict] | None = None
 
     for essai in range(1, max(1, tentatives) + 1):
-        systeme = PROMPT_SYSTEME
+        # Les reproches vont à la FIN du message, jamais dans le prompt système.
+        #
+        # Deux raisons, et la première est chiffrée. Le cache de llama.cpp est un
+        # cache de **préfixe** : modifier le début de la conversation l'invalide
+        # entièrement, et les 3 088 jetons du prompt étaient retraités de zéro à
+        # chaque tentative. Sur la machine de l'utilisateur ce retraitement a
+        # mesuré 271 s — trois tentatives, quatre minutes de calcul pure perte.
+        # Placés en fin de message, ils ne coûtent que leur propre longueur.
+        #
+        # La seconde raison est de qualité : un petit modèle obéit mieux à ce
+        # qu'il vient de lire. Le reproche est plus efficace juste avant la
+        # génération qu'enfoui dans un prompt système de 767 jetons.
+        demande = message
         if historique:
             precedent = historique[-1]
             rappels = _consignes(precedent["bloquantes"], precedent["style"], offre)
             if rappels:
-                systeme += "\n\n" + "\n\n".join(rappels)
+                demande += "\n\n" + "\n\n".join(rappels)
 
         # Le nettoyage passe AVANT les contrôles : une formule de politesse
         # retirée ne doit pas être comptée comme une invention.
-        lettre = nettoyer(generer(systeme, message), profil)
+        lettre = nettoyer(generer(PROMPT_SYSTEME, demande), profil)
         bloc = bloquantes(lettre, profil, offre)
         style = defauts_de_style(lettre, profil, offre)
         nb_mots = len(lettre.split())

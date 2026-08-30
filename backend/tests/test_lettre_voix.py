@@ -156,8 +156,11 @@ def test_le_prompt_impose_la_premiere_personne():
 def test_une_voix_inversee_declenche_une_regeneration(profil, offre):
     essais = []
 
+    # Le reproche voyage dans le MESSAGE, pas dans le prompt système : celui-ci
+    # est le préfixe de la conversation, et le modifier invalidait le cache de
+    # llama.cpp — 3 088 jetons retraités de zéro à chaque tentative.
     def generer(systeme, message):
-        essais.append(systeme)
+        essais.append(message)
         return LETTRE_INVERSEE if len(essais) == 1 else _assez_longue(LETTRE_CORRECTE)
 
     lettre, compte_rendu = rediger(profil, offre, generer, tentatives=3)

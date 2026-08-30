@@ -119,13 +119,13 @@ export default function Offres() {
 
       <Recherches />
 
-      <div className="bg-white/70 rounded-carte border border-craie-200 p-4 space-y-3">
+      <div className="bg-surface/70 rounded-carte border border-craie-200 p-4 space-y-3">
         <div className="flex gap-3 flex-wrap items-center">
           <input
             value={filtres.recherche}
             onChange={(e) => maj('recherche', e.target.value)}
             placeholder="Rechercher dans les intitulés, entreprises, descriptions…"
-            className="flex-1 min-w-[16rem] rounded-lg border border-craie-300 bg-white px-3.5 py-2
+            className="flex-1 min-w-[16rem] rounded-lg border border-craie-300 bg-surface px-3.5 py-2
                        text-sm transition-colors placeholder:text-encre-300
                        focus:border-ambre-400 focus:outline-none"
           />
@@ -134,7 +134,7 @@ export default function Offres() {
             <select
               value={filtres.tri}
               onChange={(e) => maj('tri', e.target.value)}
-              className="rounded-lg border border-craie-300 px-2.5 py-2 text-sm bg-white
+              className="rounded-lg border border-craie-300 px-2.5 py-2 text-sm bg-surface
                          focus:border-ambre-400 focus:outline-none"
             >
               {TRIS.map((t) => <option key={t.cle} value={t.cle}>{t.libelle}</option>)}
@@ -233,7 +233,7 @@ function Carte({ offre, seuils }: { offre: OffreResume; seuils?: { bon: number; 
   return (
     <Link
       to={`/offres/${offre.id}`}
-      className="group bg-white rounded-carte border border-craie-200 shadow-carte
+      className="group bg-surface rounded-carte border border-craie-200 shadow-carte
                  p-4 flex gap-3.5 transition-all duration-150
                  hover:border-ambre-300 hover:shadow-carte-levee hover:-translate-y-0.5"
     >
@@ -296,7 +296,7 @@ function Pastille({ ton, titre, children }: {
     <span
       title={titre}
       className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[11px]
-                 font-medium bg-white border border-craie-300 text-encre-600"
+                 font-medium bg-surface border border-craie-300 text-encre-600"
     >
       <span className={`w-1.5 h-1.5 rounded-full ${points}`} />
       {children}
@@ -315,7 +315,7 @@ function Message({ ton, children }: { ton: 'vert' | 'ambre' | 'rouge'; children:
 
 function Vide({ filtreActif }: { filtreActif: boolean }) {
   return (
-    <div className="bg-white rounded-lg border border-dashed border-craie-300 p-10 text-center">
+    <div className="bg-surface rounded-lg border border-dashed border-craie-300 p-10 text-center">
       <p className="text-encre-600 font-medium">
         {filtreActif ? 'Aucune offre ne correspond à ces filtres.' : 'Aucune offre en base.'}
       </p>

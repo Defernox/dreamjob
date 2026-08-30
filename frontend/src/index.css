@@ -1,5 +1,37 @@
 @import "tailwindcss";
 
+/* Police auto-hébergée : le projet ne sort pas de la machine, et charger
+   Google Fonts enverrait une requête à chaque ouverture de l'application.
+
+   On déclare seulement le latin et le latin étendu. Le paquet fournit aussi
+   le grec, le cyrillique et le vietnamien : `unicode-range` empêche le
+   navigateur de les télécharger, mais le build les copiait quand même —
+   86 Ko de fichiers que rien ne lira jamais. */
+@font-face {
+  font-family: "IBM Plex Sans Variable";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 100 700;
+  src: url("@fontsource-variable/ibm-plex-sans/files/ibm-plex-sans-latin-wght-normal.woff2")
+    format("woff2-variations");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA,
+    U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193,
+    U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+@font-face {
+  font-family: "IBM Plex Sans Variable";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 100 700;
+  src: url("@fontsource-variable/ibm-plex-sans/files/ibm-plex-sans-latin-ext-wght-normal.woff2")
+    format("woff2-variations");
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF,
+    U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020,
+    U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+
+
 /* ============================================================
    Jetons de design DreamJob
 
@@ -73,6 +105,13 @@
   --color-alerte-800: #6b500d;
   --color-alerte-900: #523d0a;
 
+  /* Surfaces. `surface` porte les cartes, `barre` l'en-tete — qui reste
+     sombre dans les deux thèmes, et ne peut donc pas réutiliser l'encre :
+     celle-ci sert de couleur de TEXTE partout ailleurs, et s'inverserait. */
+  --color-surface: #ffffff;
+  --color-barre: #131c29;
+  --color-barre-texte: #fbfaf8;
+
   --radius-carte: 0.75rem;
 
   /* Ombres à peine perceptibles : la profondeur vient de la couleur des
@@ -87,8 +126,11 @@
 
 body {
   @apply bg-craie-100 text-encre-900 antialiased;
-  font-family: "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system,
-    Roboto, sans-serif;
+  /* IBM Plex Sans : des terminaisons franches et des chiffres tabulaires
+     soignés — un caractère taillé pour le technique et le financier, sans
+     être décoratif. La pile système reste en repli si le woff2 manque. */
+  font-family: "IBM Plex Sans Variable", "IBM Plex Sans", "Segoe UI", system-ui,
+    -apple-system, Roboto, sans-serif;
 }
 
 /* Les chiffres d'un tableau doivent s'aligner : un score, un compteur et
@@ -121,4 +163,83 @@ h3 {
 * {
   scrollbar-width: thin;
   scrollbar-color: var(--color-craie-300) transparent;
+}
+
+
+/* ============================================================
+   Mode sombre
+
+   On ne redéfinit QUE les valeurs des jetons : les composants n'ont pas une
+   seule classe conditionnelle. C'est le bénéfice d'avoir posé des jetons
+   sémantiques plutôt que des couleurs en dur — et la raison pour laquelle
+   les 27 `bg-white` du code d'origine devaient d'abord devenir `bg-surface`.
+
+   Les rampes s'inversent : la craie (fonds) s'assombrit, l'encre (texte)
+   s'éclaircit. L'ambre monte légèrement en luminosité — la même teinte
+   paraît terne sur un fond sombre — sans devenir fluorescente.
+   ============================================================ */
+
+[data-theme="sombre"] {
+  color-scheme: dark;
+
+  --color-surface: #1b212a;
+  --color-barre: #0c1015;
+  --color-barre-texte: #e6eaef;
+
+  /* Craie : les fonds, du plus proche du contenu au plus enfoncé. */
+  --color-craie-50: #171d24;
+  --color-craie-100: #11151b;
+  --color-craie-200: #262e39;
+  --color-craie-300: #333d4a;
+
+  /* Encre : la rampe de texte, inversée. */
+  --color-encre-50: #1d232b;
+  --color-encre-100: #29313b;
+  --color-encre-200: #39424f;
+  --color-encre-300: #4d5764;
+  --color-encre-400: #6a7481;
+  --color-encre-500: #8b95a3;
+  --color-encre-600: #a3adba;
+  --color-encre-700: #bcc4cf;
+  --color-encre-800: #d4dae1;
+  --color-encre-900: #e6eaef;
+  --color-encre-950: #f4f6f8;
+
+  /* Ambre : un ton plus clair, la même teinte paraissant éteinte sur du
+     sombre. Le survol s'éclaircit au lieu de s'assombrir — sur fond noir,
+     un bouton qui fonce en s'approchant du doigt paraît se désactiver. */
+  --color-ambre-100: #3a2a1d;
+  --color-ambre-200: #55391f;
+  --color-ambre-300: #7a5330;
+  --color-ambre-400: #d8813f;
+  --color-ambre-500: #e78c4c;
+  --color-ambre-600: #f09a5e;
+  --color-ambre-700: #f4b184;
+  --color-ambre-800: #f7c9a8;
+
+  /* Verdict : plus lumineux, sans quoi le vert profond disparaît. */
+  --color-verdict-fort: #2eb894;
+  --color-verdict-moyen: #e08a4a;
+  --color-verdict-faible: #79838f;
+
+  /* Succès et alerte : les fonds s'assombrissent, les textes s'éclaircissent. */
+  --color-succes-50: #122420;
+  --color-succes-100: #17332c;
+  --color-succes-200: #214a3f;
+  --color-succes-600: #2eb894;
+  --color-succes-700: #4cc9a8;
+  --color-succes-800: #8eddc7;
+  --color-succes-900: #bdeddd;
+
+  --color-alerte-50: #241f10;
+  --color-alerte-100: #332c17;
+  --color-alerte-200: #4a3f1f;
+  --color-alerte-600: #d4b352;
+  --color-alerte-700: #e2c674;
+  --color-alerte-800: #efdca4;
+  --color-alerte-900: #f7ecc9;
+
+  /* Sur fond sombre, une ombre grise ne se voit pas : il faut du noir franc. */
+  --shadow-carte: 0 1px 2px 0 rgb(0 0 0 / 0.35);
+  --shadow-carte-levee: 0 6px 20px -6px rgb(0 0 0 / 0.6);
 }

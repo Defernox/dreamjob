@@ -366,7 +366,7 @@ function Diagnostic() {
   if (!sante) return null
 
   return (
-    <details className="bg-white rounded-carte border border-craie-200 shadow-carte p-5">
+    <details className="bg-surface rounded-carte border border-craie-200 shadow-carte p-5">
       <summary className="font-semibold cursor-pointer select-none">Diagnostic de l'installation</summary>
       <dl className="mt-4 divide-y divide-craie-200 text-sm border-t border-craie-200">
         <Ligne libelle="Base de données" valeur={sante.base_donnees} ok={sante.base_existe} />

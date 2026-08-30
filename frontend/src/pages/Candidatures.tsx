@@ -87,7 +87,7 @@ export default function Candidatures() {
         </Encart>
       )}
 
-      <div className="bg-white rounded-carte border border-craie-200 shadow-carte p-3 flex gap-3 flex-wrap">
+      <div className="bg-surface rounded-carte border border-craie-200 shadow-carte p-3 flex gap-3 flex-wrap">
         <input
           value={recherche}
           onChange={(e) => setRecherche(e.target.value)}
@@ -97,7 +97,7 @@ export default function Candidatures() {
         <select
           value={statut}
           onChange={(e) => setStatut(e.target.value)}
-          className="rounded-md border border-craie-300 px-2 py-1.5 text-sm bg-white"
+          className="rounded-md border border-craie-300 px-2 py-1.5 text-sm bg-surface"
         >
           <option>{TOUS}</option>
           {reglages?.vocabulaires.statuts.map((s) => <option key={s}>{s}</option>)}
@@ -107,7 +107,7 @@ export default function Candidatures() {
       {total === 0 ? (
         <Vide />
       ) : (
-        <div className="bg-white rounded-carte border border-craie-200 shadow-carte overflow-x-auto">
+        <div className="bg-surface rounded-carte border border-craie-200 shadow-carte overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="text-left text-xs uppercase tracking-wide text-encre-500 border-b border-craie-200">
@@ -199,7 +199,7 @@ function Ligne({ candidature, statuts, seuils, onChange, onSupprimer }: {
         <select
           value={candidature.statut}
           onChange={(e) => onChange({ statut: e.target.value })}
-          className="rounded border border-craie-300 px-1.5 py-1 text-sm bg-white w-32"
+          className="rounded border border-craie-300 px-1.5 py-1 text-sm bg-surface w-32"
         >
           {statuts.map((s) => <option key={s}>{s}</option>)}
         </select>
@@ -259,7 +259,7 @@ function Encart({ ton, children }: { ton: 'vert' | 'ambre' | 'rouge'; children: 
 
 function Vide() {
   return (
-    <div className="bg-white rounded-lg border border-dashed border-craie-300 p-10 text-center">
+    <div className="bg-surface rounded-lg border border-dashed border-craie-300 p-10 text-center">
       <p className="text-encre-600 font-medium">Aucune candidature enregistrée.</p>
       <p className="text-sm text-encre-500 mt-1">
         Ouvrez une offre et cliquez sur « Postuler » — la candidature apparaîtra ici.

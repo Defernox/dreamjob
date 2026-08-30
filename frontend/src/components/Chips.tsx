@@ -39,7 +39,7 @@ export function GroupeChips({ titre, options, compteurs, valeurs, onChange }: {
               className={`px-2.5 py-1 rounded-full text-[13px] border transition-all ${
                 actif
                   ? 'bg-ambre-500 text-white border-ambre-500 shadow-carte'
-                  : 'bg-white text-encre-600 border-craie-300 hover:border-ambre-300 hover:text-encre-900'
+                  : 'bg-surface text-encre-600 border-craie-300 hover:border-ambre-300 hover:text-encre-900'
               }`}
             >
               {o}

@@ -4,6 +4,18 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>DreamJob</title>
+    <script>
+      // Avant tout rendu : sans cela, la page apparaît en clair une fraction
+      // de seconde avant de basculer, et le clignotement se voit.
+      (function () {
+        try {
+          var choix = localStorage.getItem('dreamjob.theme')
+          var sombre = choix === 'sombre' || (!choix &&
+            window.matchMedia('(prefers-color-scheme: dark)').matches)
+          document.documentElement.dataset.theme = sombre ? 'sombre' : 'clair'
+        } catch (e) { /* navigation privée : on reste en clair */ }
+      })()
+    </script>
   </head>
   <body>
     <div id="root"></div>

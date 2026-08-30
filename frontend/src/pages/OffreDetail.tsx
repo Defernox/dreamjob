@@ -35,7 +35,7 @@ export default function OffreDetail() {
 
       <div className="mt-4 grid gap-5 lg:grid-cols-[1fr_20rem] items-start">
         <div className="space-y-5">
-          <div className="bg-white rounded-carte border border-craie-200 shadow-carte p-5">
+          <div className="bg-surface rounded-carte border border-craie-200 shadow-carte p-5">
             <div className="flex gap-4">
               <ScoreBadge score={offre.score} seuils={reglages?.scoring.seuils} taille="grand" />
               <div className="min-w-0">
@@ -76,7 +76,7 @@ export default function OffreDetail() {
             </div>
           </div>
 
-          <section className="bg-white rounded-carte border border-craie-200 shadow-carte p-5">
+          <section className="bg-surface rounded-carte border border-craie-200 shadow-carte p-5">
             <h2 className="font-semibold mb-4">Détail du score</h2>
             {offre.score === null ? (
               <p className="text-sm text-encre-500">
@@ -98,7 +98,7 @@ export default function OffreDetail() {
             )}
           </section>
 
-          <section className="bg-white rounded-carte border border-craie-200 shadow-carte p-5">
+          <section className="bg-surface rounded-carte border border-craie-200 shadow-carte p-5">
             <h2 className="font-semibold mb-3">Description</h2>
             {/* max-w-prose : au-dela d'environ 75 caracteres, l'oeil perd la
                 ligne suivante en revenant a la marge. Une annonce fait
@@ -109,7 +109,7 @@ export default function OffreDetail() {
           </section>
         </div>
 
-        <aside className="bg-white rounded-carte border border-craie-200 shadow-carte p-5 space-y-4 lg:sticky lg:top-5">
+        <aside className="bg-surface rounded-carte border border-craie-200 shadow-carte p-5 space-y-4 lg:sticky lg:top-5">
           <div>
             <h2 className="font-semibold">Actions</h2>
             <p className="text-sm text-encre-500 mt-0.5">
@@ -162,7 +162,7 @@ export default function OffreDetail() {
                     <p className="mt-1 flex flex-wrap gap-1">
                       {documents.data.mots_cles_non_couverts.map((m) => (
                         <span key={m}
-                              className="rounded bg-white/70 px-1.5 py-0.5 text-succes-800">
+                              className="rounded bg-surface/70 px-1.5 py-0.5 text-succes-800">
                           {m}
                         </span>
                       ))}

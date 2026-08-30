@@ -130,9 +130,29 @@ l'icône. Sur la fiche détail, le verdict est doublé **en toutes lettres** :
 pays alignés forment un mur qu'on ne parcourt pas. Les options actives sont
 remontées en tête : replié, on doit voir ce qu'on filtre.
 
-**Aucune police n'est téléchargée.** Le projet ne sort pas de la machine ;
-charger Google Fonts enverrait une requête à chaque ouverture. La hiérarchie
-vient du poids, de l'interlettrage et de l'espacement, pas d'un caractère exotique.
+**La police est auto-hébergée.** IBM Plex Sans, en variable, servie depuis
+`node_modules` via npm — jamais depuis Google Fonts, qui enverrait une requête à
+chaque ouverture alors que le projet ne sort pas de la machine. Seuls le latin et
+le latin étendu sont déclarés : le paquet fournit aussi le grec, le cyrillique et
+le vietnamien, que `unicode-range` empêche de télécharger mais que le build
+copiait quand même. 76 Ko au total.
+
+**Mode sombre : on ne redéfinit que les valeurs des jetons.** Pas une seule
+classe conditionnelle dans les composants — c'est tout l'intérêt d'avoir posé des
+jetons sémantiques. Deux précautions ont été nécessaires :
+
+- les **27 `bg-white`** codés en dur devaient d'abord devenir `bg-surface`, sans
+  quoi les cartes seraient restées blanches ;
+- l'en-tête utilisait `bg-encre-950`, or l'encre sert de couleur de **texte**
+  partout ailleurs et s'inverse : la barre serait devenue blanche. D'où
+  `--color-barre`, qui reste sombre dans les deux thèmes — et le voile de
+  l'onglet actif reste `bg-white/10`, pas `bg-surface`.
+
+Le thème a **trois** états, pas deux : « système » suit Windows et reste le
+défaut. Un script en tête d'`index.html` applique le choix avant tout rendu,
+sinon la page apparaît en clair une fraction de seconde avant de basculer.
+
+Contrastes mesurés sur les deux thèmes : de 5,3 à 15,2 pour un seuil AA à 4,5.
 
 ---
 

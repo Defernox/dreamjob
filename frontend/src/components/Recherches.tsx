@@ -32,7 +32,7 @@ export function Recherches() {
   }
 
   return (
-    <details className="bg-white rounded-carte border border-craie-200 shadow-carte px-4 py-3">
+    <details className="bg-surface rounded-carte border border-craie-200 shadow-carte px-4 py-3">
       <summary className="cursor-pointer select-none text-sm font-medium flex items-center gap-2">
         Recherches enregistrées
         <span className="text-encre-400 font-normal">

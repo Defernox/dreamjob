@@ -1,6 +1,7 @@
 import { NavLink, Outlet } from 'react-router-dom'
 import { useStatistiques } from '../api/offres'
 import { BandeauSante } from './BandeauSante'
+import { BasculeTheme } from './BasculeTheme'
 import { Marque } from './Marque'
 
 const onglets = [
@@ -18,7 +19,7 @@ export function Layout() {
       {/* En-tête sombre : il ancre la page et détache le contenu, qui est
           clair. Une barre blanche sur fond clair laissait l'application
           sans repère visuel — tout flottait à la même profondeur. */}
-      <header className="bg-encre-950 text-craie-50">
+      <header className="bg-barre text-barre-texte">
         <div className="mx-auto max-w-[1600px] px-6 h-14 flex items-center gap-8">
           <span className="flex items-center gap-2.5 font-semibold text-[17px] tracking-tight">
             <Marque />
@@ -53,6 +54,7 @@ export function Layout() {
               </NavLink>
             ))}
           </nav>
+          <BasculeTheme />
         </div>
       </header>
       <BandeauSante />

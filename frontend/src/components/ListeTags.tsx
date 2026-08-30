@@ -68,7 +68,7 @@ export function ChoixMultiple({ options, valeurs, onChange }: {
             className={`px-2.5 py-1 rounded-full text-sm border transition-colors ${
               actif
                 ? 'bg-ambre-500 text-white border-ambre-500'
-                : 'bg-white text-encre-600 border-craie-300 hover:border-encre-400'
+                : 'bg-surface text-encre-600 border-craie-300 hover:border-encre-400'
             }`}
           >
             {o}
@@ -124,7 +124,7 @@ export function ChoixMultipleGroupe({ zones, valeurs, onChange }: {
                   className={`px-2.5 py-1 rounded-full text-sm border transition-colors ${
                     valeurs.includes(p)
                       ? 'bg-ambre-500 text-white border-ambre-500'
-                      : 'bg-white text-encre-600 border-craie-300 hover:border-encre-400'
+                      : 'bg-surface text-encre-600 border-craie-300 hover:border-encre-400'
                   }`}
                 >
                   {p}

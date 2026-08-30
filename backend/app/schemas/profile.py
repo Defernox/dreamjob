@@ -123,6 +123,15 @@ class ProfilMaj(ProfilStructure):
         default="", description="Où j'en suis aujourd'hui, en une ligne")
     disponibilite: str = Field(
         default="", description="Laissé vide, aucune disponibilité ne sera annoncée")
+    # Saisi à la main, et non déduit des expériences : les dates d'un CV sont
+    # souvent partielles (« Septembre 2021 » sans année de fin), et les périodes
+    # se chevauchent — une somme automatique se tromperait sans le dire. Zéro
+    # signifie « non renseigné » : le critère de séniorité reste alors non
+    # évaluable et son poids est redistribué, plutôt que de noter le candidat
+    # comme un débutant.
+    annees_experience: int = Field(
+        default=0, ge=0, le=60,
+        description="Années d'expérience professionnelle, 0 si non renseigné")
     pays_acceptes: list[str] = Field(default_factory=list)
     contrats_acceptes: list[str] = Field(default_factory=list)
 

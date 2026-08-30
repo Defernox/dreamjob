@@ -7,13 +7,23 @@
 scoring:
   # Version des règles. Incrémentée à chaque changement de poids :
   # sert à repérer les offres dont le score doit être recalculé.
-  version: 4
+  version: 6
+  # Competences + secteur = 60 % : c'est le metier qui decide, le reste filtre.
+  # Les trois criteres administratifs (lieu, langue, contrat) ont ete raboches
+  # pour financer cette hausse ; les deux departageurs gardent l'essentiel du
+  # leur, sans quoi le mur d'egalites reviendrait.
   poids:            # total attendu : 100
     competences: 35
     secteur: 25
-    pays: 15
-    langue: 15
-    contrat: 10
+    # « pays » mesure en fait le LIEU, sur quatre paliers : votre ville, meme
+    # pays, pays accepte a l'etranger, refuse.
+    pays: 12
+    # Les deux derniers sont des departageurs : peu de poids, mais ils varient
+    # beaucoup la ou langue et contrat sont presque constants.
+    seniorite: 8
+    langue: 7
+    contrat: 8
+    fraicheur: 5
   seuils:           # couleur de la pastille dans l'interface
     bon: 75         # vert   >= 75
     moyen: 50       # orange 50-74, gris en dessous

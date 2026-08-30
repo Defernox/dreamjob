@@ -9,6 +9,8 @@ from __future__ import annotations
 
 import logging
 
+from datetime import timedelta
+
 from sqlalchemy import func
 from sqlmodel import Session, select
 
@@ -74,6 +76,11 @@ def scorer_toutes(session: Session, *, forcer: bool = False) -> dict:
         # rien : l'offre n'était pas revisitée, donc `signaux_de` n'était jamais
         # rappelé et les signaux périmés restaient en base. `is_(None)` couvre à
         # la fois une colonne vide et un dictionnaire sans clé `version`.
+        # Le critère de fraîcheur dépend du jour : un score stocké vieillit.
+        # On rescore donc ce qui date de plus d'un jour — l'opération prend une
+        # seconde pour 2 490 offres, la fraîcheur peut bien la coûter.
+        perime = maintenant() - timedelta(days=1)
+
         version_signaux = func.json_extract(Offer.extraction, "$.version")
         requete = requete.where(
             Offer.score.is_(None)
@@ -81,6 +88,8 @@ def scorer_toutes(session: Session, *, forcer: bool = False) -> dict:
             | (Offer.poids_version != version)
             | version_signaux.is_(None)
             | (version_signaux != VERSION_SIGNAUX)
+            | Offer.scored_at.is_(None)
+            | (Offer.scored_at < perime)
         )
 
     offres = list(session.exec(requete).all())

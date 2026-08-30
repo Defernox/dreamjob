@@ -1,11 +1,18 @@
 import { verdictScore } from '../lib/format'
 
+/** L'ordre est celui de `scoring/score.py:CRITERES`, et la liste doit rester
+ *  complète : le composant n'affiche QUE ce qui figure ici. Un critère ajouté
+ *  au back sans l'être ici fait baisser le score sans que rien ne l'explique. */
 const LIBELLES: Record<string, string> = {
   competences: 'Compétences',
   secteur: 'Secteur',
-  pays: 'Pays',
+  // La clé reste `pays`, mais le critère compte quatre paliers depuis qu'il
+  // distingue votre ville du reste du pays : « Lieu » dit ce qu'il mesure.
+  pays: 'Lieu',
+  seniorite: 'Séniorité',
   langue: 'Langue',
   contrat: 'Contrat',
+  fraicheur: 'Fraîcheur',
 }
 
 /** Une barre par critère : la valeur obtenue, et le poids du critère.

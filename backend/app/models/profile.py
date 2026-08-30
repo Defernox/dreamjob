@@ -41,6 +41,11 @@ class Profile(SQLModel, table=True):
     # disponibilité — une date inventée est une faute. Renseigné, le dernier
     # paragraphe peut enfin conclure.
     disponibilite: str = ""
+    # Années d'expérience professionnelle, pour le critère de séniorité. Une
+    # annonce qui réclame dix ans quand on en a trois n'est pas une bonne
+    # offre, si bien notée soit-elle par ailleurs. À 0, le critère n'est pas
+    # évalué : on ne devine pas un parcours à partir de dates en texte libre.
+    annees_experience: int = 0
 
     # ["communication digitale", "gestion de projet"]
     secteurs: list = Field(default_factory=list, sa_column=colonne_json())

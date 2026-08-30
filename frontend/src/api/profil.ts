@@ -34,6 +34,8 @@ export type Profil = {
   situation_actuelle: string
   /** Laissé vide, la lettre a interdiction d'annoncer une disponibilité. */
   disponibilite: string
+  /** 0 = non renseigné : la séniorité n'est alors pas notée, pas notée zéro. */
+  annees_experience: number
   resume: string
   secteurs: string[]
   langues: Langue[]

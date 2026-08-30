@@ -65,8 +65,10 @@ def test_changer_les_poids_change_le_score_sans_rien_reextraire():
     o = offre()
     signaux = extraire(o)              # extraction faite UNE fois
 
-    tout_competences = PoidsScoring(competences=100, secteur=0, pays=0, langue=0, contrat=0)
-    tout_pays = PoidsScoring(competences=0, secteur=0, pays=100, langue=0, contrat=0)
+    zero = dict(competences=0, secteur=0, pays=0, seniorite=0, langue=0,
+                contrat=0, fraicheur=0)
+    tout_competences = PoidsScoring(**{**zero, "competences": 100})
+    tout_pays = PoidsScoring(**{**zero, "pays": 100})
 
     a = calculer(profil(), o, signaux, tout_competences)
     b = calculer(profil(), o, signaux, tout_pays)
@@ -204,7 +206,10 @@ def test_un_critere_non_evaluable_ne_penalise_pas_l_offre():
 def test_un_profil_totalement_vide_donne_zero_sans_planter():
     resultat = scorer(p=Profile())
     assert resultat.score == 0.0
-    assert set(resultat.non_evaluables) == {"competences", "secteur", "pays", "langue", "contrat"}
+    # La fraicheur ne depend pas du profil : elle reste evaluable, mais elle
+    # est exclue du fond et ne peut donc pas porter un score a elle seule.
+    assert set(resultat.non_evaluables) == {"competences", "secteur", "pays",
+                                            "seniorite", "langue", "contrat"}
 
 
 def test_une_offre_trop_courte_ne_perd_pas_de_points_sur_la_langue():

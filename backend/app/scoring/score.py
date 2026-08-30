@@ -14,16 +14,27 @@ lacune du profil ; lui donner 100 fabriquerait un score flatteur.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from datetime import datetime
+import re
 
 from rapidfuzz import fuzz, process
 
 from ..config import PoidsScoring
 from ..models import Offer, Profile
+from ..models.base import maintenant
 from .extraction import Signaux
 from .synonymes import present as synonyme_present
 from .texte import mots, poids_jeton
 
-CRITERES = ("competences", "secteur", "pays", "langue", "contrat")
+CRITERES = ("competences", "secteur", "pays", "seniorite", "langue",
+            "contrat", "fraicheur")
+
+# La fraîcheur ne dit rien de l'ADÉQUATION : elle mesure si l'annonce est encore
+# ouverte, pas si le poste convient. Elle est donc exclue du fond — sans quoi un
+# profil vide, dont aucun critère de fond n'est évaluable, verrait la
+# redistribution lui donner tout le poids et sortir un score de 100 sur une
+# offre que personne n'a pu juger.
+CRITERES_DE_FOND = tuple(c for c in CRITERES if c != "fraicheur")
 
 # Une annonce ne cite jamais tout un profil : on mesure la QUALITÉ des meilleures
 # correspondances, pas la proportion de compétences citées. Sans quoi le score
@@ -55,6 +66,103 @@ CREDIT_SECTEUR_FAIBLE = 0.6
 # poste de pharmacovigilance. Dans l'intitulé, en revanche, le même mot reste un
 # signal fort — c'est le sujet de l'annonce.
 CREDIT_SECTEUR_UN_MOT = 0.3
+
+# --- Séniorité ---------------------------------------------------------------
+# Une annonce qui réclame dix ans d'expérience quand on en a trois n'est pas une
+# bonne offre, si bien notée soit-elle par ailleurs. Le signal ne couvre qu'une
+# annonce sur dix : le reste du temps le critère n'est pas évaluable, et son
+# poids est redistribué — c'est exactement l'usage prévu pour ce mécanisme.
+
+_ANNEES_EXIGEES = re.compile(
+    r"(\d{1,2})\s*(?:\+|ans?|années?)\s*(?:\+)?\s*(?:minimum|mini|au moins)?\s*"
+    r"(?:d[e'’]\s*)?(?:exp[ée]rience|exp\b)", re.IGNORECASE)
+
+_JUNIOR = re.compile(
+    r"\bjunior\b|\bd[ée]butant|jeune dipl[oô]m|premi[eè]re exp[ée]rience|"
+    r"sans exp[ée]rience|profil junior", re.IGNORECASE)
+_SENIOR = re.compile(
+    r"\bsenior\b|\bconfirm[ée]s?\b|\bexp[ée]riment[ée]s?\b|\bexpert\b|"
+    r"\bdirecteur\b|\bhead of\b|\bchief\b", re.IGNORECASE)
+
+# Écart toléré avant de pénaliser : réclamer un an de plus que ce qu'on a ne
+# ferme aucune porte, en réclamer cinq de plus, si.
+ECART_INDIFFERENT = 1
+ECART_REDHIBITOIRE = 6
+
+# Sans années chiffrées, on se rabat sur le vocabulaire. Un profil junior face à
+# une annonce « senior » perd, mais pas tout : les intitulés mentent souvent.
+SENIORITE_VOCABULAIRE_CONTRE = 40.0
+SENIORITE_VOCABULAIRE_POUR = 100.0
+
+# Au-dessous, on se considère junior. Volontairement bas : c'est le seuil à
+# partir duquel une annonce « confirmé » cesse d'être hors de portée.
+ANNEES_JUNIOR = 4
+
+
+def score_seniorite(profil: Profile, offre: Offer) -> float | None:
+    """L'offre est-elle à la portée du candidat, en termes d'ancienneté ?
+
+    Deux signaux, dans cet ordre : les années chiffrées quand l'annonce en
+    donne, le vocabulaire sinon. Ni l'un ni l'autre n'étant présent, le critère
+    n'est pas évaluable — et son poids part sur les autres.
+    """
+    if not profil.annees_experience:
+        return None
+
+    texte = f"{offre.titre or ''} {offre.description_brute or ''}"
+
+    exigees = [int(m.group(1)) for m in _ANNEES_EXIGEES.finditer(texte)]
+    if exigees:
+        # La plus forte exigence décide : c'est elle qui filtrera la candidature.
+        ecart = max(exigees) - profil.annees_experience
+        if ecart <= ECART_INDIFFERENT:
+            return 100.0
+        if ecart >= ECART_REDHIBITOIRE:
+            return 0.0
+        reste = (ECART_REDHIBITOIRE - ecart) / (ECART_REDHIBITOIRE - ECART_INDIFFERENT)
+        return 100.0 * reste
+
+    junior = profil.annees_experience < ANNEES_JUNIOR
+    if _SENIOR.search(texte):
+        return SENIORITE_VOCABULAIRE_CONTRE if junior else SENIORITE_VOCABULAIRE_POUR
+    if _JUNIOR.search(texte):
+        return SENIORITE_VOCABULAIRE_POUR if junior else SENIORITE_VOCABULAIRE_CONTRE
+    return None
+
+
+# --- Fraîcheur ----------------------------------------------------------------
+# Une annonce de septembre 2023 notait exactement comme celle de ce matin. Le
+# signal est renseigné sur 100 % des offres et s'étale de 0 à 1 072 jours :
+# c'est le meilleur départageur dont on dispose.
+#
+# **Ce critère dépend du jour où l'on score.** La promesse « mêmes entrées, même
+# score » tient toujours — la date du jour EST une entrée — mais un score stocké
+# vieillit. `services/scoring.py` rescore donc ce qui a plus d'un jour ; sur
+# 2 490 offres l'opération prend une seconde.
+FRAICHEUR_PLEINE_JOURS = 7      # une offre de la semaine vaut le maximum
+FRAICHEUR_NULLE_JOURS = 120     # au-delà, elle n'est probablement plus ouverte
+
+
+def score_fraicheur(offre: Offer, aujourd_hui: datetime | None = None) -> float | None:
+    """Décroissance linéaire entre une semaine et quatre mois.
+
+    Linéaire et non par paliers : une valeur continue départage, des paliers
+    recréeraient les égalités qu'on cherche à défaire.
+    """
+    publiee = offre.date_publication or offre.date_recuperation
+    if publiee is None:
+        return None
+    # `maintenant()` et non `datetime.utcnow()` : le second est déprécié
+    # depuis Python 3.12, et c'est déjà l'horloge de toute la base — les
+    # dates stockées sont en UTC naïf, la comparaison doit l'être aussi.
+    jours = ((aujourd_hui or maintenant()) - publiee).days
+    if jours <= FRAICHEUR_PLEINE_JOURS:
+        return 100.0
+    if jours >= FRAICHEUR_NULLE_JOURS:
+        return 0.0
+    reste = (FRAICHEUR_NULLE_JOURS - jours) / (FRAICHEUR_NULLE_JOURS - FRAICHEUR_PLEINE_JOURS)
+    return 100.0 * reste
+
 
 # Le niveau est saisi en texte libre : il faut couvrir les deux nombres et les
 # deux langues, sans quoi une saisie non reconnue tombe sur le repli.
@@ -146,6 +254,9 @@ def score_competences(profil: Profile, signaux: Signaux, resultat: Resultat,
     if not profil.skills:
         return None
 
+    def _nb(skills: list[dict], *, ancree: bool) -> int:
+        return sum(1 for s in skills if bool(s.get("ancree")) is ancree and s.get("nom"))
+
     if vocabulaire is None:
         vocabulaire = set(signaux.vocabulaire)
     meilleure_ancree = 0.0
@@ -178,13 +289,24 @@ def score_competences(profil: Profile, signaux: Signaux, resultat: Resultat,
             somme_autres += trouvee
             resultat.autres_trouvees.append(nom)
 
-    part_autres = min(1.0, somme_autres / NB_AUTRES_ATTENDUES)
+    # Le dénominateur est ce que le PROFIL peut offrir, pas un idéal abstrait.
+    #
+    # Mesuré : un profil de six compétences, dont deux seulement non ancrées, ne
+    # pouvait jamais dépasser 2/3 sur ce quart du score — quelle que soit
+    # l'offre. Le critère plafonnait à 77,6 sur 2 490 annonces là où tous les
+    # autres atteignent 100, ce qui fausse la moyenne pondérée : lui donner
+    # 35 % du poids revenait à réserver des points que personne ne peut gagner.
+    # On pénalisait le candidat pour la forme de son profil, pas pour
+    # l'adéquation de l'annonce.
+    attendues_autres = min(NB_AUTRES_ATTENDUES, _nb(profil.skills, ancree=False)) or 1
+    part_autres = min(1.0, somme_autres / attendues_autres)
     if not a_des_ancrees:
         return 100.0 * part_autres
 
     # La meilleure ancrée est déjà comptée par `meilleure_ancree` : on ne
-    # dénombre ici que les SUIVANTES.
-    part_ancrees = min(1.0, max(0, ancrees_trouvees - 1) / NB_ANCREES_ATTENDUES)
+    # dénombre ici que les SUIVANTES — d'où le « - 1 » des deux côtés.
+    attendues_ancrees = min(NB_ANCREES_ATTENDUES, _nb(profil.skills, ancree=True) - 1) or 1
+    part_ancrees = min(1.0, max(0, ancrees_trouvees - 1) / attendues_ancrees)
     return 100.0 * (
         PART_MEILLEURE_ANCREE * meilleure_ancree
         + PART_AUTRES_ANCREES * part_ancrees
@@ -349,14 +471,21 @@ def calculer(
         "competences": score_competences(profil, signaux, resultat, vocabulaire),
         "secteur": score_secteur(profil, signaux, resultat, vocabulaire),
         "pays": score_pays(profil, offre),
+        "seniorite": score_seniorite(profil, offre),
         "langue": score_langue(profil, signaux),
         "contrat": score_contrat(profil, offre),
+        "fraicheur": score_fraicheur(offre),
     }
 
     normalises = poids.normalises()
     evaluables = {c: v for c, v in sous_scores.items() if v is not None}
     resultat.non_evaluables = [c for c in CRITERES if sous_scores[c] is None]
     resultat.detail = {c: round(v, 1) for c, v in evaluables.items()}
+
+    # Aucun critère de fond évaluable : il n'y a rien à dire de cette offre, et
+    # la fraîcheur seule ne fera pas un score.
+    if not any(sous_scores[c] is not None for c in CRITERES_DE_FOND):
+        return resultat
 
     poids_utile = sum(normalises[c] for c in evaluables)
     if poids_utile == 0:

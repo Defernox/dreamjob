@@ -21,26 +21,37 @@ load_dotenv(RACINE / ".env")
 
 
 class PoidsScoring(BaseModel):
+    """Sept critères. Les deux derniers sont des départageurs : ils portent peu
+    de poids mais varient beaucoup, là où langue et contrat sont presque
+    constants. C'est la variance, pas le poids, qui défait les égalités."""
+
     competences: int = 35
     secteur: int = 25
-    pays: int = 15
-    langue: int = 15
-    contrat: int = 10
+    pays: int = 12
+    seniorite: int = 8
+    langue: int = 7
+    contrat: int = 8
+    fraicheur: int = 5
 
     @property
     def total(self) -> int:
-        return self.competences + self.secteur + self.pays + self.langue + self.contrat
+        return sum(self.en_dict().values())
+
+    def en_dict(self) -> dict[str, int]:
+        return {
+            "competences": self.competences,
+            "secteur": self.secteur,
+            "pays": self.pays,
+            "seniorite": self.seniorite,
+            "langue": self.langue,
+            "contrat": self.contrat,
+            "fraicheur": self.fraicheur,
+        }
 
     def normalises(self) -> dict[str, float]:
         """Poids ramenés à une somme de 1.0, quelle que soit la saisie."""
         total = self.total or 1
-        return {
-            "competences": self.competences / total,
-            "secteur": self.secteur / total,
-            "pays": self.pays / total,
-            "langue": self.langue / total,
-            "contrat": self.contrat / total,
-        }
+        return {cle: valeur / total for cle, valeur in self.en_dict().items()}
 
 
 class SeuilsScoring(BaseModel):

@@ -20,3 +20,9 @@ data/
 
 # Modèle de CV personnel
 templates/cv_modele.docx
+
+# Dossiers de candidature générés (CV, lettres, offre.json)
+# Ils portent des documents personnels nominatifs : jamais versionnés.
+# Le chemin par défaut est ~/Jobscout, mais un lancement depuis la racine du
+# dépôt le résout ici — d'où cette ligne, qui n'est pas superflue.
+Jobscout/

@@ -97,6 +97,38 @@ def _fragment_langue(resultat: Resultat, profil: Profile, signaux: Signaux) -> s
     return f"langue {libelle} non maîtrisée"
 
 
+def _fragment_seniorite(resultat: Resultat) -> str:
+    """Le critère n'est évaluable qu'une fois sur dix : le dire quand il l'est
+    vaut mieux que de laisser croire qu'il a compté."""
+    if "seniorite" in resultat.non_evaluables:
+        return ""
+    valeur = resultat.detail.get("seniorite", 0)
+    if valeur >= 100:
+        return "séniorité en phase"
+    if valeur >= 50:
+        return "poste un peu au-dessus"
+    return "poste nettement au-dessus de votre ancienneté"
+
+
+def _fragment_fraicheur(resultat: Resultat) -> str:
+    if "fraicheur" in resultat.non_evaluables:
+        return ""
+    valeur = resultat.detail.get("fraicheur", 0)
+    # Les seuils sont ceux de la décroissance, pas des chiffres ronds : à 50 on
+    # est déjà à 63 jours, si bien qu'une annonce de neuf jours notée 99
+    # s'annonçait « ce mois-ci », juste sous une barre pleine. Ici 75 ≈ 35
+    # jours et 30 ≈ 86 jours.
+    if valeur >= 100:
+        return "publiée cette semaine"
+    if valeur >= 75:
+        return "publiée ce mois-ci"
+    if valeur >= 30:
+        return "publiée il y a plus d'un mois"
+    if valeur > 0:
+        return "annonce déjà ancienne"
+    return "annonce probablement close"
+
+
 def _fragment_contrat(resultat: Resultat, profil: Profile, offre: Offer) -> str:
     if "contrat" in resultat.non_evaluables:
         return "contrat non évalué"
@@ -117,10 +149,14 @@ def expliquer(resultat: Resultat, profil: Profile, offre: Offer, signaux: Signau
             _fragment_pays(resultat, offre),
             _fragment_contrat(resultat, profil, offre),
         ])
-    return SEPARATEUR.join([
+    # Les fragments vides — critères non évaluables — sont retirés plutôt
+    # qu'affichés : une explication n'a pas à énumérer ce qu'elle ignore.
+    return SEPARATEUR.join(filter(None, [
         _fragment_secteur(resultat),
         _fragment_competences(resultat),
         _fragment_pays(resultat, offre),
+        _fragment_seniorite(resultat),
         _fragment_langue(resultat, profil, signaux),
         _fragment_contrat(resultat, profil, offre),
-    ])
+        _fragment_fraicheur(resultat),
+    ]))

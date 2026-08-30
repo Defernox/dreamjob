@@ -14,6 +14,17 @@ import { Bouton, Champ, Section, ZoneTexte } from '../components/champs'
 import { ChoixMultipleGroupe, ChoixOrdonne, ListeTags } from '../components/ListeTags'
 import { dateHeureFr } from '../lib/format'
 
+/** Ramène une saisie libre dans les bornes du schéma (0 à 60).
+ *
+ * Sans cela, un doigt qui glisse sur le pavé numérique fait échouer
+ * l'enregistrement du profil ENTIER avec une 422 que l'écran n'explique pas.
+ * Une saisie vide vaut 0, c'est-à-dire « non renseigné ».
+ */
+function bornerAnnees(saisie: string): number {
+  const n = Math.trunc(Number(saisie))
+  return Number.isFinite(n) ? Math.min(60, Math.max(0, n)) : 0
+}
+
 /** Remplace un élément d'une liste sans muter l'original. */
 function remplacer<T>(liste: T[], index: number, patch: Partial<T>): T[] {
   return liste.map((e, i) => (i === index ? { ...e, ...patch } : e))
@@ -255,6 +266,19 @@ export default function Profil() {
           </Bouton>
         }
       >
+        <div className="mb-4 max-w-xs">
+          <Champ
+            libelle="Années d'expérience"
+            type="number"
+            valeur={profil.annees_experience ? String(profil.annees_experience) : ''}
+            onChange={(v) => maj('annees_experience', bornerAnnees(v))}
+            placeholder="Vide : la séniorité ne sera pas notée"
+          />
+          <p className="mt-1 text-xs text-encre-500">
+            Sert à écarter les postes très au-dessus de votre ancienneté (10 % du score).
+            Laissé vide, le critère n'est pas évalué — vous n'êtes pas noté débutant.
+          </p>
+        </div>
         {profil.experiences.length === 0 ? (
           <Vide>Aucune expérience.</Vide>
         ) : (

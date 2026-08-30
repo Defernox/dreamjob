@@ -39,6 +39,21 @@ log = logging.getLogger("dreamjob.cv")
 MAX_PUCES = 5
 MAX_COMPETENCES_PAR_LIGNE = 8
 
+# --- Tenir sur une page ------------------------------------------------------
+# Un CV de deux pages n'est pas une convention discutable : le recruteur lit la
+# première, et la seconde arrive après sa décision.
+#
+# On NE DEVINE PAS la hauteur rendue. Une première version estimait un nombre de
+# lignes à partir du nombre de caractères : elle annonçait 55 lignes pour un CV
+# qui en occupait 47, et rabotait donc les expériences à une seule puce chacune
+# — un CV mutilé pour un débordement qui n'existait pas. La mise en page dépend
+# de la police, des marges et des césures du modèle ; seul le rendu la connaît.
+#
+# `dossier.py` mesure donc le PDF réellement produit et rappelle `rendre` avec
+# moins de puces si la page déborde. La première conversion était de toute façon
+# nécessaire : dans le cas courant, la mesure ne coûte rien.
+PUCES_PAR_ESSAI = (MAX_PUCES, 3, 2, 1)
+
 
 class ModeleIntrouvable(FileNotFoundError):
     pass
@@ -99,15 +114,19 @@ def _blocs(paragraphes: list) -> list[list]:
     return blocs
 
 
-def _decouper_en_puces(texte: str) -> list[str]:
-    """Une description en prose devient des puces lisibles."""
+def _decouper_en_puces(texte: str, maximum: int = MAX_PUCES) -> list[str]:
+    """Une description en prose devient des puces lisibles.
+
+    `maximum` se resserre quand le CV déborde sur une seconde page — c'est
+    `dossier.py` qui le décide, après avoir mesuré le PDF rendu.
+    """
     if not texte.strip():
         return []
     lignes = [l.strip(" -•\t") for l in texte.splitlines() if l.strip()]
     if len(lignes) > 1:
-        return lignes[:MAX_PUCES]
+        return lignes[:maximum]
     phrases = [p.strip() for p in re.split(r"(?<=[.!?])\s+", texte) if len(p.strip()) > 15]
-    return (phrases or [texte.strip()])[:MAX_PUCES]
+    return (phrases or [texte.strip()])[:maximum]
 
 
 def _ajuster_puces(bloc: list, textes: list[str]):
@@ -167,6 +186,32 @@ def _appliquer_blocs(blocs: list[list], donnees: list, remplir) -> None:
 # ------------------------------------------------------------------- sections
 
 
+# Au-delà, la liste cesse d'informer : personne ne lit dix-sept pays, et ils
+# mangeaient trois lignes de l'en-tête — assez pour faire déborder le CV sur
+# une seconde page.
+MAX_PAYS_AFFICHES = 3
+
+
+def _mobilite(profil: Profile, offre: Offer) -> str:
+    """La mobilité, dite en une ligne.
+
+    Le pays de l'offre passe en tête quand il est accepté : c'est le seul qui
+    intéresse ce recruteur-là. Le reste est résumé, jamais énuméré.
+    """
+    acceptes = list(profil.pays_acceptes)
+    if not acceptes:
+        return profil.pays
+
+    if offre.pays and offre.pays in acceptes:
+        acceptes.remove(offre.pays)
+        acceptes.insert(0, offre.pays)
+
+    if len(acceptes) <= MAX_PAYS_AFFICHES:
+        return ", ".join(acceptes)
+    tetes = ", ".join(acceptes[:MAX_PAYS_AFFICHES])
+    return f"{tetes} et {len(acceptes) - MAX_PAYS_AFFICHES} autres pays"
+
+
 def _remplir_entete(entete: list, profil: Profile, offre: Offer) -> None:
     if len(entete) < 4:
         return
@@ -184,7 +229,7 @@ def _remplir_entete(entete: list, profil: Profile, offre: Offer) -> None:
     # : — » sous le nom donne l'impression d'un document mal fusionné. Si rien
     # n'est renseigné, la ligne entière disparaît.
     fragments = []
-    mobilite = ", ".join(profil.pays_acceptes) or profil.pays
+    mobilite = _mobilite(profil, offre)
     if mobilite:
         fragments.append(f"Mobilité : {mobilite}")
     if profil.contrats_acceptes:
@@ -224,7 +269,8 @@ def _remplir_competences(paragraphes: list, competences: list[str]) -> None:
         supprimer(surplus)
 
 
-def _remplir_experience(bloc: list, experience: dict):
+def _remplir_experience(bloc: list, element: tuple[dict, list[str]]):
+    experience, puces = element
     definir_texte(bloc[0], experience.get("poste") or "Poste")
     periode = " – ".join(filter(None, [experience.get("debut"), experience.get("fin")]))
     ligne = " — ".join(filter(None, [
@@ -232,7 +278,7 @@ def _remplir_experience(bloc: list, experience: dict):
     ]))
     if len(bloc) > 1:
         definir_texte(bloc[1], ligne)
-    return _ajuster_puces(bloc, _decouper_en_puces(experience.get("description", "")))
+    return _ajuster_puces(bloc, puces)
 
 
 def _remplir_formation(bloc: list, formation: dict):
@@ -270,8 +316,14 @@ def rendre(
     destination: Path,
     *,
     reordonner: bool = True,
+    max_puces: int = MAX_PUCES,
 ) -> Path:
-    """Écrit le CV adapté à `offre` dans `destination`. Renvoie le chemin."""
+    """Écrit le CV adapté à `offre` dans `destination`. Renvoie le chemin.
+
+    `max_puces` borne le nombre de puces par expérience. `dossier.py` le
+    resserre quand le PDF rendu déborde sur une seconde page — voir
+    PUCES_PAR_ESSAI.
+    """
     if not modele.exists():
         raise ModeleIntrouvable(
             f"Modèle de CV introuvable : {modele}. Déposez votre CV Word à cet emplacement."
@@ -288,14 +340,14 @@ def rendre(
         for surplus in sections["Profil"][1:]:
             supprimer(surplus)
 
-    _remplir_competences(
-        sections.get("Compétences", []),
-        _competences_ordonnees(profil, vocabulaire, reordonner),
-    )
+    competences = _competences_ordonnees(profil, vocabulaire, reordonner)
+    _remplir_competences(sections.get("Compétences", []), competences)
 
+    experiences = _experiences_ordonnees(profil, vocabulaire, reordonner)
+    puces = [_decouper_en_puces(x.get("description", ""), max_puces) for x in experiences]
     _appliquer_blocs(
         _blocs(sections.get("Expériences professionnelles", [])),
-        _experiences_ordonnees(profil, vocabulaire, reordonner),
+        list(zip(experiences, puces)),
         _remplir_experience,
     )
     _appliquer_blocs(

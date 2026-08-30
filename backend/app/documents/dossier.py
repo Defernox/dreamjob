@@ -25,6 +25,7 @@ from docx.shared import Pt
 from ..models import Offer, Profile
 from ..scoring.couverture import mots_cles_non_couverts
 from . import pdf as pdf_outil
+from .cv_render import PUCES_PAR_ESSAI
 from .cv_render import rendre as rendre_cv
 
 log = logging.getLogger("dreamjob.dossier")
@@ -163,6 +164,55 @@ def _retirer_generation_precedente(dossier: Path) -> None:
             log.warning("Impossible de retirer %s : %s", nom, e)
 
 
+def _cv_sur_une_page(profil: Profile, offre: Offer, modele: Path, dossier: Path,
+                     reordonner: bool) -> tuple[Path, Path | None, int]:
+    """Rend le CV, puis vérifie sur le PDF qu'il tient sur une page.
+
+    **On mesure, on ne devine pas.** Une version antérieure estimait la hauteur
+    à partir du nombre de caractères : elle se trompait de huit lignes et
+    rabotait les expériences à une seule puce pour un débordement imaginaire.
+    La mise en page dépend de la police, des marges et des césures du modèle —
+    seul le rendu la connaît.
+
+    La première conversion serait de toute façon nécessaire : dans le cas
+    courant, où le CV tient du premier coup, la mesure ne coûte rien.
+
+    Sans LibreOffice, on ne peut pas mesurer : le CV part avec toutes ses
+    puces, ce qui vaut mieux qu'un CV amputé au hasard.
+    """
+    cible = dossier / "CV.docx"
+    cv = pdf = None
+    pages = 0
+
+    for maximum in PUCES_PAR_ESSAI:
+        cv = rendre_cv(profil, offre, modele, cible, reordonner=reordonner,
+                       max_puces=maximum)
+        try:
+            pdf = pdf_outil.convertir(cv)
+        except Exception as e:  # noqa: BLE001 — sans LibreOffice, le Word suffit
+            log.warning("PDF non généré pour %s : %s", cv.name, e)
+            return cv, None, 0
+
+        pages = _nombre_de_pages(pdf)
+        if pages <= 1:
+            if maximum != PUCES_PAR_ESSAI[0]:
+                log.info("CV ramené à une page avec %d puces par expérience.", maximum)
+            return cv, pdf, pages
+
+    return cv, pdf, pages
+
+
+def _nombre_de_pages(pdf: Path) -> int:
+    """Compte les pages sans dépendance : `/Type /Page` suffit dans un PDF
+    produit par LibreOffice. Zéro si la lecture échoue — on ne rognera pas un
+    CV sur une mesure qu'on n'a pas su faire."""
+    try:
+        brut = pdf.read_bytes()
+    except OSError:
+        return 0
+    return len(re.findall(rb"/Type\s*/Page[^s]", brut))
+
+
 def generer(
     profil: Profile,
     offre: Offer,
@@ -190,9 +240,16 @@ def generer(
     _retirer_generation_precedente(dossier)
     resultat = Resultat(dossier=dossier)
 
-    # --- CV (obligatoire) ---
-    cv = rendre_cv(profil, offre, modele_cv, dossier / "CV.docx", reordonner=reordonner_cv)
+    # --- CV (obligatoire), tenu sur une page ---
+    cv, cv_pdf, pages = _cv_sur_une_page(profil, offre, modele_cv, dossier, reordonner_cv)
     resultat.fichiers.append(cv)
+    if cv_pdf is not None:
+        resultat.fichiers.append(cv_pdf)
+    if pages and pages > 1:
+        resultat.avertissements.append(
+            f"Le CV tient sur {pages} pages malgré la réduction des puces — "
+            "raccourcissez les descriptions d'expériences dans l'onglet Profil."
+        )
 
     # --- Lettre (le garde-fou peut légitimement refuser de livrer) ---
     lettre_docx: Path | None = None
@@ -244,7 +301,7 @@ def generer(
         journal["refusee"] = str(e)
 
     # --- PDF ---
-    for source in [cv] + ([lettre_docx] if lettre_docx else []):
+    for source in ([lettre_docx] if lettre_docx else []):
         try:
             resultat.fichiers.append(pdf_outil.convertir(source))
         except Exception as e:  # noqa: BLE001 — sans LibreOffice, le Word suffit

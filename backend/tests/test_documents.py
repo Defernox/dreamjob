@@ -232,3 +232,84 @@ def test_le_cv_et_le_score_utilisent_la_meme_mesure():
     vocabulaire = set(mots("analyse financière et suivi des encours clients"))
     for terme in ("analyse financière", "gestion de trésorerie", "soudure à l'arc"):
         assert _pertinence(terme, vocabulaire) == presence(terme, vocabulaire, flou=False)
+
+
+# --- Le CV tient sur une page ------------------------------------------------
+
+
+def test_la_mobilite_ne_liste_pas_tous_les_pays(profil, offre):
+    """Dix-sept pays mangeaient trois lignes de l'en-tête — assez pour faire
+    déborder le CV sur une seconde page, et personne ne les lit."""
+    from app.documents.cv_render import MAX_PAYS_AFFICHES, _mobilite
+
+    profil.pays_acceptes = [f"Pays{i}" for i in range(17)]
+    mobilite = _mobilite(profil, offre)
+    assert "14 autres pays" in mobilite
+    assert mobilite.count(",") < MAX_PAYS_AFFICHES + 1
+
+
+def test_le_pays_de_l_offre_passe_en_tete(profil, offre):
+    """C'est le seul qui intéresse ce recruteur-là."""
+    from app.documents.cv_render import _mobilite
+
+    profil.pays_acceptes = ["France", "Belgique", "Luxembourg", "Irlande"]
+    offre.pays = "Luxembourg"
+    assert _mobilite(profil, offre).startswith("Luxembourg")
+
+
+def test_peu_de_pays_sont_listes_tels_quels(profil, offre):
+    from app.documents.cv_render import _mobilite
+
+    profil.pays_acceptes = ["France", "Belgique"]
+    assert _mobilite(profil, offre) == "France, Belgique"
+
+
+def test_le_plafond_de_puces_est_respecte(profil, offre, tmp_path):
+    """`dossier.py` le resserre quand le PDF déborde."""
+    from app.documents.cv_render import rendre
+
+    profil.experiences = [{
+        "entreprise": "Crédit Mutuel", "poste": "Gestionnaire",
+        "debut": "2023", "fin": "2025",
+        "description": "\n".join(f"Mission numéro {i} sur le portefeuille." for i in range(8)),
+    }]
+    cv = rendre(profil, offre, MODELE, tmp_path / "CV.docx", max_puces=2)
+    puces = [t for t in _textes(cv) if t.startswith("Mission numéro")]
+    assert len(puces) == 2
+
+
+def test_un_cv_qui_deborde_est_resserre_puis_signale(profil, offre, tmp_path, monkeypatch):
+    """Le filet : on mesure le PDF rendu, on ne devine pas la hauteur. Une
+    estimation par nombre de caractères se trompait de huit lignes et rabotait
+    les expériences pour un débordement imaginaire."""
+    from app.documents import dossier as mod
+
+    essais: list[int] = []
+
+    def faux_convertir(source):
+        # On feint deux pages tant que les puces ne sont pas descendues à 2.
+        pdf = source.with_suffix(".pdf")
+        pages = 1 if len(essais) >= 2 else 2
+        pdf.write_bytes(b"%PDF-1.4\n" + b"/Type /Page \n" * pages)
+        essais.append(pages)
+        return pdf
+
+    monkeypatch.setattr(mod.pdf_outil, "convertir", faux_convertir)
+    cv, pdf, pages = mod._cv_sur_une_page(profil, offre, MODELE, tmp_path, True)
+    assert pages == 1
+    assert len(essais) == 3            # il a fallu resserrer deux fois
+    assert cv.exists() and pdf is not None
+
+
+def test_sans_libreoffice_le_cv_part_entier(profil, offre, tmp_path, monkeypatch):
+    """Faute de pouvoir mesurer, mieux vaut un CV complet qu'un CV amputé au
+    hasard."""
+    from app.documents import dossier as mod
+
+    def refuse(source):
+        raise RuntimeError("LibreOffice absent")
+
+    monkeypatch.setattr(mod.pdf_outil, "convertir", refuse)
+    cv, pdf, pages = mod._cv_sur_une_page(profil, offre, MODELE, tmp_path, True)
+    assert cv.exists()
+    assert pdf is None and pages == 0

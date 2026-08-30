@@ -79,9 +79,21 @@ def sources_texte(profil: Profile, offre: Offer) -> list[str]:
 
 
 def _vocabulaire_autorise(profil: Profile, offre: Offer) -> set[str]:
+    """Tous les mots que la lettre a le droit d'employer.
+
+    **Découpés par `mots()`, exactement comme le sera la lettre.** Un
+    `normaliser().split()` gardait le point final : le vocabulaire contenait
+    « pte. » et « ltd. » quand la lettre produisait « pte » et « ltd », si bien
+    qu'un nom d'entreprise ponctué n'était jamais reconnu. Mesuré sur une offre
+    réelle de « UQPAY PTE. LTD. » : la lettre était refusée trois fois de suite
+    pour avoir cité l'employeur. Toute société en S.A., Inc. ou Co. tombait
+    dans le même piège.
+
+    Les deux côtés doivent employer la même tokenisation — c'est l'invariant.
+    """
     autorise = set(COURANTS)
     for morceau in sources_texte(profil, offre):
-        autorise.update(normaliser(morceau).split())
+        autorise.update(mots(morceau, garder_vides=True))
     return autorise
 
 

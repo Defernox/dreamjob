@@ -10,6 +10,7 @@ import pytest
 
 from app.documents.controles import (
     bloquantes,
+    entites_suspectes,
     chiffres_inventes,
     contrat_incoherent,
     defauts_de_style,
@@ -246,3 +247,36 @@ def Path_modele():
     from pathlib import Path
 
     return Path(__file__).resolve().parents[2] / "templates" / "cv_modele.docx"
+
+
+# --- Noms d'entreprise ponctués ---------------------------------------------
+
+
+def test_un_nom_d_entreprise_ponctue_est_reconnu(profil, offre):
+    """Mesuré sur une offre réelle : « UQPAY PTE. LTD. » faisait refuser la
+    lettre trois fois de suite, pour avoir cité l'employeur.
+
+    Le vocabulaire autorisé était découpé par `normaliser().split()`, qui garde
+    le point final, alors que la lettre l'est par `mots()`, qui le retire :
+    « pte » n'était jamais trouvé dans un vocabulaire contenant « pte. ».
+    """
+    offre.entreprise = "UQPAY PTE. LTD."
+    lettre = "Le poste chez UQPAY PTE. LTD. correspond à mon parcours."
+    assert entites_suspectes(lettre, profil, offre) == []
+
+
+@pytest.mark.parametrize("raison_sociale", [
+    "Société Générale S.A.", "Acme Inc.", "Dupont & Co.", "Groupe X S.A.S.",
+])
+def test_les_formes_juridiques_ponctuees_passent(profil, offre, raison_sociale):
+    offre.entreprise = raison_sociale
+    assert entites_suspectes(f"Ma candidature chez {raison_sociale}.", profil, offre) == []
+
+
+def test_une_entreprise_vraiment_absente_reste_signalee(profil, offre):
+    """Le correctif ne doit pas ouvrir la porte : ce qui n'est nulle part
+    reste une invention."""
+    # La fonction rapporte le mot tel qu'il apparaît, ponctuation comprise :
+    # c'est ce qui sera cité au modèle, et il doit pouvoir le retrouver.
+    suspects = entites_suspectes("J'ai travaillé chez Danone.", profil, offre)
+    assert any("Danone" in s for s in suspects)

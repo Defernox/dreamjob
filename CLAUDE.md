@@ -433,6 +433,25 @@ une lettre refusée par le garde-fou laisse en place celle d'avant, décrivant u
 profil périmé, à côté d'un CV à jour. Les fichiers déposés par l'utilisateur,
 eux, sont conservés.
 
+**Le CV tient sur une page, et c'est mesuré, pas estimé.** Un CV de deux pages
+n'est pas une convention discutable : le recruteur lit la première, la seconde
+arrive après sa décision. `dossier.py` convertit le CV, compte les `/Type /Page`
+du PDF, et rappelle `cv_render.rendre` avec moins de puces par expérience
+(`PUCES_PAR_ESSAI`) tant qu'il déborde.
+
+Une première version **estimait** la hauteur en lignes à partir du nombre de
+caractères : elle annonçait 55 lignes pour un CV qui en occupait 47, et rabotait
+donc les expériences à une seule puce pour un débordement imaginaire. La mise en
+page dépend de la police, des marges et des césures du modèle — seul le rendu la
+connaît. La première conversion étant de toute façon nécessaire, la mesure ne
+coûte rien dans le cas courant. Sans LibreOffice, on ne mesure pas : le CV part
+entier, ce qui vaut mieux qu'un CV amputé au hasard.
+
+**La mobilité se dit en une ligne** (`MAX_PAYS_AFFICHES`). Les dix-sept pays
+acceptés du profil s'étalaient sur trois lignes de l'en-tête — assez à eux seuls
+pour faire déborder le CV, et personne ne les lit. Le pays de l'offre passe en
+tête quand il est accepté : c'est le seul qui intéresse ce recruteur-là.
+
 **Le classement du CV parle la même langue que le score.** `_pertinence`
 (`cv_render.py`) était une **troisième** implémentation de l'appariement, après
 celle des compétences et celle du secteur : simple appartenance d'ensemble, donc
@@ -480,6 +499,14 @@ la rendent seulement **convenue** : on livre, on nomme les défauts dans les
 avertissements, l'utilisateur retouche en dix secondes. Confondre les deux
 faisait refuser des lettres exactes — mesuré, deux offres réelles sur deux sans
 le moindre document produit.
+
+**Les deux côtés doivent tokeniser pareil.** Le vocabulaire autorisé était
+découpé par `normaliser().split()`, qui garde le point final, quand la lettre
+l'est par `mots()`, qui le retire : le vocabulaire contenait « pte. » et « ltd. »
+là où la lettre produisait « pte » et « ltd ». Résultat mesuré sur une offre
+réelle de **UQPAY PTE. LTD.** : la lettre refusée trois fois pour avoir cité
+l'employeur, et aucun document produit. Toute société en S.A., Inc. ou Co.
+tombait dans le même piège.
 
 **Le perroquet n'est pas bloquant, et c'est un choix.** Il ne distingue pas
 « j'ai réalisé des travaux de backtesting » — un mensonge — de « je serais amené

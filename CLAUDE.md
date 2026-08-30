@@ -13,7 +13,8 @@ Mono-utilisateur, aucun déploiement. Rien ne sort de la machine sauf les appels
 | Objectif | Commande |
 |---|---|
 | **Installer** (une seule fois) | `.\setup.cmd` |
-| **Lancer** (API + interface) | `.\dev.cmd` |
+| **Raccourci de bureau** (une seule fois) | `.\creer-raccourci.cmd` |
+| **Lancer** (API + interface) | double-clic sur *DreamJob*, ou `.\dev.cmd` |
 | Tests backend | `cd backend; .\.venv\Scripts\python.exe -m pytest` |
 | Typage frontend | `cd frontend; npx tsc --noEmit` |
 | Nouvelle migration | `cd backend; .\.venv\Scripts\alembic.exe revision --autogenerate -m "message"` |
@@ -27,6 +28,33 @@ restriction : ils appellent le `.ps1` avec un contournement valable pour ce seul
 processus. Aucun réglage de sécurité de la machine n'est modifié — et il ne faut
 pas en modifier : c'est une protection légitime.
 
+**Le raccourci de bureau.** `creer-raccourci.cmd` pose un *DreamJob.lnk* sur le
+Bureau, avec une icône générée en Python pur (`outils/icone.py` — pas de Pillow
+à installer pour dessiner quatre disques). Il vise `powershell.exe` et non
+`dev.cmd`, ce qui permet `-WindowStyle Hidden` : la console du lanceur reste
+invisible, seules les deux fenêtres des serveurs s'affichent — elles portent les
+logs, et les fermer arrête l'application. Le Bureau est résolu par
+`[Environment]::GetFolderPath` : `$env:USERPROFILE\Desktop` se trompe quand il
+est redirigé vers OneDrive.
+
+**`dev.ps1` fait trois choses qu'un double-clic exige** et qu'une ligne de
+commande pardonnait :
+
+- **Il relève Ollama.** Le moteur des lettres démarre avec la session, mais il
+  lui arrive de tomber : l'application se lançait alors en mode dégradé sans
+  que rien ne le signale, jusqu'à ce qu'une lettre échoue.
+- **Il ne relance pas ce qui tourne.** Un second double-clic démarrait un Vite
+  de plus, qui se rabattait sur le port 5174 — deux interfaces, dont une que
+  personne ne regarde.
+- **Il attend que le port réponde** au lieu de dormir cinq secondes. À froid,
+  Vite met plus longtemps et le navigateur s'ouvrait sur une page morte.
+
+**Sonder un port se fait avec `Get-NetTCPConnection`, jamais avec `TcpClient`.**
+Vite n'écoute que sur `::1` quand l'API écoute sur `127.0.0.1` ; or PowerShell 5.1
+s'appuie sur .NET Framework, où `New-Object TcpClient` crée une socket **IPv4
+seule** — elle ne peut pas joindre `::1`, quelle que soit la façon d'écrire
+l'adresse. La sonde déclarait l'interface morte alors qu'elle répondait.
+
 `make` fonctionne aussi (`make dev`, `make test`) si GnuWin32 est dans le PATH.
 
 ---
@@ -38,6 +66,8 @@ DreamJob/
 ├─ config.yaml          réglages : poids du scoring, sources actives, chemins
 ├─ .env                 secrets uniquement (jamais versionné)
 ├─ setup.cmd / dev.cmd  installation / lancement (appellent les .ps1)
+├─ creer-raccourci.cmd  pose le raccourci DreamJob sur le Bureau
+├─ outils/              icone.py (genere dreamjob.ico) · creer-raccourci.ps1
 ├─ templates/           cv_modele.docx — le modèle Word personnel
 ├─ data/                base SQLite, caches, logs (jamais versionné)
 │

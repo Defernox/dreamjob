@@ -53,6 +53,7 @@ def generer_documents(
             r.chemins.candidatures, r.chemins.cv_modele,
             redacteur=redacteur(r),
             tentatives_lettre=r.llm.tentatives_anti_invention,
+            relecture_lettre=r.llm.relecture_lettre,
             reordonner_cv=r.documents.reordonner_cv,
             ouvrir_apres=ouvrir_apres,
         )

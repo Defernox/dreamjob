@@ -78,7 +78,7 @@ class Resultat:
 # --------------------------------------------------------------- compétences
 
 
-def _presence(terme: str, vocabulaire: set[str], *, flou: bool) -> float:
+def presence(terme: str, vocabulaire: set[str], *, flou: bool) -> float:
     """À quel point `terme` est présent dans le vocabulaire : de 0 à 1.
 
     Une compétence est souvent une expression (« gestion des risques de crédit »)
@@ -134,20 +134,20 @@ def score_competences(profil: Profile, signaux: Signaux, resultat: Resultat,
             continue
         ancree = bool(skill.get("ancree"))
         # Une compétence ancrée est une signature : pas d'à-peu-près dessus.
-        presence = _presence(nom, vocabulaire, flou=not ancree)
+        trouvee = presence(nom, vocabulaire, flou=not ancree)
 
         if ancree:
             a_des_ancrees = True
-            meilleure_ancree = max(meilleure_ancree, presence)
-            (resultat.ancrees_trouvees if presence >= SEUIL_TROUVEE
+            meilleure_ancree = max(meilleure_ancree, trouvee)
+            (resultat.ancrees_trouvees if trouvee >= SEUIL_TROUVEE
              else resultat.ancrees_manquantes).append(nom)
-        elif presence >= SEUIL_TROUVEE:
+        elif trouvee >= SEUIL_TROUVEE:
             # Seules les compétences réellement retrouvées comptent. Additionner
             # les correspondances sous le seuil laissait dix compétences frôlant
             # un mot générique saturer cette moitié du score : une offre de
             # boulangerie atteignait 83/100 sur un profil finance, sans qu'aucune
             # compétence ne soit rapportée à l'utilisateur.
-            somme_autres += presence
+            somme_autres += trouvee
             resultat.autres_trouvees.append(nom)
 
     part_autres = min(1.0, somme_autres / NB_AUTRES_ATTENDUES)
@@ -161,7 +161,7 @@ def score_competences(profil: Profile, signaux: Signaux, resultat: Resultat,
 
 def score_secteur(profil: Profile, signaux: Signaux, resultat: Resultat,
                   vocabulaire: set[str] | None = None) -> float | None:
-    """Le secteur se mesure comme les compétences, avec `_presence`.
+    """Le secteur se mesure comme les compétences, avec `presence`.
 
     Il utilisait une simple appartenance d'ensemble, donc sans les synonymes ni
     la pondération des mots génériques : « Finance » ne rencontrait jamais
@@ -178,9 +178,9 @@ def score_secteur(profil: Profile, signaux: Signaux, resultat: Resultat,
     meilleur = 0.0
     for secteur in profil.secteurs:
         # Reconnu dans l'intitulé ou le libellé ROME : signal fort.
-        fort = _presence(secteur, mots_titre, flou=False) * 100.0
+        fort = presence(secteur, mots_titre, flou=False) * 100.0
         # Seulement dans le corps de l'annonce : signal plus faible.
-        faible = _presence(secteur, mots_corps, flou=False) * 100.0 * CREDIT_SECTEUR_FAIBLE
+        faible = presence(secteur, mots_corps, flou=False) * 100.0 * CREDIT_SECTEUR_FAIBLE
         # Le meilleur des deux, et non « le fort sauf s'il est nul » : un titre
         # à moitié reconnu écrasait un corps qui, lui, reconnaissait tout — le
         # critère n'était pas monotone, un titre muet valait mieux.

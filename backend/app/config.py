@@ -63,6 +63,10 @@ class Llm(BaseModel):
     modele_extraction: str = "claude-sonnet-5"
     modele_redaction: str = "claude-opus-5"
     tentatives_anti_invention: int = 3
+    # Passe de relecture critique du brouillon. Désactivée par défaut :
+    # mesurée sans effet avec mistral:7b, qui conserve les clichés qu'on lui
+    # demande de traquer. À activer avec un modèle plus capable.
+    relecture_lettre: bool = False
 
     @property
     def local(self) -> bool:

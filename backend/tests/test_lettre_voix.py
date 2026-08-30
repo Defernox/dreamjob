@@ -119,9 +119,25 @@ def test_une_offre_sans_description_ne_fait_rien_detecter(offre):
 
 
 def test_le_seuil_laisse_passer_une_suite_plus_courte(offre):
-    """Sept mots communs peuvent être une coïncidence ; huit, non."""
-    debut = " ".join(offre.description_brute.split()[:LONGUEUR_COPIE - 1])
+    """Une reprise sous le seuil peut être une coïncidence, ou simplement la
+    façon naturelle de nommer le poste. On découpe avec la même tokenisation
+    que le contrôle : les apostrophes comptent pour des séparateurs."""
+    from app.scoring.texte import mots
+
+    debut = " ".join(mots(offre.description_brute, garder_vides=True)[:LONGUEUR_COPIE - 1])
     assert copies_de_l_offre(debut, offre) == []
+
+
+def test_nommer_le_poste_reste_possible_avec_un_intitule_long(offre):
+    """Mesuré : « au sein d'un Middle office Assurance H/F en CDI » fait dix
+    jetons. À huit, le candidat ne pouvait plus dire où il postulait."""
+    offre.description_brute = (
+        "Au sein de la Direction Gestion des Contrats, vous intégrez le pôle "
+        "Middle Office Assurance Vie en CDI."
+    )
+    lettre = ("Je postule au sein de votre pôle Middle Office Assurance Vie en CDI. "
+              "Mon parcours en trésorerie m'a préparé au suivi des dossiers.")
+    assert copies_de_l_offre(lettre, offre) == []
 
 
 # --- Le prompt --------------------------------------------------------------
@@ -167,3 +183,43 @@ def test_une_copie_persistante_est_refusee(profil, offre):
 def _assez_longue(corps: str) -> str:
     """Complète un texte pour dépasser MOTS_MIN sans rien recopier de l'offre."""
     return corps + " " + ("Ce point me semble déterminant pour la suite. " * 20)
+
+
+# --- Les formules creuses : défaut de style, pas de malhonnêteté -------------
+
+
+def test_les_cliches_sont_reperes():
+    from app.documents.lettre import cliches
+
+    brouillon = ("Je suis prêt à relever les défis de ce poste et à apporter mes "
+                 "talents pour atteindre des résultats exceptionnels.")
+    trouves = cliches(brouillon)
+    assert "relever les defis" in trouves
+    assert "apporter mes talents" in trouves
+
+
+def test_une_lettre_precise_ne_declenche_rien():
+    from app.documents.lettre import cliches
+
+    texte = ("Trésorier associatif, j'ai géré une trésorerie de 1 000 à 3 000 euros "
+             "et mis en place un compte de résultat.")
+    assert cliches(texte) == []
+
+
+def test_une_lettre_honnete_mais_convenue_est_livree_avec_un_avertissement(profil, offre):
+    """Refuser toute une lettre exacte pour « relever les défis » serait
+    disproportionné : l'invention ment, le cliché ennuie. On livre et on prévient."""
+    convenue = _assez_longue(
+        "Le poste correspond à mon parcours. Je suis prêt à relever les défis "
+        "que vous proposez, et mon expérience en trésorerie parle pour moi."
+    )
+    lettre, compte_rendu = rediger(profil, offre, lambda s, m: convenue, tentatives=2)
+    assert "relever les defis" in compte_rendu["cliches"]
+    assert lettre                      # la lettre est bien livrée
+
+
+def test_une_lettre_malhonnete_reste_refusee(profil, offre):
+    """La distinction ne doit pas devenir une porte de sortie : voix inversée,
+    invention et recopie bloquent toujours."""
+    with pytest.raises(ValueError):
+        rediger(profil, offre, lambda s, m: _assez_longue(LETTRE_INVERSEE), tentatives=2)

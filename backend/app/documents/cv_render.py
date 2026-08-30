@@ -20,7 +20,7 @@ import docx
 
 from ..models import Offer, Profile
 from ..scoring.extraction import signaux_de
-from ..scoring.texte import mots
+from ..scoring.score import presence
 from .docx_outils import (
     cloner_apres,
     cloner_xml_apres,
@@ -48,11 +48,19 @@ class ModeleIntrouvable(FileNotFoundError):
 
 
 def _pertinence(texte: str, vocabulaire: set[str]) -> float:
-    """Proportion des mots de `texte` que l'offre emploie aussi."""
-    jetons = set(mots(texte))
-    if not jetons:
-        return 0.0
-    return len(jetons & vocabulaire) / len(jetons)
+    """À quel point l'offre emploie le vocabulaire de `texte`, de 0 à 1.
+
+    On passe par `presence`, la même fonction que le scoring : le classement du
+    CV doit reposer sur la même mesure que le score affiché à l'écran, sinon les
+    deux se contredisent sous les yeux de l'utilisateur.
+
+    C'était une troisième implémentation de la même idée — simple appartenance
+    d'ensemble, sans les synonymes ni la pondération des mots génériques. Une
+    expérience « gestion des risques de crédit » ne rencontrait donc jamais une
+    offre parlant de « credit risk », et une expérience reconnue sur le seul mot
+    « gestion » passait devant une expérience réellement pertinente.
+    """
+    return presence(texte, vocabulaire, flou=False)
 
 
 def _experiences_ordonnees(profil: Profile, vocabulaire: set[str], reordonner: bool) -> list[dict]:

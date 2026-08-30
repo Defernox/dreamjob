@@ -7,15 +7,30 @@ La contrainte est posée dans le prompt système, mais un prompt n'est pas une
 garantie — surtout avec un modèle local. Chaque lettre est donc **vérifiée**, et
 rejetée puis régénérée si elle contient un nom propre ou une date inconnus.
 
-**Trois contrôles, pas un.** Les deux autres attrapent des lettres que le
-premier laisse passer intactes, faute d'y trouver le moindre nom propre inventé :
+**Quatre contrôles, pas un.** Les trois autres attrapent des lettres que le
+premier laisse passer intactes, faute d'y trouver le moindre nom propre inventé.
+Et ils ne pèsent pas tous le même poids :
 
-- la **voix** — un modèle local se met volontiers à la place du recruteur et
-  propose le poste au candidat (« Votre profil correspond… », « je recherche un
-  candidat expérimenté ») ;
-- le **perroquet** — à court de matière, il recopie les exigences de l'annonce
-  et les présente comme le parcours du candidat. Les mots viennent bien de
-  l'offre, mais le candidat s'attribue des compétences qu'il n'a pas.
+| Contrôle | Ce qu'il attrape | Effet |
+|---|---|---|
+| invention | un nom propre ou une année inconnus | **bloquant** |
+| voix | le recruteur s'adresse au candidat | **bloquant** |
+| perroquet | l'annonce recopiée mot pour mot | **bloquant** |
+| formules creuses | « relever les défis », « fort de mon expérience » | signalé |
+
+**La distinction est délibérée.** Les trois premiers rendent la lettre
+*malhonnête* : elle affirme quelque chose de faux sur le candidat. Le quatrième
+la rend seulement *médiocre*. Refuser une lettre exacte parce qu'elle contient
+« relever les défis » serait disproportionné : on la livre, et on nomme les
+formules à retoucher. Mieux vaut pas de lettre qu'une lettre qui ment — mais une
+lettre convenue vaut mieux que pas de lettre.
+
+Ce quatrième contrôle a d'abord été tenté comme une **passe de relecture** : on
+demandait au modèle de critiquer son propre brouillon. Mesuré sur mistral:7b, il
+en conserve la totalité des clichés — il ne sait pas s'auto-critiquer. Il obéit
+en revanche très bien quand on lui **nomme** la faute, comme pour la voix et le
+perroquet. La passe de relecture reste disponible (`llm.relecture_lettre`) pour
+un modèle plus capable, mais elle est désactivée par défaut.
 """
 
 from __future__ import annotations
@@ -76,6 +91,29 @@ poste m'intéresse » plutôt que « je suis ravi » ou « je suis heureuse ».
 Rends uniquement le corps de la lettre : ni en-tête, ni adresse, ni date, ni
 objet, ni formule d'appel, ni formule de politesse finale, ni signature. Ces
 éléments sont ajoutés automatiquement après toi."""
+
+PROMPT_RELECTURE = """Tu relis une lettre de motivation et tu la réécris, en français.
+
+CE QUE TU CHASSES
+- Les formules toutes faites : « fort de mon expérience », « je suis convaincu
+  que », « n'hésitez pas à », « dynamique et motivé », « j'attends avec
+  impatience ».
+- Les phrases interchangeables. Une phrase qui resterait vraie en changeant le
+  nom de l'entreprise ne dit rien : rends-la précise, ou supprime-la.
+- Le rythme mécanique. Des phrases toutes de la même longueur se lisent comme un
+  formulaire. Alterne les courtes et les longues.
+- Les enfilades (« En outre… De plus… Également… ») : relie les faits au lieu de
+  les empiler.
+
+CE QUE TU NE TOUCHES PAS
+- Les faits. Tu n'ajoutes AUCUN nom, chiffre, date, entreprise, école ni
+  compétence qui ne soit déjà dans le brouillon. Tu peux en retirer, jamais en
+  inventer — c'est la règle absolue.
+- La voix : première personne du singulier ; « vous » désigne l'entreprise qui
+  recrute, jamais le candidat.
+- La structure : trois paragraphes, et la même longueur d'ensemble.
+
+Rends uniquement la lettre réécrite, sans commentaire ni explication."""
 
 # Mots qui portent une majuscule sans être des noms propres à vérifier.
 COURANTS = {
@@ -251,9 +289,19 @@ def voix_incorrecte(lettre: str) -> list[str]:
 # compétences qu'il n'a pas, et un recruteur reconnaît sa propre annonce au
 # premier coup d'œil.
 
-# Huit mots laissent passer un intitulé de poste ou un nom de service, mais pas
-# une phrase entière.
-LONGUEUR_COPIE = 8
+# Le seuil est un compromis, mesuré sur des lettres réelles :
+#
+#   « au sein d'un Middle office Assurance H/F en CDI »            10 jetons
+#   « à l'aise à l'oral, notamment au téléphone, que par écrit »   11 jetons
+#   « la conformité et la complétude des actes de gestion… »       14 jetons
+#   « polyvalent sur tous les actes concernant l'assurance vie… »  15 jetons
+#
+# Les deux premières sont légitimes — on doit pouvoir nommer le poste auquel on
+# postule — les deux dernières sont de vraies recopies. À huit jetons, tout
+# était refusé et mistral n'arrivait jamais au bout. Douze sépare correctement.
+# Le prix : une reprise courte passe encore, mais elle porte rarement une
+# compétence revendiquée.
+LONGUEUR_COPIE = 12
 
 
 def _suites(jetons: list[str], longueur: int) -> set[tuple[str, ...]]:
@@ -270,6 +318,37 @@ def copies_de_l_offre(lettre: str, offre: Offer) -> list[str]:
                 & _suites(de_l_offre, LONGUEUR_COPIE))
     # Trois exemples suffisent à faire comprendre le reproche au modèle.
     return [" ".join(suite) for suite in sorted(communes)][:3]
+
+
+# --- Les formules creuses ----------------------------------------------------
+# On a d'abord demandé au modèle de relire son propre brouillon et d'en retirer
+# les clichés. Mesuré : mistral:7b en conserve la totalité — il ne sait pas
+# s'auto-critiquer. Il obéit en revanche très bien quand on lui NOMME la faute,
+# comme pour la voix et le perroquet. D'où cette liste, en pur code.
+#
+# Elle reste volontairement courte et sans ambiguïté : chaque entrée est une
+# phrase qui resterait vraie dans n'importe quelle lettre, pour n'importe quel
+# poste. Une liste trop large ferait refuser des lettres correctes.
+_CLICHES = (
+    "fort de mon experience", "fort de mes experiences",
+    "je suis convaincu", "je suis persuade",
+    "n hesitez pas a", "je reste a votre entiere disposition",
+    "dynamique et motive", "rigoureux et motive",
+    "relever les defis", "relever de nouveaux defis", "relever ce defi",
+    "apporter mes talents", "ma devotion",
+    "resultats exceptionnels", "resultats remarquables",
+    "j attends avec impatience", "j attends donc avec impatience",
+    "depuis toujours passionne", "passionne depuis toujours",
+    "mener a bien les taches", "avec succes les taches",
+    "veritable atout", "atout majeur pour votre entreprise",
+    "contribuer a la reussite de votre entreprise",
+)
+
+
+def cliches(lettre: str) -> list[str]:
+    """Formules creuses repérées dans la lettre."""
+    nu = normaliser(lettre)
+    return [c for c in _CLICHES if c in nu]
 
 
 def _message(profil: Profile, offre: Offer) -> str:
@@ -328,6 +407,16 @@ def _rappel_copie(passages: list[str]) -> str:
     )
 
 
+def _rappel_cliches(formules: list[str]) -> str:
+    return (
+        "Ta version précédente contenait des formules creuses : "
+        + " / ".join(f"« {f} »" for f in formules)
+        + ". Chacune resterait vraie dans n'importe quelle lettre, pour "
+        "n'importe quel poste. Réécris ces passages avec un fait précis tiré de "
+        "mon parcours, ou supprime-les."
+    )
+
+
 def _rappel_voix(fautes: list[str]) -> str:
     return (
         "Ta version précédente était écrite du mauvais côté — on y lit : "
@@ -338,7 +427,46 @@ def _rappel_voix(fautes: list[str]) -> str:
     )
 
 
-def rediger(profil: Profile, offre: Offer, generer, tentatives: int = 3) -> tuple[str, dict]:
+def _defauts(lettre: str, profil: Profile, offre: Offer) -> list[str]:
+    """Les trois contrôles réunis, plus la longueur."""
+    nb_mots = len(lettre.split())
+    defauts = (entites_suspectes(lettre, profil, offre)
+               + voix_incorrecte(lettre)
+               + copies_de_l_offre(lettre, offre)
+               + cliches(lettre))
+    if not MOTS_MIN <= nb_mots <= MOTS_MAX:
+        defauts.append(f"longueur {nb_mots} mots hors bornes")
+    return defauts
+
+
+def relire(lettre: str, generer, profil: Profile, offre: Offer) -> tuple[str, bool]:
+    """Réécriture critique du brouillon. Renvoie (texte retenu, réécrit ?).
+
+    Un modèle repère bien mieux le générique qu'il ne l'évite du premier coup :
+    c'est cette passe qui retire les formules toutes faites et casse le rythme
+    mécanique. Elle coûte un appel local de plus, donc rien.
+
+    **La relecture ne doit jamais coûter une bonne lettre.** Si la réécriture
+    échoue à l'un des trois contrôles — le modèle « améliore » volontiers en
+    inventant — on garde le brouillon, qui, lui, était accepté.
+    """
+    try:
+        reecrite = nettoyer(generer(PROMPT_RELECTURE, lettre))
+    except Exception as e:  # noqa: BLE001 — une relecture ratée n'est pas fatale
+        log.warning("Relecture impossible, brouillon conservé : %s", e)
+        return lettre, False
+
+    defauts = _defauts(reecrite, profil, offre)
+    if defauts:
+        log.info("Relecture écartée (%s), brouillon conservé.", ", ".join(defauts))
+        return lettre, False
+
+    log.info("Relecture retenue (%d mots).", len(reecrite.split()))
+    return reecrite, True
+
+
+def rediger(profil: Profile, offre: Offer, generer, tentatives: int = 3,
+            relecture: bool = False) -> tuple[str, dict]:
     """Génère une lettre vérifiée.
 
     `generer(systeme, message) -> str` isole le fournisseur : Ollama ou Anthropic,
@@ -350,6 +478,8 @@ def rediger(profil: Profile, offre: Offer, generer, tentatives: int = 3) -> tupl
     message = _message(profil, offre)
     historique: list[dict] = []
     derniere = ""
+    # Meilleure lettre honnête rencontrée, même si elle reste convenue.
+    secours: tuple[str, int, list[str]] | None = None
 
     for essai in range(1, max(1, tentatives) + 1):
         systeme = PROMPT_SYSTEME
@@ -369,16 +499,44 @@ def rediger(profil: Profile, offre: Offer, generer, tentatives: int = 3) -> tupl
         suspects = entites_suspectes(derniere, profil, offre)
         voix = voix_incorrecte(derniere)
         copies = copies_de_l_offre(derniere, offre)
+        formules = cliches(derniere)
         nb_mots = len(derniere.split())
         historique.append({"essai": essai, "suspects": suspects, "voix": voix,
-                           "copies": copies, "mots": nb_mots})
+                           "copies": copies, "cliches": formules, "mots": nb_mots})
 
-        if not (suspects or voix or copies) and MOTS_MIN <= nb_mots <= MOTS_MAX:
-            log.info("Lettre acceptée à l'essai %d (%d mots)", essai, nb_mots)
-            return derniere, {"essais": essai, "mots": nb_mots, "historique": historique}
+        # Deux familles de fautes, deux traitements. Invention, voix inversée et
+        # recopie de l'annonce rendent la lettre MALHONNÊTE : elles bloquent.
+        # Une formule creuse la rend seulement médiocre — refuser toute une
+        # lettre exacte pour « relever les défis » serait disproportionné.
+        bloquantes = suspects + voix + copies
+        if not bloquantes and MOTS_MIN <= nb_mots <= MOTS_MAX:
+            if not formules:
+                log.info("Lettre acceptée à l'essai %d (%d mots)", essai, nb_mots)
+                retenue, reecrite = ((relire(derniere, generer, profil, offre))
+                                     if relecture else (derniere, False))
+                return retenue, {"essais": essai, "mots": len(retenue.split()),
+                                 "relue": reecrite, "cliches": [],
+                                 "historique": historique}
+            # Honnête mais convenue : on retente pour le style, en la gardant
+            # sous le coude. Un essai suivant peut très bien être pire.
+            if secours is None:
+                secours = (derniere, essai, formules)
 
         log.warning("Lettre rejetée (essai %d) : %s", essai,
-                    suspects + voix + copies or f"longueur {nb_mots} mots hors bornes")
+                    suspects + voix + copies + formules
+                    or f"longueur {nb_mots} mots hors bornes")
+
+    # Aucune lettre irréprochable, mais une lettre honnête a été produite :
+    # elle vaut mieux que pas de lettre du tout. L'utilisateur est prévenu des
+    # formules qui restent — c'est à lui de les retoucher, pas au programme de
+    # lui refuser le document.
+    if secours is not None:
+        texte, essai, formules = secours
+        log.warning("Lettre livrée avec des formules convenues : %s",
+                    ", ".join(formules))
+        return texte, {"essais": essai, "mots": len(texte.split()),
+                       "relue": False, "cliches": formules,
+                       "historique": historique}
 
     dernier = historique[-1]
     if dernier["suspects"]:
@@ -389,10 +547,12 @@ def rediger(profil: Profile, offre: Offer, generer, tentatives: int = 3) -> tupl
     elif dernier["copies"]:
         raison = ("l'annonce est recopiée mot pour mot : "
                   + " / ".join(dernier["copies"]))
+    elif dernier["cliches"]:
+        raison = "formules creuses : " + " / ".join(dernier["cliches"])
     else:
         raison = f"longueur inadaptée ({dernier['mots']} mots)"
     raise ValueError(
         f"Après {len(historique)} tentatives, la lettre reste inutilisable — {raison}. "
-        f"Essayez un modèle plus capable (config.yaml → llm.modele_local) ou "
+        f"Essayez un modèle plus capable (llm.modele_local dans config.yaml) ou "
         f"rédigez-la à la main."
     )

@@ -344,6 +344,20 @@ une lettre refusée par le garde-fou laisse en place celle d'avant, décrivant u
 profil périmé, à côté d'un CV à jour. Les fichiers déposés par l'utilisateur,
 eux, sont conservés.
 
+**Le classement du CV parle la même langue que le score.** `_pertinence`
+(`cv_render.py`) était une **troisième** implémentation de l'appariement, après
+celle des compétences et celle du secteur : simple appartenance d'ensemble, donc
+sans synonymes ni pondération des mots génériques. Une expérience « risques de
+crédit » ne rencontrait jamais une offre en « credit risk ». Les trois passent
+maintenant par `scoring.score.presence` — sans quoi le CV met en avant ce que le
+score juge hors sujet, sous les yeux de l'utilisateur. Mesuré : l'ordre des
+expériences change sur **231 offres sur 400**.
+
+Le tri **ordonne, il ne sélectionne pas** : retirer une expérience d'un CV y
+creuse un trou que le recruteur remarquera. Et il n'injecte aucun mot-clé de
+l'annonce — s'attribuer une compétence qu'on n'a pas est une fausse déclaration,
+plus grave encore sur un CV que dans une lettre.
+
 **Le CV n'affiche pas de catégorie de compétences.** Le modèle en propose
 (« Quantitatif & données : »), mais les compétences y étaient versées par
 tranches sans rapport avec le thème : le rendu portait « Quantitatif & données :
@@ -359,11 +373,31 @@ l'avertissement est remonté. Mieux vaut pas de lettre qu'une lettre qui ment.
 **Trois contrôles, pas un.** Les deux autres attrapent des lettres où pas un
 seul nom propre n'est inventé, et que le premier laissait donc passer intactes :
 
-| Contrôle | Ce qu'il attrape |
-|---|---|
-| invention | un nom propre ou une année absents du profil et de l'offre |
-| **voix** | la lettre écrite du mauvais côté — le recruteur s'adresse au candidat |
-| **perroquet** | une phrase de l'annonce recopiée mot pour mot (8 mots d'affilée) |
+| Contrôle | Ce qu'il attrape | Effet |
+|---|---|---|
+| invention | un nom propre ou une année absents du profil et de l'offre | **bloquant** |
+| **voix** | la lettre écrite du mauvais côté — le recruteur s'adresse au candidat | **bloquant** |
+| **perroquet** | une phrase de l'annonce recopiée mot pour mot (12 jetons d'affilée) | **bloquant** |
+| **formules creuses** | « relever les défis », « fort de mon expérience »… | signalé |
+
+**Bloquant ou signalé : la distinction est délibérée.** Les trois premiers
+rendent la lettre *malhonnête* — elle affirme quelque chose de faux sur le
+candidat. Le quatrième la rend seulement *médiocre*. Refuser une lettre exacte
+pour un « relever les défis » serait disproportionné : elle est livrée, et les
+formules sont nommées dans les avertissements. Mieux vaut pas de lettre qu'une
+lettre qui ment — mais une lettre convenue vaut mieux que pas de lettre.
+
+**La détection des clichés est en pur code, et c'est un résultat de mesure.** On
+a d'abord demandé au modèle de relire son propre brouillon (`llm.relecture_lettre`,
+`PROMPT_RELECTURE`) : mistral:7b en conserve la **totalité** des clichés, il ne
+sait pas s'auto-critiquer. Il obéit en revanche quand on lui *nomme* la faute.
+La passe de relecture reste branchable pour un modèle plus capable, désactivée
+par défaut.
+
+**Le seuil du perroquet est passé de 8 à 12 jetons**, également par mesure : à 8,
+« au sein d'un Middle office Assurance H/F en CDI » (10 jetons) était refusé —
+le candidat ne pouvait plus nommer le poste auquel il postulait, et mistral
+n'arrivait jamais au bout de ses essais.
 
 La **voix** est le défaut le plus embarrassant et le plus fréquent en local :
 mistral rendait « Je suis heureuse de vous présenter une opportunité… je

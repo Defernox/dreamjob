@@ -167,6 +167,7 @@ def generer(
     *,
     redacteur,
     tentatives_lettre: int = 3,
+    relecture_lettre: bool = False,
     reordonner_cv: bool = True,
     ouvrir_apres: bool = True,
 ) -> Resultat:
@@ -192,11 +193,21 @@ def generer(
     # --- Lettre (le garde-fou peut légitimement refuser de livrer) ---
     lettre_docx: Path | None = None
     try:
-        corps, compte_rendu = rediger(profil, offre, redacteur, tentatives=tentatives_lettre)
+        corps, compte_rendu = rediger(profil, offre, redacteur,
+                                      tentatives=tentatives_lettre,
+                                      relecture=relecture_lettre)
         resultat.lettre_essais = compte_rendu["essais"]
         lettre_docx = ecrire_lettre(profil, offre, corps,
                                     dossier / "Lettre_de_motivation.docx")
         resultat.fichiers.append(lettre_docx)
+
+        # Une formule creuse n'empêche pas de livrer — mais elle se relit en
+        # dix secondes, à condition de savoir laquelle chercher.
+        if compte_rendu.get("cliches"):
+            resultat.avertissements.append(
+                "Lettre livrée, mais elle contient des formules convenues à "
+                "retoucher : " + ", ".join(compte_rendu["cliches"])
+            )
     except Exception as e:  # noqa: BLE001 — une lettre manquante ne perd pas le CV
         log.warning("Lettre non générée : %s", e)
         resultat.avertissements.append(f"Lettre non générée — {e}")

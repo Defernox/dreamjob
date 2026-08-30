@@ -35,6 +35,12 @@ llm:
   modele_redaction: claude-opus-5
   # Un modele local invente plus facilement : on rejette et on regenere.
   tentatives_anti_invention: 3
+  # Passe de relecture critique du brouillon. MESUREE SANS EFFET avec
+  # mistral:7b : il conserve la totalite des cliches qu'on lui demande de
+  # traquer, il ne sait pas s'auto-critiquer. Les formules creuses sont donc
+  # detectees en pur code (lettre.py, cliches()) et nommees au modele, ce qui
+  # marche. A reactiver avec un modele plus capable.
+  relecture_lettre: false
   max_tokens_extraction: 1200
   max_tokens_lettre: 2000
   max_tokens_import_cv: 8000

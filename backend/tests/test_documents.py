@@ -195,3 +195,40 @@ def test_la_lettre_est_mise_en_page_a_la_francaise(profil, offre, tmp_path):
     assert "Madame, Monsieur," in textes
     assert any("salutations distinguées" in t for t in textes)
     assert "Assureur Crédit" in textes
+
+
+# --- Le classement du CV parle la même langue que le score ------------------
+
+
+def test_le_classement_du_cv_reconnait_les_synonymes():
+    """`_pertinence` était une troisième implémentation de l'appariement, sans
+    les synonymes : une expérience « risques de crédit » ne rencontrait jamais
+    une offre parlant de « credit risk »."""
+    from app.documents.cv_render import _pertinence
+    from app.scoring.texte import mots
+
+    offre_en = set(mots("credit risk analysis for banking counterparties"))
+    assert _pertinence("gestion des risques de crédit", offre_en) > 0.0
+
+
+def test_le_classement_du_cv_pondere_les_mots_generiques():
+    """Une expérience reconnue sur le seul mot « gestion » ne doit pas passer
+    devant une expérience réellement pertinente."""
+    from app.documents.cv_render import _pertinence
+    from app.scoring.texte import mots
+
+    offre = set(mots("gestion des stocks en entrepôt"))
+    generique = _pertinence("gestion de trésorerie", offre)
+    assert generique < 0.5
+
+
+def test_le_cv_et_le_score_utilisent_la_meme_mesure():
+    """Deux mesures différentes finiraient par se contredire sous les yeux de
+    l'utilisateur : un CV qui met en avant ce que le score juge hors sujet."""
+    from app.documents.cv_render import _pertinence
+    from app.scoring.score import presence
+    from app.scoring.texte import mots
+
+    vocabulaire = set(mots("analyse financière et suivi des encours clients"))
+    for terme in ("analyse financière", "gestion de trésorerie", "soudure à l'arc"):
+        assert _pertinence(terme, vocabulaire) == presence(terme, vocabulaire, flou=False)

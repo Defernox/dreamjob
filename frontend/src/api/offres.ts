@@ -136,3 +136,27 @@ export const usePlanification = () =>
     queryFn: () => api.get<Planification>('/api/scans/planification'),
     staleTime: 60_000,
   })
+
+/** Ce que verra le recruteur dans son ATS. Calculé côté serveur, sans appel payant. */
+export type Correspondance = {
+  titre_cv: string
+  /** Faux quand l'intitulé a cédé au titre visé : le recruteur qui cherche l'intitulé exact ne trouvera pas ce CV. */
+  titre_reprend_l_offre: boolean
+  taux: number | null
+  taux_vise: number
+  termes_couverts: string[]
+  termes_manquants: string[]
+  competences_citees: string[]
+  langue_de_l_annonce: string | null
+  langues_exigees: string[]
+  annees_exigees: number | null
+  annees_profil: number | null
+  description_tronquee: boolean
+}
+
+export const useCorrespondance = (id: number | null) =>
+  useQuery({
+    queryKey: ['correspondance', id],
+    queryFn: () => api.get<Correspondance>(`/api/offres/${id}/correspondance`),
+    enabled: id !== null,
+  })

@@ -46,6 +46,12 @@ class Profile(SQLModel, table=True):
     # offre, si bien notée soit-elle par ailleurs. À 0, le critère n'est pas
     # évalué : on ne devine pas un parcours à partir de dates en texte libre.
     annees_experience: int = 0
+    # « masculin », « feminin », ou vide. Saisi par l'utilisateur, jamais déduit
+    # du prénom. Deux usages : choisir la moitié d'un intitulé doublé (« Auditeur
+    # comptable / Auditrice comptable », 9 % des offres pertinentes) et laisser
+    # la lettre accorder « diplômé » au lieu de contourner tout adjectif.
+    # Vide, rien n'est accordé et l'intitulé doublé cède au titre visé.
+    accord: str = ""
 
     # ["communication digitale", "gestion de projet"]
     secteurs: list = Field(default_factory=list, sa_column=colonne_json())

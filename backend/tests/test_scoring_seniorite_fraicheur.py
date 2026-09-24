@@ -16,6 +16,7 @@ import pytest
 
 from app.config import PoidsScoring
 from app.models import Offer, Profile
+from app.models.base import maintenant
 from app.scoring.explain import expliquer
 from app.scoring.extraction import extraire
 from app.scoring.score import (
@@ -30,7 +31,12 @@ from app.scoring.score import (
 
 from .test_scoring import offre, profil
 
-LE_JOUR_J = datetime(2026, 8, 30)
+# L'horloge réelle, et non une date figée : `calculer` mesure la fraîcheur par
+# rapport à aujourd'hui. Figé au 30 août 2026, ce repère a fait tomber trois
+# tests vingt-cinq jours plus tard — l'annonce « d'il y a deux jours » en avait
+# alors vingt-sept. Les tests qui appellent `score_fraicheur` directement lui
+# passent ce même repère, ils restent donc exacts.
+LE_JOUR_J = maintenant()
 
 
 def _il_y_a(jours: int) -> datetime:

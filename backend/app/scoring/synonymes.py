@@ -41,7 +41,7 @@ FAMILLES: list[set[str]] = [
     {"solvabilite", "solvabilité", "solvency", "creditworthiness"},
     {"contrepartie", "contreparties", "counterparty", "counterparties"},
     {"encours", "outstanding", "exposure", "exposures"},
-    {"banque", "bancaire", "bank", "banking"},
+    {"banque", "banques", "bancaire", "bancaires", "bank", "banking"},
     {"assurance", "assurances", "insurance"},
     {"controle", "contrôle", "control", "controlling"},
     {"tableur", "excel", "spreadsheet"},

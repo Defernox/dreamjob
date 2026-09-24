@@ -4,8 +4,9 @@ Deux exigences du cahier des charges, tenues ici :
 
 1. **La mise en page du modèle ne doit jamais casser.** Aucun paragraphe n'est
    créé de zéro : on duplique ceux du modèle et on remplace leur texte.
-2. **Réordonnancement selon l'offre.** Expériences et compétences les plus
-   proches de l'annonce passent en tête (désactivable dans `config.yaml`).
+2. **Réordonnancement selon l'offre.** Compétences et puces les plus proches de
+   l'annonce passent en tête (désactivable dans `config.yaml`). Les expériences,
+   elles, restent dans l'ordre des dates : c'est ce que le recruteur attend.
 
 Rien n'est inventé : tout provient du profil.
 """
@@ -14,6 +15,7 @@ from __future__ import annotations
 
 import logging
 import re
+import unicodedata
 from pathlib import Path
 
 import docx
@@ -30,9 +32,11 @@ from .docx_outils import (
     est_gras,
     est_puce,
     decouper_en_sections,
+    signer,
     supprimer,
     supprimer_section,
 )
+from .intitule import intitule_pour_cv
 
 log = logging.getLogger("dreamjob.cv")
 
@@ -78,17 +82,118 @@ def _pertinence(texte: str, vocabulaire: set[str]) -> float:
     return presence(texte, vocabulaire, flou=False)
 
 
-def _experiences_ordonnees(profil: Profile, vocabulaire: set[str], reordonner: bool) -> list[dict]:
-    if not reordonner:
-        return list(profil.experiences)
+_MOIS = {
+    "janvier": 1, "fevrier": 2, "mars": 3, "avril": 4, "mai": 5, "juin": 6,
+    "juillet": 7, "aout": 8, "septembre": 9, "octobre": 10, "novembre": 11,
+    "decembre": 12, "janv": 1, "fev": 2, "fevr": 2, "avr": 4, "juil": 7,
+    "sept": 9, "oct": 10, "nov": 11, "dec": 12,
+}
+_EN_COURS = re.compile(r"en cours|aujourd|pr[ée]sent|actuel|ce jour|now|current",
+                       re.IGNORECASE)
+
+
+def _date_de_tri(texte: str | None) -> tuple[int, int]:
+    """« Septembre 2023 », « 2023-09 », « 09/2023 », « 2021 », « en cours ».
+
+    Une date illisible vaut (0, 0) : l'expérience passe en fin de liste, et le
+    tri étant stable, plusieurs dates illisibles gardent l'ordre du profil.
+    """
+    if not texte:
+        return (0, 0)
+    if _EN_COURS.search(texte):
+        return (9999, 12)
+    annee = re.search(r"\b(19|20)\d{2}\b", texte)
+    if not annee:
+        return (0, 0)
+    mois = 0
+    numerique = re.search(r"\b(0?[1-9]|1[0-2])\s*[/.-]\s*(?:19|20)\d{2}\b|"
+                          r"\b(?:19|20)\d{2}\s*[/.-]\s*(0?[1-9]|1[0-2])\b", texte)
+    if numerique:
+        mois = int(numerique.group(1) or numerique.group(2))
+    else:
+        brut = "".join(c for c in unicodedata.normalize("NFKD", texte.lower())
+                       if not unicodedata.combining(c))
+        for mot in re.findall(r"[a-z]+", brut):
+            if mot in _MOIS:
+                mois = _MOIS[mot]
+                break
+    return (int(annee.group(0)), mois)
+
+
+def _experiences_ordonnees(profil: Profile) -> list[tuple[int, dict]]:
+    """Antéchronologique, toujours : la plus récente en tête.
+
+    Elles étaient triées par pertinence pour l'offre. Mesuré sur le CV réel, un
+    stage de mai 2021 passait devant un mandat 2021-2022 : un recruteur français
+    lit un CV de haut en bas en cherchant la dernière expérience, et un ordre qui
+    n'est pas celui des dates lui fait soupçonner un trou qu'on cache. La
+    pertinence se reporte là où elle ne trompe personne : l'ordre des puces à
+    l'intérieur de chaque expérience, et celui des compétences.
+    """
+    # L'indice dans le profil accompagne chaque expérience : c'est la clé des
+    # puces ciblées, calculées une fois pour toutes avant le rendu.
     return sorted(
-        profil.experiences,
-        key=lambda x: _pertinence(
-            f"{x.get('poste', '')} {x.get('description', '')} {' '.join(x.get('tags', []))}",
-            vocabulaire,
-        ),
+        enumerate(profil.experiences),
+        key=lambda ix: (_date_de_tri(ix[1].get("fin")) if ix[1].get("fin")
+                        else _date_de_tri(ix[1].get("debut")),
+                        _date_de_tri(ix[1].get("debut"))),
         reverse=True,
     )
+
+
+def puces_du_profil(profil: Profile) -> dict[int, list[str]]:
+    """Les puces de chaque expérience, découpées comme le rendu les découpera.
+
+    Le ciblage reformule EXACTEMENT ces puces-là : un découpage différent de
+    part et d'autre désalignerait les reformulations de leurs originaux.
+    """
+    return {i: _decouper_en_puces(x.get("description", ""), maximum=99)
+            for i, x in enumerate(profil.experiences)}
+
+
+# Deux années séparées par un tiret : « 2022-2023 », « Septembre 2020 - Juillet
+# 2025 ». Le tiret d'une date ISO (« 2023-09 ») n'en est pas un.
+_ENTRE_DEUX_ANNEES = re.compile(r"(?<=\d{4})\s*[-–—]\s*(?=\D{0,12}\d{4})")
+
+
+def _formations_ordonnees(profil: Profile) -> list[dict]:
+    """Antéchronologiques, sur l'année de fin — comme les expériences.
+
+    Rendues dans l'ordre du profil, elles mettaient un Master 2020-2025 devant
+    le MBA en cours (2026-2027) : la formation que le recruteur doit voir en
+    premier arrivait en second.
+    """
+    def cle(formation: dict) -> tuple:
+        morceaux = _ENTRE_DEUX_ANNEES.split(formation.get("annee") or "")
+        return (_date_de_tri(morceaux[-1]), _date_de_tri(morceaux[0]))
+    return sorted(profil.formations, key=cle, reverse=True)
+
+
+# Un résultat chiffré est ce qu'un recruteur retient d'une expérience : il
+# pèse autant qu'une correspondance complète avec le vocabulaire de l'annonce.
+BONUS_CHIFFRE = 0.5
+_CHIFFRE = re.compile(r"\d")
+
+
+def _puces_ordonnees(puces: list[str], vocabulaire: set[str], reordonner: bool,
+                     maximum: int) -> list[str]:
+    """Les puces d'une expérience : les plus utiles SONT CHOISIES, puis rendues
+    dans l'ordre du profil.
+
+    La pertinence sert à **choisir** quand le CV déborde — on gardait les N
+    premières du profil, pas celles qui parlent de CETTE offre. Elle ne sert
+    plus à **ordonner** : sur le premier dossier réel, « trésorerie augmentée de
+    100 % » passait derrière « mise en place du compte de résultat », et
+    « crowdfunding à 150 % de l'objectif » disparaissait. Le recouvrement lexical
+    avec l'annonce ne voit pas qu'un résultat chiffré vaut plus qu'une tâche ;
+    le candidat, lui, a rangé ses puces en connaissance de cause.
+    """
+    if not reordonner or len(puces) <= maximum:
+        return puces[:maximum]
+    utilite = {i: _pertinence(p, vocabulaire) + (BONUS_CHIFFRE if _CHIFFRE.search(p) else 0.0)
+               for i, p in enumerate(puces)}
+    gardees = sorted(sorted(utilite, key=lambda i: utilite[i], reverse=True)[:maximum])
+    return [puces[i] for i in gardees]
 
 
 def _competences_ordonnees(profil: Profile, vocabulaire: set[str], reordonner: bool) -> list[str]:
@@ -210,8 +315,11 @@ def _remplir_entete(entete: list, profil: Profile, offre: Offer) -> None:
     if len(entete) < 4:
         return
     definir_texte(entete[0], f"{profil.prenom} {profil.nom}".strip().upper())
-    # Le titre reprend l'intitulé de l'offre : c'est ce que lisent les filtres ATS.
-    definir_texte(entete[1], offre.titre or profil.titre_vise)
+    # Le titre reprend l'intitulé de l'offre — c'est ce que cherche le recruteur
+    # dans son ATS — mais NETTOYÉ : brut, il mettait « (H/F) » sous le nom du
+    # candidat dans 45 % des cas. Voir `intitule.py`.
+    definir_texte(entete[1], intitule_pour_cv(offre.titre, offre.lieu,
+                                              profil.titre_vise, profil.accord))
 
     contact = " | ".join(filter(None, [
         ", ".join(filter(None, [profil.ville, profil.pays])),
@@ -312,12 +420,16 @@ def rendre(
     *,
     reordonner: bool = True,
     max_puces: int = MAX_PUCES,
+    ciblage=None,
 ) -> Path:
     """Écrit le CV adapté à `offre` dans `destination`. Renvoie le chemin.
 
     `max_puces` borne le nombre de puces par expérience. `dossier.py` le
     resserre quand le PDF rendu déborde sur une seconde page — voir
     PUCES_PAR_ESSAI.
+
+    `ciblage` (`documents.ciblage.Ciblage`) apporte un résumé et des puces
+    reformulés pour l'offre, déjà contrôlés. Absent, le CV reprend le profil.
     """
     if not modele.exists():
         raise ModeleIntrouvable(
@@ -331,23 +443,29 @@ def rendre(
     _remplir_entete(entete, profil, offre)
 
     if "Profil" in sections and sections["Profil"]:
-        definir_texte(sections["Profil"][0], profil.resume or profil.titre_vise)
+        resume = (ciblage.resume if ciblage and ciblage.resume else None)
+        definir_texte(sections["Profil"][0], resume or profil.resume or profil.titre_vise)
         for surplus in sections["Profil"][1:]:
             supprimer(surplus)
 
     competences = _competences_ordonnees(profil, vocabulaire, reordonner)
     _remplir_competences(sections.get("Compétences", []), competences)
 
-    experiences = _experiences_ordonnees(profil, vocabulaire, reordonner)
-    puces = [_decouper_en_puces(x.get("description", ""), max_puces) for x in experiences]
+    ordonnees = _experiences_ordonnees(profil)
+    originales = puces_du_profil(profil)
+    ciblees = ciblage.puces if ciblage else {}
+    # Découpage complet PUIS sélection : couper avant de trier revenait à ne
+    # choisir que parmi les premières puces du profil.
+    puces = [_puces_ordonnees(ciblees.get(i, originales[i]), vocabulaire, reordonner, max_puces)
+             for i, _ in ordonnees]
     _appliquer_blocs(
         _blocs(sections.get("Expériences professionnelles", [])),
-        list(zip(experiences, puces)),
+        list(zip((x for _, x in ordonnees), puces)),
         _remplir_experience,
     )
     _appliquer_blocs(
         _blocs(sections.get("Formation", [])),
-        list(profil.formations),
+        _formations_ordonnees(profil),
         _remplir_formation,
     )
     _remplir_langues(sections.get("Langues", []), profil)
@@ -360,6 +478,8 @@ def rendre(
     if not profil.formations:
         supprimer_section(document, "Formation")
 
+    signer(document, profil, "CV", intitule_pour_cv(offre.titre, offre.lieu,
+                                                    profil.titre_vise, profil.accord))
     destination.parent.mkdir(parents=True, exist_ok=True)
     document.save(str(destination))
     log.info("CV rendu : %s", destination)

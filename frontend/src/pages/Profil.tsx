@@ -134,6 +134,23 @@ export default function Profil() {
           <Champ libelle="Disponibilité" valeur={profil.disponibilite}
                  onChange={(v) => maj('disponibilite', v)}
                  placeholder="Immédiate — laissez vide si vous préférez ne rien annoncer" />
+          <label className="block">
+            <span className="block text-xs font-medium text-encre-600 mb-1">Accord dans les documents</span>
+            <select
+              value={profil.accord}
+              onChange={(e) => maj('accord', e.target.value as TypeProfil['accord'])}
+              className="w-full rounded-lg border border-craie-300 bg-craie-50 px-3 py-2 text-sm
+                         focus:bg-surface focus:border-ambre-400 focus:outline-none"
+            >
+              <option value="">Non précisé — aucun adjectif accordé</option>
+              <option value="masculin">Masculin — « diplômé », « Auditeur »</option>
+              <option value="feminin">Féminin — « diplômée », « Auditrice »</option>
+            </select>
+            <p className="mt-1 text-xs text-encre-500">
+              Permet à la lettre d'écrire naturellement, et au CV de choisir entre
+              « Auditeur / Auditrice » quand l'annonce donne les deux.
+            </p>
+          </label>
           <div>
             <span className="block text-xs font-medium text-encre-600 mb-1">Secteurs cibles</span>
             <ListeTags valeurs={profil.secteurs} onChange={(v) => maj('secteurs', v)}

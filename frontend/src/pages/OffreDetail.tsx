@@ -2,8 +2,9 @@ import { Link, useParams } from 'react-router-dom'
 import { useReglages } from '../api/hooks'
 import { usePostuler } from '../api/candidatures'
 import { useGenererDocuments } from '../api/documents'
-import { useOffre } from '../api/offres'
+import { useCorrespondance, useOffre } from '../api/offres'
 import { BarresScore } from '../components/BarresScore'
+import { CorrespondanceAts } from '../components/CorrespondanceAts'
 import { Bouton } from '../components/champs'
 import { ScoreBadge } from '../components/ScoreBadge'
 import { verdictScore, anciennete, dateHeureFr } from '../lib/format'
@@ -13,6 +14,7 @@ export default function OffreDetail() {
   const identifiant = id ? Number(id) : null
   const { data: offre, isLoading, isError, error } = useOffre(identifiant)
   const { data: reglages } = useReglages()
+  const { data: correspondance } = useCorrespondance(identifiant)
   const postuler = usePostuler()
   const documents = useGenererDocuments()
 
@@ -97,6 +99,13 @@ export default function OffreDetail() {
               </>
             )}
           </section>
+
+          {correspondance && (
+            <section className="bg-surface rounded-carte border border-craie-200 shadow-carte p-5">
+              <h2 className="font-semibold mb-4">Ce que verra le recruteur</h2>
+              <CorrespondanceAts c={correspondance} />
+            </section>
+          )}
 
           <section className="bg-surface rounded-carte border border-craie-200 shadow-carte p-5">
             <h2 className="font-semibold mb-3">Description</h2>

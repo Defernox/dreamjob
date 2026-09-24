@@ -45,6 +45,8 @@ CONTEXTE_ANNONCE = {
     "different", "differents", "differentes", "divers", "diverses",
     "quotidien", "quotidienne", "interne", "externe", "principales",
     "missions", "activites", "taches", "fonction", "fonctions", "role",
+    # Verbes de rédaction à l'infinitif : « contribuer à », « veiller à »…
+    "contribuer", "assurer", "veiller", "garantir", "accompagner",
 }
 
 # Au-delà, la liste cesse d'être actionnable.
@@ -63,39 +65,58 @@ def _vocabulaire_du_profil(profil: Profile) -> set[str]:
     return ensemble_mots(" ".join(m for m in morceaux if m))
 
 
+def _termes_recurrents(offre: Offer) -> list[tuple[int, str]]:
+    """Les termes sur lesquels l'annonce insiste, par fréquence décroissante.
+
+    L'intitulé compte double : ce qu'il nomme est le cœur du poste. Le nom de
+    l'employeur et le lieu en sont exclus — ils reviennent dans toute annonce et
+    ne sont pas des termes du métier : relevé sur une offre réelle,
+    l'avertissement annonçait « caixa, depositos, geral, paris » comme des
+    compétences à combler.
+    """
+    frequences = Counter(mots(offre.description_brute))
+    for jeton in mots(offre.titre):
+        frequences[jeton] += OCCURRENCES_MINIMALES
+    hors_metier = set(mots(offre.entreprise)) | set(mots(offre.lieu)) | set(mots(offre.pays))
+
+    retenus: list[tuple[int, str]] = []
+    for terme, nombre in frequences.items():
+        if nombre < OCCURRENCES_MINIMALES:
+            continue
+        if terme in hors_metier or terme in GENERIQUES or terme in CONTEXTE_ANNONCE:
+            continue
+        if terme.endswith(SUFFIXES_CONJUGUES):
+            continue
+        if len(terme) < LONGUEUR_MINIMALE and terme not in SIGLES_UTILES:
+            continue
+        retenus.append((nombre, terme))
+    retenus.sort(key=lambda x: (-x[0], x[1]))
+    return retenus
+
+
+def _partager(profil: Profile, offre: Offer) -> tuple[list[str], list[str]]:
+    """(couverts, manquants) parmi les termes récurrents de l'annonce.
+
+    `presence` connaît les synonymes : « credit risk » n'est pas manquant pour un
+    profil qui dit « risques de crédit ».
+    """
+    vocabulaire_profil = _vocabulaire_du_profil(profil)
+    if not vocabulaire_profil:
+        return [], []
+    couverts, manquants = [], []
+    for _, terme in _termes_recurrents(offre):
+        (couverts if presence(terme, vocabulaire_profil, flou=True) > 0.0
+         else manquants).append(terme)
+    return couverts, manquants
+
+
 def mots_cles_non_couverts(profil: Profile, offre: Offer) -> list[str]:
     """Termes récurrents de l'annonce qu'aucun élément du profil ne recouvre.
 
     Ordonnés par fréquence dans l'annonce : le premier est celui sur lequel le
     recruteur insiste le plus.
     """
-    vocabulaire_profil = _vocabulaire_du_profil(profil)
-    if not vocabulaire_profil:
-        return []
-
-    # L'intitulé compte double : ce qu'il nomme est le cœur du poste.
-    frequences = Counter(mots(offre.description_brute))
-    for jeton in mots(offre.titre):
-        frequences[jeton] += OCCURRENCES_MINIMALES
-
-    manquants: list[tuple[int, str]] = []
-    for terme, nombre in frequences.items():
-        if nombre < OCCURRENCES_MINIMALES:
-            continue
-        if terme in GENERIQUES or terme in CONTEXTE_ANNONCE:
-            continue
-        if terme.endswith(SUFFIXES_CONJUGUES):
-            continue
-        if len(terme) < LONGUEUR_MINIMALE and terme not in SIGLES_UTILES:
-            continue
-        # `presence` connaît les synonymes : « credit risk » n'est pas manquant
-        # pour un profil qui dit « risques de crédit ».
-        if presence(terme, vocabulaire_profil, flou=True) > 0.0:
-            continue
-        manquants.append((nombre, terme))
-
-    manquants.sort(key=lambda x: (-x[0], x[1]))
-    return [terme for _, terme in manquants[:MAX_TERMES]]
+    return _partager(profil, offre)[1][:MAX_TERMES]
 
 
 def couverture_de_l_offre(profil: Profile, offre: Offer) -> dict:

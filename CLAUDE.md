@@ -83,7 +83,7 @@ DreamJob/
 │     ├─ connectors/    base · http (débit, cache) · registry · une source = un fichier
 │     ├─ services/      dedup (hash) · scan (orchestration)
 │     ├─ scoring/       extraction + score + couverture — pur code, jamais de LLM
-│     ├─ documents/     docx_outils · cv_render · lettre · controles · exemples · pdf · dossier
+│     ├─ documents/     docx_outils · intitule · cv_render · ciblage · correspondance · lettre · controles · exemples · pdf · dossier
 │     ├─ importers/     CV .docx/.pdf → profil structuré
 │     ├─ exports/       export Excel pour France Travail
 │     └─ llm/           client Anthropic + cache
@@ -195,7 +195,24 @@ dans `models/enums.py`, la validation se fait dans la couche API.
 
 **Migrations.** Alembic fait foi. `create_all()` au démarrage n'est qu'un filet
 de sécurité. `migrations/script.py.mako` importe `sqlmodel` — nécessaire, les
-autogénérations produisent des `sqlmodel.sql.sqltypes.AutoString`.
+autogénérations produisent des `sqlmodel.sql.sqltypes.AutoString`. **Une colonne
+`NOT NULL` ajoutée à une table existante exige un `server_default`** : l'autogénération
+l'omet systématiquement, et SQLite refuse alors la migration. Arrivé trois fois.
+
+**Tests : jamais la vraie base, jamais une date figée face à l'horloge.** Un test
+du planificateur lisait `app.db.engine`, donc la base de l'utilisateur : il
+passait parce que le dernier scan réel était récent, pas parce que la base était
+vierge, et il est tombé vingt-cinq jours plus tard. Trois tests de fraîcheur
+dataient leurs offres du 30 août quand `calculer` mesure par rapport à
+aujourd'hui : même effet, même délai. Un module qui lit l'horloge se teste avec
+des dates relatives à `maintenant()`, et tout test qui passe par `engine`
+redirige celui-ci vers la base temporaire (`monkeypatch.setattr(module, "engine", …)`).
+
+**Écrire du code depuis un script shell.** Un `\b` dans une chaîne Python non
+brute devient un octet BACKSPACE, un `\n` passé par `sed` ou un heredoc devient
+un vrai saut de ligne au milieu d'une chaîne. Les deux sont arrivés ici, le
+premier sans aucune erreur visible. Pour du code, l'outil d'édition — et
+`grep -c $'\x08'` après coup.
 
 ---
 
@@ -223,15 +240,17 @@ vérifiée par un test.
 
 ## Modèles LLM
 
-Deux modèles, deux usages — réglés dans `config.yaml` :
+Un modèle par document — réglés dans `config.yaml` :
 
 | Réglage | Modèle | Appelé | Pourquoi |
 |---|---|---|---|
 | `modele_extraction` | *(inutilisé)* | jamais | le scoring est en pur code |
-| `modele_redaction` | `claude-opus-5` | import de CV, lettre | rare et à fort enjeu |
+| `modele_redaction` | `claude-opus-5` | import de CV | rare, structure tout le profil |
+| `modele_lettre` | `claude-opus-5-5` | une lettre par candidature | lue en entier par le recruteur : le meilleur modèle s'y paie |
+| `modele_ciblage` | `claude-sonnet-5` | un CV ciblé par candidature | reformulation encadrée par des contrôles en pur code |
 
-`llm.fournisseur` choisit entre `ollama` (local, gratuit, par défaut) et
-`anthropic`. **`ClientLlm._appeler_fournisseur` est le seul endroit où ce choix
+`llm.fournisseur` choisit entre `anthropic` (payant, par défaut depuis la phase 2)
+et `ollama` (local, gratuit). **`ClientLlm._appeler_fournisseur` est le seul endroit où ce choix
 se fait** : cache, validation Pydantic et messages d'erreur sont communs. Avant
 cet aiguillage, l'import de CV était resté câblé sur Anthropic alors que la
 lettre savait déjà tourner en local.
@@ -242,8 +261,36 @@ champs en un seul appel : il range le nom dans le titre visé et rend zéro
 compétence. Découpé, il devient exploitable. Chaque passe a sa propre entrée de
 cache (`variante`) : une passe qui échoue ne fait pas perdre les autres.
 
-**L'application doit rester gratuite.** Le compte Anthropic n'a pas de crédits :
-la rédaction passe par **Ollama en local** (`mistral:7b`, RTX 3060 **Laptop 6 Go**).
+**Mesuré sur deux dossiers réels** (offre « Analyste Risques Financiers ») :
+la lettre en effort `medium` a écrit 5 361 jetons — la réflexion, pour une
+lettre d'environ 450 — soit 0,125 $ ; en `low`, 2 209 jetons, 0,062 $, pour une
+lettre comparable. `low` est donc le défaut. Le ciblage coûte 0,013 $ par tour.
+Un dossier revient à **environ 0,08 $**.
+
+**Ce que coûte un dossier est écrit dans le dossier.** Chaque appel relève ses
+jetons et les chiffre (`llm.tarifs`, dollars par million) : `generation.json`
+porte `consommation` appel par appel et `cout_usd` au total. L'utilisateur paie
+ses générations ; il doit pouvoir le lire sans ouvrir la console Anthropic. Un
+modèle sans tarif connu coûte zéro dans le relevé — mieux vaut un coût manquant
+qu'un coût inventé.
+
+**Opus 5.5 réfléchit toujours, et ça se paie en jetons de sortie.** Ni
+`temperature` (refusé en 400) ni `thinking` (impossible à désactiver) ne sont
+envoyés : l'effort (`effort_lettre`, `effort_ciblage`) est le seul réglage de
+profondeur. La réflexion compte dans `max_tokens` — à 2 000, la lettre aurait
+été tronquée ; le budget est donc de 16 000, en flux. Une réponse terminée par
+`max_tokens` ou `refusal` lève une erreur au lieu de livrer un texte coupé, et
+seuls les blocs `text` sont gardés : la réflexion n'entre jamais dans la lettre.
+
+**La clé se vérifie sans être lue.** `models.list()` confirme l'authentification
+sans rien consommer. Deux clés collées de travers ont été repérées ainsi — des
+caractères parasites avant `sk-ant-` — sans jamais afficher la valeur : un
+secret qui passe dans une conversation doit être renouvelé.
+
+**Le local reste possible, et gratuit** : `llm.fournisseur: ollama`
+(`mistral:7b`, RTX 3060 **Laptop 6 Go**). Le CV n'est alors pas ciblé — une
+reformulation qui ne doit rien ajouter est précisément ce qu'un modèle de 7
+milliards de paramètres fait mal.
 
 **Le modèle ne tient pas entièrement dans la carte, et tout en découle.**
 mistral:7b réclame ~5,1 Go quand la carte n'offre que 4,6 Go libres : Ollama
@@ -566,13 +613,59 @@ celle des compétences et celle du secteur : simple appartenance d'ensemble, don
 sans synonymes ni pondération des mots génériques. Une expérience « risques de
 crédit » ne rencontrait jamais une offre en « credit risk ». Les trois passent
 maintenant par `scoring.score.presence` — sans quoi le CV met en avant ce que le
-score juge hors sujet, sous les yeux de l'utilisateur. Mesuré : l'ordre des
-expériences change sur **231 offres sur 400**.
+score juge hors sujet, sous les yeux de l'utilisateur.
+
+**Les expériences et les formations suivent les dates, pas la pertinence.** Une
+première version triait les expériences par pertinence pour l'offre (l'ordre
+changeait sur 231 offres sur 400). Relu sur le CV réel, un stage de mai 2021
+passait devant un mandat 2021-2022, et le Master 2020-2025 devant le MBA en
+cours : un recruteur français lit un CV de haut en bas en cherchant la dernière
+expérience, et un ordre qui n'est pas celui des dates lui fait soupçonner un trou
+qu'on cache. La pertinence s'applique désormais **aux puces de chaque
+expérience**, pour **choisir** quand le CV déborde — on gardait les N premières
+puces du profil, pas celles qui parlent de CETTE offre. Elle ne sert plus à les
+**ordonner** : sur le premier dossier réel, « trésorerie augmentée de 100 % »
+passait derrière « mise en place du compte de résultat », et « crowdfunding à
+150 % de l'objectif » disparaissait. Le recouvrement lexical avec l'annonce ne
+voit pas qu'un résultat chiffré vaut plus qu'une tâche : un chiffre compte
+désormais comme une pleine correspondance (`BONUS_CHIFFRE`), et les puces
+retenues gardent l'ordre choisi par le candidat. Les compétences restent triées
+par pertinence.
 
 Le tri **ordonne, il ne sélectionne pas** : retirer une expérience d'un CV y
 creuse un trou que le recruteur remarquera. Et il n'injecte aucun mot-clé de
 l'annonce — s'attribuer une compétence qu'on n'a pas est une fausse déclaration,
 plus grave encore sur un CV que dans une lettre.
+
+**L'intitulé de l'annonce est nettoyé avant d'aller sur le CV**
+(`documents/intitule.py`). On le garde — c'est ce que cherche le recruteur dans
+son ATS — mais brut, il mettait « (H/F) » sous le nom du candidat dans **45 %**
+des offres pertinentes, jusqu'à « Analyste Risques Financiers (H/F)- PARIS
+(H/F) ». Sont retirés : marqueurs de genre, contrat, durée, département,
+télétravail, références. Le lieu n'est retiré que **s'il est celui de l'offre** :
+mesuré, le dernier segment après un tiret est rarement un lieu (« - Bank »,
+« - Trading », « - Middle Office »). Seuls les séparateurs **espacés** comptent —
+un trait d'union de mot composé (« Front-Office ») n'en est pas un.
+
+**L'objet de la lettre élide** : « candidature au poste de Analyste » était la
+première ligne lue par le recruteur dans environ une lettre sur dix. Le corps
+rendu par le modèle est élidé aussi (`lettre._elider`) — relevé dans une vraie
+lettre : « le poste de « Analyste … » ». Les contrôles anti-invention lisent
+indifféremment les deux formes, vérifié avant d'introduire la correction.
+
+**Le genre n'est jamais déduit du prénom.** `Profile.accord` (masculin, féminin,
+vide) est saisi par l'utilisateur. Il sert à choisir la moitié d'un intitulé
+doublé par France Travail (« Auditeur comptable / Auditrice comptable », 9 % des
+offres pertinentes, parfois tronqué en seconde moitié) et à laisser la lettre
+écrire « diplômé » au lieu de contourner tout adjectif. Vide, l'intitulé doublé
+cède au titre visé et la lettre n'accorde rien.
+
+**Les fichiers portent le nom du candidat** (`CV_Maxime_Nicolas.pdf`), sans
+accents : le recruteur recevait cinquante `CV.pdf`. Leurs métadonnées aussi — le
+CV partait signé « Un-named » (hérité du modèle), la lettre « python-docx », et
+LibreOffice reporte ces champs dans le PDF. Le nettoyage d'un dossier régénéré
+efface les anciens noms et ceux que `generation.json` a consignés : sans cela,
+l'ancien `CV.pdf` restait à côté du nouveau.
 
 **Le CV n'affiche pas de catégorie de compétences.** Le modèle en propose
 (« Quantitatif & données : »), mais les compétences y étaient versées par
@@ -607,6 +700,23 @@ la rendent seulement **convenue** : on livre, on nomme les défauts dans les
 avertissements, l'utilisateur retouche en dix secondes. Confondre les deux
 faisait refuser des lettres exactes — mesuré, deux offres réelles sur deux sans
 le moindre document produit.
+
+**La lettre est en A4, et mesurée.** Le modèle par défaut de python-docx est
+au format US Letter (21,6 × 27,9 cm) avec 3,2 cm de marges : la première lettre
+d'Opus — 305 mots — envoyait sa seule signature en page 2. Toutes les lettres
+l'étaient depuis le début ; celles de mistral, plus courtes, passaient par
+chance. Le PDF est désormais compté comme celui du CV, et un débordement est
+signalé.
+
+**Le niveau de langue du profil fait partie des sources.** Le contrôle ne lisait
+que le nom de la langue : la première lettre d'Opus qui citait « TOEIC 775 »,
+tiré du profil, a été rejetée comme une invention, et un second essai payé pour
+rien. mistral ne citait jamais ce score — le défaut était resté invisible.
+
+**Les contrôles attrapent les noms, les chiffres et les dates — pas les
+affirmations molles.** « Cette responsabilité m'a appris à documenter mes
+recommandations » passe : aucun nom, aucun chiffre, et pourtant rien de tel
+n'est dans le profil. Une lettre se relit avant l'envoi.
 
 **Les deux côtés doivent tokeniser pareil.** Le vocabulaire autorisé était
 découpé par `normaliser().split()`, qui garde le point final, quand la lettre
@@ -667,8 +777,56 @@ composant n'affiche que les clés qu'il connaît : les deux nouveaux critères y
 étaient invisibles, donc le score baissait sans que rien ne l'explique. C'est
 le genre d'oubli qu'aucun test backend n'attrape.
 
+**Le CV ciblé : le modèle propose, le code vérifie chaque puce**
+(`documents/ciblage.py`). Reprendre le vocabulaire de l'annonce quand il désigne
+la même chose est l'optimisation ATS honnête ; ajouter ce qu'elle réclame et que
+le candidat n'a pas fait est une fausse déclaration. Chaque puce réécrite est
+refusée si elle introduit un nombre, un nom propre ou un sigle absent de
+l'original, un mot porteur de sens qui n'en soit ni un synonyme métier, ni un mot
+de la même famille, ni un mot générique ; si elle s'allonge de plus d'un tiers ;
+si elle recopie l'annonce. Une puce refusée retombe sur l'originale et le refus
+est consigné — un CV ciblé à moitié vaut mieux qu'un CV qui ment à moitié.
+
+Le contrôle a été **calibré sur les puces réelles** avant d'être branché : quatre
+mensonges écrits à la main (IFRS 9, Bloomberg, « provisionnement »,
+« contreparties », un chiffre changé) sont tous bloqués. Deux réécritures honnêtes
+étaient d'abord refusées pour des mots grammaticaux (« mise en place »,
+« contre ») : d'où `NEUTRES`. « impayés » pour « non-paiement » reste refusé,
+exprès — accepter un sens voisin que la table métier ne connaît pas, c'est ouvrir
+la porte au glissement.
+
+Le résumé ciblé ne peut citer de chiffre **que du profil** : « 5 ans
+d'expérience » figure dans l'offre, et c'est précisément pourquoi il ne peut pas
+figurer dans le résumé. Il est impersonnel — un « je » ou un « votre » le fait
+refuser.
+
+**Le ciblage a un second tour, qui nomme la faute.** Au premier dossier réel,
+Sonnet 5 a proposé cinq réécritures et les cinq ont été refusées : il prêtait
+aux puces les exigences de l'annonce (« contrôle », « mesure »,
+« identification ») — refus justes. Mais il mêlait dans une même puce un ajout
+abusif et une reformulation honnête, et la puce entière partait. Le second tour
+renvoie les seules puces refusées avec leurs motifs : au dossier suivant, trois
+puces réécrites dont deux grâce à la correction, et les deux restantes toujours
+refusées pour les mêmes mots. C'est la méthode qui marche sur la lettre — un
+modèle obéit quand on lui nomme la faute.
+
+**Le ciblage est demandé une seule fois**, avant la boucle qui tient le CV sur une
+page : dans la boucle, il serait redemandé — et payé — jusqu'à quatre fois. Un
+échec d'appel n'empêche rien, le CV part avec les puces du profil.
+
+**« Ce que verra le recruteur »** (`documents/correspondance.py`, fiche d'une
+offre) : le titre qui figurera sous le nom, les termes récurrents de l'annonce
+couverts et manquants, un taux (Jobscan vise 75 à 80 %), les langues et
+l'ancienneté exigées, et une alerte quand la description est tronquée (Adzuna
+coupe à 500 caractères). Pur code, aucun appel. Le taux n'est pas un score de
+plus : le score dit si l'offre convient, le taux dit si le CV parle la langue de
+l'annonce. Les pluriels comptent — « bancaires » était donné manquant à un
+profil qui dit « banque », faute d'être dans la famille de synonymes.
+
 **`mots_cles_non_couverts`** (`scoring/couverture.py`) : les termes récurrents de
-l'annonce qu'aucun élément du profil ne recouvre, synonymes compris. Ce n'est pas
+l'annonce qu'aucun élément du profil ne recouvre, synonymes compris. Le nom de
+l'employeur et le lieu en sont exclus : l'avertissement annonçait « caixa,
+depositos, geral, paris » comme des compétences à combler. Ce n'est pas
 un jugement sur l'offre — le score s'en charge — mais sur le profil. Répété sur
 vingt candidatures, il dessine la compétence à combler. Pur code, aucun appel.
 
@@ -832,3 +990,5 @@ Sans LibreOffice, les documents sont générés en Word uniquement — même pri
 - [x] **10.** Recherches enregistrées multiples, jouées ensemble
 - [x] **9.** Scan planifié quotidien + rattrapage au démarrage + badge « X nouvelles offres »
 - [x] **11.** Connecteur DogFinance (spécialisé finance) — validé en réel : 63 offres, 12 vertes, descriptions médianes à 2 300 caractères ; prélèvement plafonné à 40 pages par scan
+- [x] **12.** Ce que voit le recruteur — intitulé nettoyé (45 % des offres portaient « (H/F) »), élision de l'objet, fichiers et métadonnées au nom du candidat, expériences et formations dans l'ordre des dates, accord saisi et jamais déduit
+- [x] **13.** Rédaction payante — lettre par Opus 5.5, CV ciblé par Sonnet 5 sous contrôles puce par puce, coût de chaque dossier dans `generation.json`, panneau « Ce que verra le recruteur »

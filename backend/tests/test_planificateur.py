@@ -162,23 +162,43 @@ def test_un_profil_sans_preference_retombe_sur_la_configuration(session):
     assert requete_depuis_profil(session, r).pays == requete_par_defaut(r).pays
 
 
-def test_pas_de_rattrapage_sur_une_base_vierge(monkeypatch):
+class _FauxPlanificateur:
+    timezone = None
+
+    def __init__(self):
+        self.taches = []
+
+    def add_job(self, *a, **kw):
+        self.taches.append(kw.get("id"))
+
+
+def test_pas_de_rattrapage_sur_une_base_vierge(session, monkeypatch):
     """Sortir sur le réseau avant que l'utilisateur ait vu l'écran Profil serait
-    une initiative qu'il n'a pas demandée."""
+    une initiative qu'il n'a pas demandée.
+
+    Ce test lisait la VRAIE base de l'utilisateur, faute de rediriger le moteur :
+    il passait parce que le dernier scan réel était récent, pas parce que la
+    base était vierge — et il est tombé vingt-cinq jours plus tard, le jour où
+    ce scan a vieilli.
+    """
     from app import scheduler
 
-    class FauxPlanificateur:
-        timezone = None
-
-        def __init__(self):
-            self.taches = []
-
-        def add_job(self, *a, **kw):
-            self.taches.append(kw.get("id"))
-
-    faux = FauxPlanificateur()
+    monkeypatch.setattr(scheduler, "engine", session.get_bind())
+    faux = _FauxPlanificateur()
     scheduler._programmer_rattrapage(faux)
     assert faux.taches == []
+
+
+def test_un_historique_ancien_declenche_bien_le_rattrapage(session, monkeypatch):
+    """Le pendant du test précédent : sans lui, une fonction qui ne programme
+    JAMAIS rien passerait le test de la base vierge."""
+    from app import scheduler
+
+    _scan(session, il_y_a_heures=24 * 30, statut=StatutScan.TERMINE)
+    monkeypatch.setattr(scheduler, "engine", session.get_bind())
+    faux = _FauxPlanificateur()
+    scheduler._programmer_rattrapage(faux)
+    assert faux.taches == [scheduler.TACHE_RATTRAPAGE]
 
 
 def test_l_heure_de_prochaine_execution_est_en_utc():

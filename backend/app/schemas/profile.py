@@ -7,6 +7,7 @@ qui les valide, à l'import comme à l'édition.
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -132,6 +133,10 @@ class ProfilMaj(ProfilStructure):
     annees_experience: int = Field(
         default=0, ge=0, le=60,
         description="Années d'expérience professionnelle, 0 si non renseigné")
+    # Jamais déduit du prénom : c'est l'utilisateur qui le dit. Vide, la lettre
+    # n'accorde aucun adjectif et le CV contourne les intitulés doublés.
+    accord: Literal["", "masculin", "feminin"] = Field(
+        default="", description="Accord grammatical des documents, vide si non renseigné")
     pays_acceptes: list[str] = Field(default_factory=list)
     contrats_acceptes: list[str] = Field(default_factory=list)
 

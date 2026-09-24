@@ -122,3 +122,21 @@ def supprimer_section(document, nom: str) -> None:
     for paragraphe in sections.get(titre.text.strip(), []):
         supprimer(paragraphe)
     supprimer(titre)
+
+
+def signer(document, profil, nature: str, intitule: str = "") -> None:
+    """Les métadonnées du fichier : auteur, titre, sujet.
+
+    Le CV partait signé « Un-named » (hérité du modèle) et la lettre
+    « python-docx » : c'est ce qu'affichent l'explorateur de fichiers du
+    recruteur et certains ATS dans la fiche du document. LibreOffice reporte
+    ces champs dans le PDF — `/Author` y valait « Un-named » lui aussi.
+    """
+    nom = f"{profil.prenom} {profil.nom}".strip()
+    proprietes = document.core_properties
+    proprietes.author = nom
+    proprietes.last_modified_by = nom
+    proprietes.title = f"{nature} — {nom}" if nom else nature
+    proprietes.subject = intitule
+    proprietes.comments = ""
+    proprietes.keywords = ""

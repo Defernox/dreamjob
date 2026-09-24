@@ -93,8 +93,34 @@ class Llm(BaseModel):
         """
         return self.modele_local if self.local else self.modele_redaction
     max_tokens_extraction: int = 1200
-    max_tokens_lettre: int = 2000
+    # Réflexion comprise : Opus 5.5 réfléchit toujours avant d'écrire, et ces
+    # jetons comptent dans le même budget. À 2 000, la lettre aurait été
+    # tronquée dès que la réflexion dépassait 1 500 jetons.
+    max_tokens_lettre: int = 16000
     max_tokens_import_cv: int = 8000
+
+    # --- Rédaction payante : un modèle par document, choisi par l'utilisateur ---
+    # La lettre est lue en entier par le recruteur : c'est là que le meilleur
+    # modèle se paie. Le CV ciblé est une reformulation encadrée par des
+    # contrôles en pur code : un modèle intermédiaire y suffit.
+    modele_lettre: str = "claude-opus-5-5"
+    modele_ciblage: str = "claude-sonnet-5"
+    # « low » à « max ». Plus haut = plus de réflexion, donc plus cher.
+    effort_lettre: str = "low"
+    effort_ciblage: str = "low"
+    max_tokens_ciblage: int = 8000
+    # Reformuler les puces du CV avec le vocabulaire de l'annonce, et écrire un
+    # résumé propre à l'offre. Sans effet en local : mistral:7b n'est pas assez
+    # fiable pour une reformulation qui ne doit rien ajouter.
+    ciblage_cv: bool = True
+    # Dollars par million de jetons (entrée, sortie), pour chiffrer chaque
+    # dossier dans generation.json. Tarifs Anthropic vérifiés en septembre 2026.
+    tarifs: dict[str, tuple[float, float]] = {
+        "claude-opus-5-5": (4.0, 20.0),
+        "claude-opus-5": (5.0, 25.0),
+        "claude-sonnet-5": (2.0, 10.0),
+        "claude-haiku-4-5": (1.0, 5.0),
+    }
 
 
 class Http(BaseModel):

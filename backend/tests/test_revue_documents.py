@@ -169,12 +169,12 @@ def test_une_lettre_refusee_ne_laisse_pas_la_precedente(tmp_path):
             redacteur=lambda s, m: "Mon parcours au Crédit Mutuel me prépare. " * 25,
             ouvrir_apres=False)
     dossier = tmp_path / nom_dossier(offre)
-    assert (dossier / "Lettre_de_motivation.docx").exists()
+    assert (dossier / "Lettre_de_motivation_Maxime_Nicolas.docx").exists()
 
     resultat = generer(_profil(), offre, tmp_path, MODELE,
                        redacteur=lambda s, m: "J'ai dirigé Bridgewater dix ans. " * 25,
                        tentatives_lettre=1, ouvrir_apres=False)
-    assert not (dossier / "Lettre_de_motivation.docx").exists()
+    assert not (dossier / "Lettre_de_motivation_Maxime_Nicolas.docx").exists()
     assert any("Lettre non générée" in a for a in resultat.avertissements)
 
 

@@ -11,7 +11,7 @@ from ..config import reglages
 from ..db import get_session
 from ..documents.cv_render import ModeleIntrouvable
 from ..documents.dossier import generer, ouvrir
-from ..llm.redaction import etat, redacteur
+from ..llm.redaction import cibleur, etat, redacteur
 from ..llm.client import LlmErreur
 from ..models import Application, Offer
 from ..models.base import maintenant
@@ -56,6 +56,7 @@ def generer_documents(
             relecture_lettre=r.llm.relecture_lettre,
             reordonner_cv=r.documents.reordonner_cv,
             ouvrir_apres=ouvrir_apres,
+            cibleur=cibleur(r),
         )
     except ModeleIntrouvable as e:
         raise HTTPException(422, str(e)) from e

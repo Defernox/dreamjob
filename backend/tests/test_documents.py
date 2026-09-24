@@ -83,17 +83,44 @@ def test_la_mise_en_page_du_modele_survit(profil, offre, tmp_path):
     assert "List Paragraph" in styles, "les puces ont perdu leur style"
 
 
-def test_les_experiences_sont_reordonnees_selon_l_offre(profil, offre, tmp_path):
-    """L'expérience la plus proche de l'annonce passe en tête."""
-    textes = _textes(rendre(profil, offre, MODELE, tmp_path / "CV.docx", reordonner=True))
+@pytest.mark.parametrize("reordonner", [True, False])
+def test_les_experiences_suivent_les_dates_meme_contre_la_pertinence(offre, tmp_path, reordonner):
+    """La plus récente en tête, même quand la plus ancienne colle mieux à l'offre.
+
+    Elles étaient triées par pertinence : un stage de 2021 passait devant un
+    mandat 2021-2022, et un recruteur qui lit un CV de haut en bas y voit un
+    trou qu'on cache. Le profil est construit à rebours exprès — l'expérience
+    ancienne est la seule à parler de recouvrement — sinon le test passerait
+    par coïncidence.
+    """
+    profil = Profile(
+        prenom="M", nom="N", skills=[{"nom": "Excel"}],
+        experiences=[
+            {"entreprise": "Assureur", "poste": "Chargé de recouvrement", "debut": "Mai 2021",
+             "fin": "Juillet 2021", "description": "Recouvrement de créances export."},
+            {"entreprise": "Association", "poste": "Trésorier", "debut": "Septembre 2021",
+             "fin": "Septembre 2022", "description": "Tenue du budget annuel."},
+            {"entreprise": "Banque", "poste": "Gestionnaire", "debut": "2023-09",
+             "fin": "en cours", "description": "Suivi de portefeuille."},
+        ])
+    textes = _textes(rendre(profil, offre, MODELE, tmp_path / "CV.docx", reordonner=reordonner))
     position = {t: i for i, t in enumerate(textes)}
-    assert position["Gestionnaire export"] < position["Trésorier"]
+    assert position["Gestionnaire"] < position["Trésorier"] < position["Chargé de recouvrement"]
 
 
-def test_l_ordre_du_profil_est_respecte_si_on_desactive(profil, offre, tmp_path):
-    textes = _textes(rendre(profil, offre, MODELE, tmp_path / "CV.docx", reordonner=False))
-    position = {t: i for i, t in enumerate(textes)}
-    assert position["Trésorier"] < position["Gestionnaire export"]
+def test_quand_le_cv_deborde_on_garde_les_puces_qui_parlent_a_l_offre(offre, tmp_path):
+    """Couper les N premières puces gardait ce que le profil citait d'abord, pas
+    ce qui compte pour CETTE annonce."""
+    profil = Profile(
+        prenom="M", nom="N", skills=[{"nom": "Excel"}],
+        experiences=[{"entreprise": "Banque", "poste": "Gestionnaire", "debut": "2023",
+                      "description": "Organisation des séminaires internes.\n"
+                                     "Accueil des nouveaux arrivants.\n"
+                                     "Recouvrement de créances export auprès des clients."}])
+    textes = _textes(rendre(profil, offre, MODELE, tmp_path / "CV.docx", max_puces=1))
+    joint = "\n".join(textes)
+    assert "Recouvrement de créances export" in joint
+    assert "séminaires" not in joint
 
 
 def test_les_puces_restent_dans_leur_experience(profil, offre, tmp_path):
@@ -160,8 +187,8 @@ def test_le_dossier_complet_est_produit(profil, offre, tmp_path):
     resultat = generer(profil, offre, tmp_path, MODELE,
                        redacteur=_redacteur_honnete, ouvrir_apres=False)
     noms = {f.name for f in resultat.fichiers}
-    assert "CV.docx" in noms
-    assert "Lettre_de_motivation.docx" in noms
+    assert "CV_Maxime_Nicolas.docx" in noms
+    assert "Lettre_de_motivation_Maxime_Nicolas.docx" in noms
     assert "offre.json" in noms
 
 
@@ -184,8 +211,8 @@ def test_une_lettre_refusee_ne_fait_pas_perdre_le_cv(profil, offre, tmp_path):
     resultat = generer(profil, offre, tmp_path, MODELE, redacteur=menteur,
                        tentatives_lettre=1, ouvrir_apres=False)
     noms = {f.name for f in resultat.fichiers}
-    assert "CV.docx" in noms
-    assert "Lettre_de_motivation.docx" not in noms
+    assert "CV_Maxime_Nicolas.docx" in noms
+    assert "Lettre_de_motivation_Maxime_Nicolas.docx" not in noms
     assert any("Lettre non générée" in a for a in resultat.avertissements)
 
 

@@ -189,3 +189,19 @@ def detail(offre_id: int, session: Session = Depends(get_session)) -> OffreDetai
     ).first()
     return OffreDetail(**offre.model_dump(), a_candidature=candidature is not None,
                        expiree=offre.derniere_vue_le < _seuil_expiration())
+
+
+@router.get("/{offre_id}/correspondance")
+def correspondance(offre_id: int, session: Session = Depends(get_session)) -> dict:
+    """Ce que verra le recruteur dans son ATS — calculé sans aucun appel payant."""
+    from ..documents.correspondance import correspondance_ats
+    from ..services.scoring import profil_courant
+
+    offre = session.get(Offer, offre_id)
+    if offre is None:
+        raise HTTPException(404, "Offre introuvable.")
+    try:
+        profil = profil_courant(session)
+    except ProfilVide as e:
+        raise HTTPException(409, str(e)) from e
+    return correspondance_ats(profil, offre)

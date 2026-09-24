@@ -280,3 +280,17 @@ def test_une_entreprise_vraiment_absente_reste_signalee(profil, offre):
     # c'est ce qui sera cité au modèle, et il doit pouvoir le retrouver.
     suspects = entites_suspectes("J'ai travaillé chez Danone.", profil, offre)
     assert any("Danone" in s for s in suspects)
+
+
+def test_le_niveau_de_langue_du_profil_n_est_pas_une_invention():
+    """La première lettre d'Opus citait « TOEIC 775 », tiré du profil : rejetée
+    comme invention parce que le contrôle ne lisait que le nom de la langue."""
+    from app.documents.controles import bloquantes
+    from app.models import Offer, Profile
+
+    profil = Profile(prenom="Maxime", nom="Nicolas",
+                     langues=[{"code": "en", "libelle": "Anglais", "niveau": "TOEIC 775"}])
+    offre = Offer(source="t", source_id="1", titre="Analyste", description_brute="Anglais courant.")
+    lettre = "Mon anglais est certifié par un TOEIC de 775 points, utile pour ce poste."
+    fautes = bloquantes(lettre, profil, offre)
+    assert not fautes["inventions"] and not fautes["chiffres"], fautes

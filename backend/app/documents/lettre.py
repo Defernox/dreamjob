@@ -36,6 +36,7 @@ from .controles import (  # ré-exportés : l'API publique des contrôles passe 
     voix_incorrecte,
 )
 from .exemples import EXEMPLES_STYLE_COURT
+from .intitule import intitule_pour_cv
 
 log = logging.getLogger("dreamjob.lettre")
 
@@ -95,8 +96,9 @@ TON
 Sobre. Tu exposes des faits et tu laisses le lecteur en tirer les conclusions.
 Aucun superlatif sur l'entreprise, aucune auto-évaluation (« je suis rigoureux »),
 aucune déférence excessive.
-N'accorde aucun adjectif à ton propre genre — il n'est pas connu. Écris « ce
-poste m'intéresse » plutôt que « je suis ravi » ou « je suis heureuse ».
+Accorde les mots qui te désignent selon la ligne « Accord » du PROFIL. Si elle
+est absente, ton genre n'est pas connu : n'accorde alors aucun adjectif à toi-même,
+et écris « ce poste m'intéresse » plutôt que « je suis ravi » ou « je suis heureuse ».
 
 Rends uniquement le corps de la lettre : ni en-tête, ni adresse, ni date, ni
 objet, ni formule d'appel, ni formule de politesse finale, ni signature. Ces
@@ -206,7 +208,27 @@ def nettoyer(lettre: str, profil: Profile | None = None) -> str:
             lignes.pop()
         paragraphes[-1] = "\n".join(lignes).strip()
 
-    return "\n\n".join(p for p in paragraphes if p).strip()
+    return _elider("\n\n".join(p for p in paragraphes if p).strip())
+
+
+# « le poste de « Analyste Quantitatif Risques » » : relevé dans une vraie
+# lettre. Le modèle recopie l'intitulé sans l'élider, et c'est la faute qu'un
+# recruteur voit dans la phrase qui nomme son poste. Les contrôles
+# anti-invention lisent indifféremment « de Analyste » et « d'Analyste » —
+# vérifié avant d'introduire cette correction.
+#
+# Exclus : une lettre seule (« de A à Z ») et les mots devant lesquels le
+# français n'élide pas (« de onze », « de oui »). Le h n'est jamais élidé, faute
+# de savoir s'il est muet.
+_ELISION = re.compile(
+    r"\b([Dd])e\s+(«\s*)?"
+    r"(?=[AEIOUÉÈÊËÂÎÏÔÛaeiouéèêëâîïôû])"
+    r"(?![A-Za-zÀ-ÿ]\b)(?!(?:onze|oui|ouate|ouistiti)\b)",
+    re.IGNORECASE)
+
+
+def _elider(texte: str) -> str:
+    return _ELISION.sub(lambda m: f"{m.group(1)}'{m.group(2) or ''}", texte)
 
 
 # ------------------------------------------------------------------- le message
@@ -233,10 +255,18 @@ def _message(profil: Profile, offre: Offer) -> str:
     # jamais donnée.
     disponibilite = profil.disponibilite or "(non renseignée — n'en annonce aucune)"
 
+    # L'intitulé nettoyé : brut, « (H/F) » et « CDI - » passaient dans la
+    # lettre, et le modèle recopiait « le poste de « Analyste … (H/F) » ».
+    intitule = intitule_pour_cv(offre.titre, offre.lieu, profil.titre_vise, profil.accord)
+    # Absente quand le profil ne la renseigne pas : le prompt système demande
+    # alors de n'accorder aucun adjectif. Jamais déduite du prénom.
+    accord = {"masculin": "\nAccord : masculin",
+              "feminin": "\nAccord : féminin"}.get(profil.accord, "")
+
     return f"""{EXEMPLES_STYLE_COURT}
 
 PROFIL
-Nom : {profil.prenom} {profil.nom}
+Nom : {profil.prenom} {profil.nom}{accord}
 Situation actuelle : {profil.situation_actuelle or '(non renseignée)'}
 Titre visé : {profil.titre_vise}
 Ville : {profil.ville}
@@ -252,7 +282,7 @@ Formations :
 {formations}
 
 OFFRE
-Intitulé : {offre.titre}
+Intitulé : {intitule}
 Entreprise : {offre.entreprise or '(non précisée)'}
 Lieu : {offre.lieu} {offre.pays}
 Contrat : {offre.type_contrat or '(non précisé)'}

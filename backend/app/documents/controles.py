@@ -65,7 +65,11 @@ def sources_texte(profil: Profile, offre: Offer) -> list[str]:
     ]
     morceaux += profil.secteurs
     morceaux += [s.get("nom", "") for s in profil.skills]
-    morceaux += [lg.get("libelle", "") for lg in profil.langues]
+    # Le NIVEAU aussi : « TOEIC 775 » figure dans le profil. Sans lui, la première
+    # lettre d'Opus qui citait son score d'anglais a été rejetée comme une
+    # invention (« TOEIC », « 775 ») — et un second essai payé pour rien. mistral
+    # ne citait jamais ce score, le défaut était resté invisible.
+    morceaux += [f"{lg.get('libelle', '')} {lg.get('niveau', '')}" for lg in profil.langues]
     for experience in profil.experiences:
         morceaux += [experience.get("entreprise", ""), experience.get("poste", ""),
                      experience.get("lieu", ""), experience.get("description", ""),

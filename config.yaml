@@ -38,11 +38,22 @@ llm:
   #  - redaction  : import du CV et lettre de motivation (rare, enjeu fort) -> le plus capable
   # « ollama » = local et gratuit (par defaut). « anthropic » = payant, meilleure
   # qualite de lettre. Le scoring, lui, n'appelle jamais de LLM quel que soit ce reglage.
-  fournisseur: ollama
+  fournisseur: anthropic
   ollama_url: "http://127.0.0.1:11434"
   modele_local: "mistral:7b"
   modele_extraction: claude-sonnet-5
   modele_redaction: claude-opus-5
+  # Phase 2 : la lettre est lue en entier, le meilleur modele s'y paie ; le CV
+  # cible est une reformulation encadree par des controles en pur code.
+  # Ordre de grandeur mesure : voir generation.json, champ « cout_usd ».
+  modele_lettre: claude-opus-5-5
+  modele_ciblage: claude-sonnet-5
+  # Mesure sur une offre reelle : « medium » ecrivait 5 361 jetons (0,125 $),
+  # « low » 2 209 (0,062 $) pour une lettre comparable. A remonter si les
+  # lettres semblent plus faibles.
+  effort_lettre: low
+  effort_ciblage: low
+  ciblage_cv: true
   # Un modele local invente plus facilement : on rejette et on regenere.
   tentatives_anti_invention: 3
   # Passe de relecture critique du brouillon. MESUREE SANS EFFET avec
@@ -52,7 +63,9 @@ llm:
   # marche. A reactiver avec un modele plus capable.
   relecture_lettre: false
   max_tokens_extraction: 1200
-  max_tokens_lettre: 2000
+  # Reflexion comprise : Opus 5.5 reflechit toujours, sur le meme budget.
+  max_tokens_lettre: 16000
+  max_tokens_ciblage: 8000
   max_tokens_import_cv: 8000
 
 http:

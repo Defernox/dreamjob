@@ -36,6 +36,8 @@ export type Profil = {
   disponibilite: string
   /** 0 = non renseigné : la séniorité n'est alors pas notée, pas notée zéro. */
   annees_experience: number
+  /** Vide = non renseigné : la lettre n'accorde alors aucun adjectif. Jamais déduit du prénom. */
+  accord: '' | 'masculin' | 'feminin'
   resume: string
   secteurs: string[]
   langues: Langue[]

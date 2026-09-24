@@ -7,7 +7,7 @@ import re
 import unicodedata
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, UploadFile
 from sqlmodel import Session
 
 from ..config import reglages
@@ -23,7 +23,7 @@ from ..llm.client import ClientLlm, LlmErreur, LlmIndisponible
 from ..models import Profile, Utilisateur
 from ..models.base import maintenant
 from ..services.budget import BudgetEpuise, consigner, verifier_budget
-from ..services.scoring import profil_de
+from ..services.scoring import profil_de, rescorer
 from ..schemas.profile import ProfilLecture, ProfilMaj, ResultatImport
 
 log = logging.getLogger("dreamjob.profil")
@@ -52,8 +52,11 @@ def lire(session: Session = Depends(get_session),
 
 
 @router.put("", response_model=ProfilLecture)
-def enregistrer(maj: ProfilMaj, session: Session = Depends(get_session),
+def enregistrer(maj: ProfilMaj, taches: BackgroundTasks, session: Session = Depends(get_session),
                 moi: Utilisateur = Depends(utilisateur_courant)) -> ProfilLecture:
+    # Le score lit tout le CV : un profil modifié rend toutes les notes caduques.
+    # Recalculées après la réponse, pour que l'enregistrement reste instantané.
+    taches.add_task(rescorer, session.get_bind(), moi.id)
     profil = profil_de(session, moi.id)
     for champ, valeur in maj.model_dump(mode="json").items():
         setattr(profil, champ, valeur)
@@ -66,6 +69,7 @@ def enregistrer(maj: ProfilMaj, session: Session = Depends(get_session),
 
 @router.post("/importer", response_model=ResultatImport)
 async def importer(
+    taches: BackgroundTasks,
     fichier: UploadFile = File(...),
     forcer: bool = False,
     session: Session = Depends(get_session),
@@ -114,6 +118,7 @@ async def importer(
     profil = profil_de(session, moi.id)
     for champ, valeur in structure.model_dump(mode="json").items():
         setattr(profil, champ, valeur)
+    taches.add_task(rescorer, session.get_bind(), moi.id)
     profil.cv_source_path = str(destination)
     profil.cv_importe_le = maintenant()
     profil.updated_at = maintenant()

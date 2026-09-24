@@ -228,3 +228,30 @@ def test_l_heure_de_prochaine_execution_est_en_utc(session):
         monkeypatch.undo()
 
     assert prochaine == datetime(2026, 8, 30, 5, 30), "07:30 Paris = 05:30 UTC"
+
+
+def test_les_notes_sont_remises_a_jour_au_demarrage(session, monkeypatch):
+    """Une mise à jour du score laissait les anciennes notes à l'écran jusqu'au
+    scan du lendemain."""
+    from sqlmodel import select
+
+    from app import scheduler
+    from app.models import Profile, ScoreOffre
+    from app.services.acces import proprietaire
+
+    from .conftest import ajouter_offre
+
+    moi = proprietaire(session).id
+    session.add(Profile(utilisateur_id=moi, titre_vise="Analyste crédit",
+                        skills=[{"nom": "Risque de crédit", "ancree": True}]))
+    ajouter_offre(session, moi, source="t", source_id="1", hash="h1",
+                  titre="Analyste crédit", description_brute="Analyse du risque de crédit.",
+                  score=12.0, poids_version=1)
+    session.commit()
+    monkeypatch.setattr(scheduler, "engine", session.get_bind())
+
+    scheduler.rescorer_tout()
+
+    session.expire_all()
+    note = session.exec(select(ScoreOffre)).one()
+    assert note.poids_version != 1 and note.score != 12.0

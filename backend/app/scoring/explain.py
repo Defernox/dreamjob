@@ -1,13 +1,18 @@
-"""La ligne d'explication d'un score.
+"""L'explication d'un score, en quelques lignes.
 
-Objectif : comprendre **pourquoi** une offre a ce score sans lire le code ni
-ouvrir le détail. Une phrase, des faits, aucun jargon.
+Objectif : comprendre **pourquoi** une offre a ce score sans lire le code. Une
+ligne par question — le métier, le contenu, le niveau, le diplôme, la langue,
+les conditions — et les points rédhibitoires en tête. Des faits, avec les mots
+de l'annonce et de votre CV, aucun jargon.
 """
 
 from __future__ import annotations
 
+import re
+
 from ..models import Offer, Profile
 from .extraction import Signaux
+from .lexique import canon, jetons
 from .score import (
     LOC_MEME_PAYS,
     LOC_MEME_VILLE,
@@ -15,148 +20,171 @@ from .score import (
     Resultat,
     _niveau_du_profil,
 )
+from .texte import normaliser
 
-SEPARATEUR = " · "
-MAX_SKILLS_CITEES = 4
+MAX_TERMES = 6
+_MOT = re.compile(r"[\w+#]+(?:[.'’-][\w+#]+)*", re.UNICODE)
+
+LIBELLE_NIVEAU = {
+    "stage": "un stage", "junior": "un poste junior",
+    "intermediaire": "un poste de niveau intermédiaire",
+    "confirme": "un poste senior", "encadrement": "un poste d'encadrement",
+    "direction": "un poste de direction",
+}
 
 
-def _fragment_secteur(resultat: Resultat) -> str:
-    if "secteur" in resultat.non_evaluables:
-        return "secteur non évalué"
-    if resultat.detail.get("secteur", 0) <= 0:
-        return "secteur hors cible"
-    return f"secteur {resultat.secteur_reconnu}"
+def _surfaces(texte: str) -> dict[str, str]:
+    """Jeton canonique -> le mot tel qu'il est écrit, pour parler avec les mots
+    de l'annonce plutôt qu'avec des racines (« solvabilité », pas « solvabilit »)."""
+    table: dict[str, str] = {}
+    for mot in _MOT.findall(texte or ""):
+        for morceau in normaliser(mot).split():
+            table.setdefault(canon(morceau), mot.lower())
+    return table
 
 
-def _fragment_competences(resultat: Resultat) -> str:
-    if "competences" in resultat.non_evaluables:
-        return "compétences non évaluées"
+def _mots(termes: list[str], surfaces: dict[str, str], exclus: set[str] = frozenset()) -> str:
+    """Les termes, avec les mots de l'annonce. Les mots trop courts pour se lire
+    seuls, et ceux de l'employeur ou du lieu, ne sont pas des exigences."""
+    vus: list[str] = []
+    for terme in termes:
+        mot = surfaces.get(terme)
+        if mot and len(mot) > 2 and terme not in exclus and mot not in vus:
+            vus.append(mot)
+        if len(vus) >= MAX_TERMES:
+            break
+    return ", ".join(vus)
 
-    if resultat.ancrees_trouvees:
-        citees = resultat.ancrees_trouvees[:MAX_SKILLS_CITEES]
-        reste = len(resultat.ancrees_trouvees) - len(citees)
-        texte = f"skills ancrées : {', '.join(citees)}"
-        if reste:
-            texte += f" (+{reste})"
-    elif resultat.ancrees_manquantes:
-        texte = "aucune skill ancrée"
+
+def _ligne_metier(resultat: Resultat, surfaces: dict[str, str], exclus: set[str]) -> str:
+    if "metier" in resultat.non_evaluables:
+        return "Métier : non évalué (intitulé vide, ou aucun intitulé visé dans votre profil)."
+    note = resultat.detail.get("metier", 0)
+    if resultat.intitule_vise:
+        texte = f"Métier : rejoint « {resultat.intitule_vise} » ({resultat.intitule_origine})"
     else:
-        texte = "aucune skill ancrée définie"
+        texte = "Métier : ne reprend aucun des intitulés que vous visez"
+    inconnus = _mots(resultat.intitule_inconnus, surfaces, exclus)
+    if inconnus and note < 85:
+        texte += f" ; hors de votre CV : {inconnus}"
+    return texte + "."
 
-    if resultat.autres_trouvees:
-        texte += f" · {len(resultat.autres_trouvees)} autres skills"
+
+def _ligne_contenu(resultat: Resultat, surfaces: dict[str, str], exclus: set[str]) -> str:
+    if "competences" in resultat.non_evaluables:
+        return ""
+    communs = _mots(resultat.cles_couvertes, surfaces, exclus)
+    texte = f"En commun avec votre CV : {communs}." if communs else \
+        "Presque rien en commun avec votre CV."
+    absents = _mots(resultat.cles_manquantes, surfaces, exclus)
+    if absents:
+        texte += f" L'annonce insiste aussi sur : {absents}."
     return texte
 
 
-def _fragment_pays(resultat: Resultat, offre: Offer) -> str:
-    """Le lieu compte quatre paliers depuis qu'il n'est plus binaire : dire
-    seulement « pays OK » ferait passer un poste à São Paulo pour un poste à
-    côté de chez soi."""
-    if "pays" in resultat.non_evaluables:
-        return "pays non évalué"
-    valeur = resultat.detail.get("pays", 0)
-    if valeur >= LOC_MEME_VILLE:
-        return f"{offre.lieu or offre.pays} — votre ville"
-    if valeur >= LOC_MEME_PAYS:
-        return f"pays OK ({offre.pays})"
-    if valeur >= LOC_PAYS_ACCEPTE:
-        return f"{offre.pays} — accepté, mais à l'étranger"
-    return f"pays hors liste ({offre.pays})"
+def _ligne_niveau(resultat: Resultat, annees: int) -> str:
+    if "seniorite" in resultat.non_evaluables:
+        return ""
+    note = resultat.detail.get("seniorite", 0)
+    texte = f"Niveau : {LIBELLE_NIVEAU.get(resultat.niveau_poste, 'poste')}"
+    if resultat.annees_exigees:
+        texte += f", {resultat.annees_exigees} ans demandés pour vos {annees}"
+    if note >= 90:
+        return texte + " — à votre portée."
+    if note >= 60:
+        return texte + " — un cran au-dessus ou en dessous de votre parcours."
+    return texte + " — nettement au-dessus de votre expérience."
+
+
+def _ligne_formation(resultat: Resultat) -> str:
+    if "formation" in resultat.non_evaluables or not resultat.etudes_demandees:
+        return ""
+    requis, plafond = resultat.etudes_demandees
+    demande = f"Bac+{requis}" if requis == plafond else f"Bac+{requis} à Bac+{plafond}"
+    note = resultat.detail.get("formation", 0)
+    if note >= 100:
+        return f"Diplôme : {demande} demandé — conforme."
+    if note >= 55 and requis <= 3:
+        return f"Diplôme : {demande} demandé — vous êtes au-dessus, le poste l'est peut-être moins."
+    return f"Diplôme : {demande} demandé — au-dessus du vôtre."
 
 
 def _langue_decisive(profil: Profile, signaux: Signaux) -> str:
-    """La langue qui a fixé la note : c'est l'exigence la plus dure qui décide.
-
-    En cas d'égalité, la langue de rédaction l'emporte — elle vient en tête.
-    """
     candidates = ([signaux.langue] if signaux.langue else []) + list(signaux.exigences_langues)
     if not candidates:
         return ""
     return min(candidates, key=lambda c: _niveau_du_profil(profil, c) or 0.0)
 
 
-def _fragment_langue(resultat: Resultat, profil: Profile, signaux: Signaux) -> str:
+def _ligne_langue(resultat: Resultat, profil: Profile, signaux: Signaux) -> str:
     if "langue" in resultat.non_evaluables:
-        return "langue non évaluée"
-
+        return ""
     valeur = resultat.detail.get("langue", 0)
-    # La note peut venir d'une langue **exigée** par l'annonce et non de celle
-    # dans laquelle elle est rédigée. Nommer systématiquement la seconde
-    # annonçait « langue FR non maîtrisée » à un francophone natif devant une
-    # offre en français réclamant un anglais courant.
     code = _langue_decisive(profil, signaux)
     libelle = (code or "?").upper()
-
     if valeur >= 100:
-        return f"langue {libelle} OK"
-    if code and code != signaux.langue and code in signaux.exigences_langues:
-        return (f"{libelle} exigé, partiellement maîtrisé" if valeur > 0
-                else f"{libelle} exigé, non maîtrisé")
+        return f"Langue : {libelle}, maîtrisée."
+    exigee = code and code != signaux.langue and code in signaux.exigences_langues
     if valeur > 0:
-        return f"langue {libelle} partielle"
-    return f"langue {libelle} non maîtrisée"
+        return f"Langue : {libelle} {'exigé' if exigee else ''}, partiellement maîtrisé.".replace(" ,", ",")
+    return f"Langue : {libelle} {'exigé' if exigee else ''}, non maîtrisé.".replace(" ,", ",")
 
 
-def _fragment_seniorite(resultat: Resultat) -> str:
-    """Le critère n'est évaluable qu'une fois sur dix : le dire quand il l'est
-    vaut mieux que de laisser croire qu'il a compté."""
-    if "seniorite" in resultat.non_evaluables:
+def _fragment_lieu(resultat: Resultat, offre: Offer) -> str:
+    if "pays" in resultat.non_evaluables:
         return ""
-    valeur = resultat.detail.get("seniorite", 0)
-    if valeur >= 100:
-        return "séniorité en phase"
-    if valeur >= 50:
-        return "poste un peu au-dessus"
-    return "poste nettement au-dessus de votre ancienneté"
+    valeur = resultat.detail.get("pays", 0)
+    if valeur >= LOC_MEME_VILLE:
+        return f"{offre.lieu or offre.pays}, votre ville"
+    if valeur >= LOC_MEME_PAYS:
+        return offre.lieu or offre.pays
+    if valeur >= LOC_PAYS_ACCEPTE:
+        return f"{offre.pays}, à l'étranger"
+    return f"{offre.pays}, hors de vos pays"
+
+
+def _fragment_contrat(resultat: Resultat, profil: Profile, offre: Offer) -> str:
+    if "contrat" in resultat.non_evaluables:
+        return ""
+    contrat = offre.type_contrat or "?"
+    if resultat.detail.get("contrat", 0) <= 0:
+        return f"{contrat} non souhaité"
+    rang = profil.contrats_acceptes.index(contrat) if contrat in profil.contrats_acceptes else 0
+    # ASCII uniquement : cette ligne finit aussi dans l'export Excel.
+    return f"{contrat} (votre 1er choix)" if rang == 0 else f"{contrat} ({rang + 1}e choix)"
 
 
 def _fragment_fraicheur(resultat: Resultat) -> str:
     if "fraicheur" in resultat.non_evaluables:
         return ""
     valeur = resultat.detail.get("fraicheur", 0)
-    # Les seuils sont ceux de la décroissance, pas des chiffres ronds : à 50 on
-    # est déjà à 63 jours, si bien qu'une annonce de neuf jours notée 99
-    # s'annonçait « ce mois-ci », juste sous une barre pleine. Ici 75 ≈ 35
-    # jours et 30 ≈ 86 jours.
     if valeur >= 100:
         return "publiée cette semaine"
     if valeur >= 75:
         return "publiée ce mois-ci"
     if valeur >= 30:
         return "publiée il y a plus d'un mois"
-    if valeur > 0:
-        return "annonce déjà ancienne"
-    return "annonce probablement close"
-
-
-def _fragment_contrat(resultat: Resultat, profil: Profile, offre: Offer) -> str:
-    if "contrat" in resultat.non_evaluables:
-        return "contrat non évalué"
-    contrat = offre.type_contrat or "?"
-    if resultat.detail.get("contrat", 0) <= 0:
-        return f"{contrat} non souhaité"
-    rang = profil.contrats_acceptes.index(contrat) if contrat in profil.contrats_acceptes else 0
-    if rang == 0:
-        return f"{contrat} prioritaire"
-    # ASCII uniquement : cette ligne finit aussi dans l'export Excel.
-    return f"{contrat} accepté ({rang + 1}e choix)"
+    return "annonce ancienne, peut-être close" if valeur > 0 else "annonce probablement close"
 
 
 def expliquer(resultat: Resultat, profil: Profile, offre: Offer, signaux: Signaux) -> str:
-    if resultat.hors_cible:
-        return SEPARATEUR.join([
-            "HORS CIBLE : ni compétences ni secteur ne correspondent",
-            _fragment_pays(resultat, offre),
-            _fragment_contrat(resultat, profil, offre),
-        ])
-    # Les fragments vides — critères non évaluables — sont retirés plutôt
-    # qu'affichés : une explication n'a pas à énumérer ce qu'elle ignore.
-    return SEPARATEUR.join(filter(None, [
-        _fragment_secteur(resultat),
-        _fragment_competences(resultat),
-        _fragment_pays(resultat, offre),
-        _fragment_seniorite(resultat),
-        _fragment_langue(resultat, profil, signaux),
+    """Une ligne par question, séparées par des retours à la ligne. Les
+    critères non évalués ne sont pas énumérés."""
+    surfaces = _surfaces(f"{offre.titre} {offre.description_brute}")
+    exclus = set(jetons(f"{offre.entreprise} {offre.lieu} {offre.pays}"))
+    conditions = ", ".join(filter(None, [
+        _fragment_lieu(resultat, offre),
         _fragment_contrat(resultat, profil, offre),
         _fragment_fraicheur(resultat),
     ]))
+    lignes = [
+        ("Rédhibitoire : " + " ; ".join(resultat.redhibitoires) + ".")
+        if resultat.redhibitoires else "",
+        _ligne_metier(resultat, surfaces, exclus),
+        _ligne_contenu(resultat, surfaces, exclus),
+        _ligne_niveau(resultat, profil.annees_experience or 0),
+        _ligne_formation(resultat),
+        _ligne_langue(resultat, profil, signaux),
+        f"Conditions : {conditions}." if conditions else "",
+    ]
+    return "\n".join(ligne for ligne in lignes if ligne)

@@ -128,24 +128,25 @@ def test_un_terme_hors_du_domaine_n_est_pas_invente():
 
 
 def test_les_synonymes_relevent_le_score_d_une_offre_anglaise():
-    profil = Profile(skills=[{"nom": "Gestion des risques de crédit", "ancree": True}],
+    """« Risque de crédit » doit rencontrer « Credit Risk Analyst » : les offres
+    de ce domaine sont massivement bilingues."""
+    from app.scoring.cible import construire
+
+    profil = Profile(titre_vise="Analyste risque de crédit",
+                     skills=[{"nom": "Gestion des risques de crédit", "ancree": True}],
                      langues=[{"code": "en", "niveau": "courant"}])
+    cible = construire(profil, [])
     offre = Offer(source="t", source_id="1", titre="Credit Risk Analyst",
                   description_brute="You will monitor credit risk exposures of our "
                                     "counterparties and report to the management team.")
-    resultat = calculer(profil, offre, extraire(offre), PoidsScoring())
-
-    # Comparatif plutôt qu'un seuil absolu : ce que ce test prouve, c'est que
-    # la table de synonymes fait la différence, pas qu'un nombre dépasse une
-    # valeur — laquelle bouge dès qu'on retouche la pondération du critère.
-    sans_synonymes = Offer(source="t", source_id="2", titre="Poultry Line Operator",
-                           description_brute="You will supervise the packaging line "
-                                             "and report to the management team.")
-    temoin = calculer(profil, sans_synonymes, extraire(sans_synonymes), PoidsScoring())
-
-    assert resultat.detail["competences"] > temoin.detail["competences"]
-    assert "Gestion des risques de crédit" in resultat.ancrees_trouvees
-    assert "Gestion des risques de crédit" not in temoin.ancrees_trouvees
+    temoin = Offer(source="t", source_id="2", titre="Poultry Line Operator",
+                   description_brute="You will supervise the packaging line "
+                                     "and report to the management team.")
+    resultat = calculer(profil, offre, extraire(offre), PoidsScoring(), cible)
+    sans = calculer(profil, temoin, extraire(temoin), PoidsScoring(), cible)
+    assert resultat.detail["metier"] > 80
+    assert resultat.detail["metier"] > sans.detail["metier"]
+    assert resultat.detail["competences"] > sans.detail["competences"]
 
 
 # --- Exigences linguistiques -------------------------------------------------

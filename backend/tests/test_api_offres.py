@@ -258,3 +258,21 @@ def test_la_pagination_sert_bien_toutes_les_offres(client, base_remplie):
 
     # Une limite élargie doit pouvoir tout servir d'un coup.
     assert len(client.get("/api/offres?limite=500").json()["offres"]) == 6
+
+
+def test_enregistrer_le_profil_recalcule_les_notes(client, base_remplie):
+    """Le score lit tout le CV : un profil modifié gardait ses anciennes notes
+    jusqu'au lendemain. Il est désormais recalculé juste après l'enregistrement."""
+    reponse = client.put("/api/profil", json={
+        "titre_vise": "Analyste risques de crédit",
+        "skills": [{"nom": "Risque de crédit", "ancree": True},
+                   {"nom": "Analyse financière", "ancree": True}],
+        "langues": [{"code": "fr", "libelle": "Français", "niveau": "natif"}],
+        "pays_acceptes": ["France", "Luxembourg", "Canada"],
+        "contrats_acceptes": ["CDI", "V.I.E"],
+    })
+    assert reponse.status_code == 200
+    offres = client.get("/api/offres?tri=pertinence").json()["offres"]
+    assert offres[0]["titre"] == "Analyste risques de crédit"
+    boulanger = next(o for o in offres if o["titre"] == "Boulanger")
+    assert boulanger["score"] < 20

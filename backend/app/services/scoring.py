@@ -1,26 +1,28 @@
 """Application du score aux offres en base.
 
 Le point clé : **changer les poids ne relance aucune extraction**. Les signaux
-d'une offre (langue, vocabulaire, secteur) sont figés dans `Offer.extraction` et
-ne dépendent que de l'offre ; seul le calcul, du code pur, est rejoué.
+d'une offre (intitulé, contenu, exigences, langue) sont figés dans
+`Offer.extraction` et ne dépendent que de l'offre ; seul le calcul, du code pur,
+est rejoué.
 """
 
 from __future__ import annotations
 
 import logging
-
+import threading
 from datetime import timedelta
 
-from sqlalchemy import func
 from sqlmodel import Session, select
 
 from ..config import reglages as lire_reglages
-from ..models import Offer, Profile, ScoreOffre, Utilisateur
+from ..models import Offer, Profile, Recherche, ScoreOffre, Utilisateur
 from ..models.base import maintenant
+from ..scoring.cible import ProfilCible, construire
+from ..scoring.corpus import NEUTRE, Corpus
 from ..scoring.explain import expliquer
 from ..scoring.extraction import VERSION as VERSION_SIGNAUX
-from ..scoring.extraction import signaux_de
-from ..scoring.score import calculer
+from ..scoring.extraction import Signaux, signaux_de
+from ..scoring.score import calculer, etalonner
 
 log = logging.getLogger("dreamjob.scoring")
 
@@ -51,12 +53,32 @@ def profil_courant(session: Session, utilisateur_id: int) -> Profile:
     return profil
 
 
+def recherches_de(session: Session, utilisateur_id: int) -> list[list[str]]:
+    """Les mots-clés des recherches actives du compte : ce qu'il dit chercher."""
+    return [list(r.mots_cles) for r in session.exec(
+        select(Recherche).where(Recherche.utilisateur_id == utilisateur_id, Recherche.active)
+    ).all()]
+
+
+def preparer(session: Session, profil: Profile, paires: list[tuple[Offer, ScoreOffre]]
+             ) -> tuple[ProfilCible, Corpus, dict[int, Signaux]]:
+    """Ce que le score d'un compte demande une fois pour toutes ses offres : le
+    profil de ciblage tiré de tout le CV, le corpus de son fil, et l'étalonnage
+    du contenu sur ses meilleures offres."""
+    signaux = {offre.id: signaux_de(offre) for offre, _ in paires}
+    corpus = Corpus.depuis(signaux.values())
+    cible = construire(profil, recherches_de(session, profil.utilisateur_id))
+    etalonner(cible, list(signaux.values()), corpus)
+    return cible, corpus, signaux
+
+
 def scorer_offre(profil: Profile, offre: Offer, suivi: ScoreOffre, poids, version: int,
-                 plafond_hors_cible: float = 100.0) -> ScoreOffre:
+                 cible: ProfilCible, corpus: Corpus = NEUTRE,
+                 signaux: Signaux | None = None) -> ScoreOffre:
     """Note `offre` pour le profil. Les signaux, qui ne dépendent que de
     l'annonce, restent sur l'offre ; la note va dans `suivi`, propre au compte."""
-    signaux = signaux_de(offre)
-    resultat = calculer(profil, offre, signaux, poids, plafond_hors_cible)
+    signaux = signaux or signaux_de(offre)
+    resultat = calculer(profil, offre, signaux, poids, cible, corpus)
 
     offre.extraction = signaux.en_dict()
     offre.extraction_modele = "lexical"      # aucun LLM : c'est le but
@@ -75,57 +97,75 @@ def scorer_toutes(session: Session, utilisateur_id: int, *, forcer: bool = False
 
     Sans `forcer`, une offre déjà scorée avec la version de poids courante est
     laissée telle quelle.
+
+    Le corpus et l'étalonnage portent sur TOUT le fil, même quand seules
+    quelques offres sont à noter : une offre se juge par rapport aux autres.
     """
     reglages = lire_reglages()
     poids = reglages.scoring.poids
     version = reglages.scoring.version
     profil = profil_courant(session, utilisateur_id)
 
-    requete = (select(Offer, ScoreOffre)
-               .join(ScoreOffre, ScoreOffre.offer_id == Offer.id)
-               .where(ScoreOffre.utilisateur_id == utilisateur_id))
-    if not forcer:
-        # `poids_version != version` est FAUX quand la colonne vaut NULL (règle
-        # SQL sur les NULL) : sans le test explicite, une offre scorée avant
-        # l'introduction du versionnage ne serait jamais rescorée.
-        #
-        # La version des *signaux* est un compteur distinct de celle des poids.
-        # Sans ce second test, incrémenter `extraction.VERSION` ne servait à
-        # rien : l'offre n'était pas revisitée, donc `signaux_de` n'était jamais
-        # rappelé et les signaux périmés restaient en base. Il se lit sur la
-        # NOTE et non sur l'offre : le premier compte qui rescore met à jour les
-        # signaux de l'offre, les autres doivent quand même rescorer.
-        # Le critère de fraîcheur dépend du jour : un score stocké vieillit.
-        # On rescore donc ce qui date de plus d'un jour — l'opération prend une
-        # seconde pour 2 490 offres, la fraîcheur peut bien la coûter.
-        perime = maintenant() - timedelta(days=1)
+    toutes = list(session.exec(
+        select(Offer, ScoreOffre)
+        .join(ScoreOffre, ScoreOffre.offer_id == Offer.id)
+        .where(ScoreOffre.utilisateur_id == utilisateur_id)).all())
 
-        requete = requete.where(
-            ScoreOffre.score.is_(None)
-            | ScoreOffre.poids_version.is_(None)
-            | (ScoreOffre.poids_version != version)
-            | ScoreOffre.version_signaux.is_(None)
-            | (ScoreOffre.version_signaux != VERSION_SIGNAUX)
-            | ScoreOffre.scored_at.is_(None)
-            | (ScoreOffre.scored_at < perime)
-        )
+    # `poids_version != version` est FAUX quand la colonne vaut NULL (règle SQL
+    # sur les NULL) : d'où les tests explicites. La version des *signaux* se lit
+    # sur la NOTE et non sur l'offre : le premier compte qui rescore met à jour
+    # les signaux de l'offre, les autres doivent quand même rescorer. Et le
+    # score vieillit (fraîcheur, corpus) : on rescore ce qui a plus d'un jour.
+    perime = maintenant() - timedelta(days=1)
+    a_noter = [
+        (offre, suivi) for offre, suivi in toutes
+        if forcer or suivi.score is None or suivi.poids_version != version
+        or suivi.version_signaux != VERSION_SIGNAUX
+        or suivi.scored_at is None or suivi.scored_at < perime
+    ]
+    if a_noter:
+        cible, corpus, signaux = preparer(session, profil, toutes)
+        for offre, suivi in a_noter:
+            scorer_offre(profil, offre, suivi, poids, version, cible, corpus,
+                         signaux[offre.id])
+            session.add(offre)
+            session.add(suivi)
+        session.commit()
 
-    paires = list(session.exec(requete).all())
-    for offre, suivi in paires:
-        scorer_offre(profil, offre, suivi, poids, version, reglages.scoring.plafond_hors_cible)
-        session.add(offre)
-        session.add(suivi)
-    session.commit()
-
-    total = session.exec(select(func.count()).select_from(ScoreOffre)
-                         .where(ScoreOffre.utilisateur_id == utilisateur_id)).one()
-    log.info("Scoring : %d offres traitées sur %d", len(paires), total)
+    log.info("Scoring : %d offres traitées sur %d", len(a_noter), len(toutes))
     return {
-        "scorees": len(paires),
-        "total": total,
+        "scorees": len(a_noter),
+        "total": len(toutes),
         "version_poids": version,
         "appels_llm": 0,      # invariant : le scoring n'appelle jamais de LLM
     }
+
+
+# Un recalcul à la fois par compte : deux enregistrements rapprochés du profil
+# ne doivent pas lancer deux calculs qui s'écrasent — le second attend le
+# premier, puis part du profil à jour.
+_VERROUS: dict[int, threading.Lock] = {}
+_VERROU_DES_VERROUS = threading.Lock()
+
+
+def rescorer(moteur, utilisateur_id: int, *, forcer: bool = True) -> None:
+    """Recalcule les notes d'un compte, hors de la requête qui l'a demandé.
+
+    Le score lit tout le CV et toutes les recherches : sans ce recalcul, un
+    profil modifié gardait ses anciennes notes jusqu'au lendemain. `moteur` est
+    celui de la requête — jamais le moteur global, qui viserait la vraie base
+    depuis un test. Ne lève jamais : un recalcul manqué sera rattrapé.
+    """
+    with _VERROU_DES_VERROUS:
+        verrou = _VERROUS.setdefault(utilisateur_id, threading.Lock())
+    with verrou:
+        try:
+            with Session(moteur) as session:
+                scorer_toutes(session, utilisateur_id, forcer=forcer)
+        except ProfilVide:
+            pass
+        except Exception:  # noqa: BLE001
+            log.exception("Recalcul des notes du compte %s en échec", utilisateur_id)
 
 
 def scorer_tous_les_comptes(session: Session) -> int:

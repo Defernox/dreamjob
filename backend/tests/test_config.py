@@ -2,33 +2,38 @@
 
 from app.config import PoidsScoring, reglages
 
-
-def test_poids_par_defaut_font_100():
-    assert reglages().scoring.poids.total == 100
+GROUPES = (PoidsScoring.PERTINENCE, PoidsScoring.ACCESSIBILITE, PoidsScoring.CONDITIONS)
 
 
-def test_normalisation_somme_a_1():
+def test_chaque_groupe_est_normalise_a_part():
+    """Trois groupes, trois questions : seuls les rapports internes comptent."""
     normalises = reglages().scoring.poids.normalises()
-    assert abs(sum(normalises.values()) - 1.0) < 1e-9
+    for groupe in GROUPES:
+        assert abs(sum(normalises[c] for c in groupe) - 1.0) < 1e-9
 
 
-# Les sept critères à zéro : chaque test part de là et n'active que ce qu'il
-# mesure. Sans ce socle, ajouter un critère fausse silencieusement les
-# proportions attendues — c'est ce qui est arrivé en ajoutant séniorité et
-# fraîcheur.
-AUCUN = dict(competences=0, secteur=0, pays=0, seniorite=0, langue=0,
-             contrat=0, fraicheur=0)
+def test_tous_les_criteres_ont_un_poids():
+    """Un critère sans poids se calculerait sans jamais compter."""
+    poids = reglages().scoring.poids.en_dict()
+    assert set(poids) == {c for groupe in GROUPES for c in groupe}
 
 
 def test_poids_non_standards_restent_normalises():
-    # L'utilisateur écrit ce qu'il veut : 60/20/10/10 = 100, ou 6/2/1/1 = 10.
-    poids = PoidsScoring(**{**AUCUN, "competences": 6, "secteur": 2,
-                            "pays": 1, "contrat": 1})
+    # L'utilisateur écrit ce qu'il veut : 6/4 ou 60/40, c'est pareil.
+    poids = PoidsScoring(metier=6, competences=4)
     normalises = poids.normalises()
-    assert abs(sum(normalises.values()) - 1.0) < 1e-9
-    assert normalises["competences"] == 0.6
-    assert normalises["langue"] == 0.0
+    assert normalises["metier"] == 0.6
+    assert normalises["competences"] == 0.4
 
 
 def test_poids_tous_a_zero_ne_divise_pas_par_zero():
-    assert sum(PoidsScoring(**AUCUN).normalises().values()) == 0.0
+    zeros = {c: 0 for groupe in GROUPES for c in groupe}
+    assert sum(PoidsScoring(**zeros).normalises().values()) == 0.0
+
+
+def test_les_parts_restent_des_proportions():
+    import pytest
+    from pydantic import ValidationError
+
+    with pytest.raises(ValidationError):
+        PoidsScoring(part_conditions=1.5)

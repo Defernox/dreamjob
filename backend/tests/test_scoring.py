@@ -3,31 +3,67 @@
 Invariants défendus ici :
   - déterministe et rejouable ;
   - aucun appel réseau, jamais ;
-  - un critère qu'on ne peut pas juger ne pénalise pas l'offre ;
-  - une offre hors cible ne remonte pas grâce au contrat ou au pays.
+  - c'est la pertinence (le métier, le contenu) qui fait le score ; le niveau,
+    le diplôme et la langue ne font que retirer, les conditions que moduler ;
+  - un point rédhibitoire ferme la porte, quoi qu'il arrive ailleurs.
+
+Plusieurs tests rejouent en miniature une erreur mesurée sur les vraies offres
+du propriétaire — le premier classement mettait des postes de responsable
+administratif et financier devant des postes d'analyste crédit.
 """
 
 import pytest
 
 from app.config import PoidsScoring
 from app.models import Offer, Profile
+from app.scoring.cible import construire
+from app.scoring.corpus import NEUTRE, Corpus
 from app.scoring.explain import expliquer
 from app.scoring.extraction import extraire
-from app.scoring.score import LOC_MEME_PAYS, calculer
+from app.scoring.score import (
+    LOC_MEME_PAYS,
+    LOC_MEME_VILLE,
+    LOC_PAYS_ACCEPTE,
+    PLAFOND_REDHIBITOIRE,
+    calculer,
+    etalonner,
+    score_contrat,
+    score_langue,
+    score_pays,
+)
 
 POIDS = PoidsScoring()
+
+DESCRIPTION_RISQUES = (
+    "Au sein de la direction des risques, vous évaluez la solvabilité des "
+    "contreparties, suivez les encours et produisez l'analyse financière des "
+    "dossiers de crédit. Maîtrise d'Excel indispensable."
+)
+DESCRIPTION_COMPTA = (
+    "Vous tenez la comptabilité générale et auxiliaire, assurez le lettrage des "
+    "comptes fournisseurs, préparez les déclarations fiscales, la paie et le "
+    "bilan annuel avec l'expert-comptable."
+)
 
 
 def profil(**kw) -> Profile:
     base = dict(
-        skills=[{"nom": "Gestion des risques de crédit", "ancree": True},
+        titre_vise="Analyste risques de crédit",
+        annees_experience=3,
+        ville="Paris", pays="France",
+        skills=[{"nom": "Risque de crédit", "ancree": True},
                 {"nom": "Analyse financière", "ancree": True},
-                {"nom": "Excel", "ancree": False},
-                {"nom": "Power BI", "ancree": False}],
-        secteurs=["banque et assurance", "finance de marché"],
+                {"nom": "Excel", "ancree": False}],
+        secteurs=["Banque et assurance"],
+        experiences=[{"poste": "Chargé d'affaires entreprises", "entreprise": "Banque X",
+                      "debut": "2023", "fin": "2025",
+                      "description": "Suivi d'un portefeuille de vingt entreprises : "
+                                     "analyse de la solvabilité, des encours et des garanties.",
+                      "tags": ["Crédit", "Risque"]}],
+        formations=[{"diplome": "Master 2 Finance", "etablissement": "EM", "annee": "2023"}],
         langues=[{"code": "fr", "niveau": "natif"}, {"code": "en", "niveau": "intermédiaire"}],
         pays_acceptes=["France", "Luxembourg"],
-        contrats_acceptes=["CDI", "CDD", "Alternance"],
+        contrats_acceptes=["CDI", "CDD", "Stage"],
     )
     return Profile(**{**base, **kw})
 
@@ -38,22 +74,17 @@ def offre(**kw) -> Offer:
         titre="Analyste risques de crédit (H/F)",
         entreprise="Banque Exemple", lieu="75 - Paris", pays="France",
         type_contrat="CDI",
-        description_brute=(
-            "Au sein de la direction des risques, vous évaluez la solvabilité des "
-            "contreparties, suivez les encours et produisez l'analyse financière "
-            "des dossiers. Maîtrise d'Excel indispensable."
-        ),
-        raw={"romeCode": "C1206", "romeLibelle": "Gestion de clientèle bancaire"},
+        description_brute=DESCRIPTION_RISQUES,
     )
     return Offer(**{**base, **kw})
 
 
-def scorer(p=None, o=None, poids=POIDS, plafond=100.0):
+def scorer(p=None, o=None, recherches=None, poids=POIDS, corpus=NEUTRE):
     p, o = p or profil(), o or offre()
-    return calculer(p, o, extraire(o), poids, plafond)
+    return calculer(p, o, extraire(o), poids, construire(p, recherches or []), corpus)
 
 
-# --- Déterminisme ----------------------------------------------------------
+# --- Déterminisme ----------------------------------------------------------------
 
 
 def test_deux_calculs_identiques_donnent_le_meme_score():
@@ -61,233 +92,249 @@ def test_deux_calculs_identiques_donnent_le_meme_score():
 
 
 def test_changer_les_poids_change_le_score_sans_rien_reextraire():
-    """La promesse du projet : les poids se règlent sans rappeler quoi que ce soit."""
-    o = offre()
-    signaux = extraire(o)              # extraction faite UNE fois
-
-    zero = dict(competences=0, secteur=0, pays=0, seniorite=0, langue=0,
-                contrat=0, fraicheur=0)
-    tout_competences = PoidsScoring(**{**zero, "competences": 100})
-    tout_pays = PoidsScoring(**{**zero, "pays": 100})
-
-    a = calculer(profil(), o, signaux, tout_competences)
-    b = calculer(profil(), o, signaux, tout_pays)
-    assert a.score != b.score
-    # Le profil de test n'a pas de ville : l'offre vaut le palier « même pays »,
-    # plus 100 depuis que le lieu compte quatre paliers.
-    assert b.score == LOC_MEME_PAYS
+    p, o = profil(), offre(pays="Luxembourg", type_contrat="CDD")
+    signaux, cible = extraire(o), construire(profil(), [])
+    a = calculer(p, o, signaux, PoidsScoring(), cible).score
+    b = calculer(p, o, signaux, PoidsScoring(part_conditions=0.8), cible).score
+    assert a != b
 
 
-# --- Compétences -----------------------------------------------------------
+# --- La pertinence : le métier et le contenu -------------------------------------------
 
 
-def test_une_competence_ancree_retrouvee_pese_lourd():
-    trouvee = scorer().detail["competences"]
-    absente = scorer(p=profil(skills=[{"nom": "Soudure TIG", "ancree": True}])).detail["competences"]
-    assert trouvee > absente
-    assert absente == 0.0
+def test_le_metier_vise_l_emporte_sur_un_mot_commun():
+    """Le défaut d'origine : « financier » suffisait à rapprocher un poste de
+    RAF d'un CV de risques, et le premier classement le mettait devant."""
+    raf = scorer(o=offre(titre="Responsable administratif et financier",
+                         description_brute=DESCRIPTION_COMPTA),
+                 recherches=[["finance"]])
+    analyste = scorer(o=offre(), recherches=[["finance"]])
+    assert analyste.detail["metier"] > raf.detail["metier"] + 30
+    assert analyste.score > raf.score + 30
 
 
-def test_les_mots_generiques_pesent_moins_que_les_mots_specifiques():
-    """« gestion » est passe-partout ; « trésorerie » ne l'est pas."""
-    specifique = scorer(p=profil(skills=[{"nom": "Gestion des encours", "ancree": True}]))
-    generique = scorer(p=profil(skills=[{"nom": "Gestion des palettes", "ancree": True}]))
-    assert specifique.detail["competences"] > generique.detail["competences"]
+def test_un_diplome_n_est_pas_un_metier():
+    """Le « Master » d'un Master 2 rapprochait le CV d'un poste de Scrum Master."""
+    o = offre(titre="Scrum Master", description_brute="Animation des rituels agiles.")
+    assert scorer(o=o).detail["metier"] == 0.0
 
 
-def test_une_competence_ancree_n_accepte_pas_l_a_peu_pres():
-    """Une signature doit se retrouver telle quelle, pas « à peu près »."""
-    ancree = scorer(p=profil(skills=[{"nom": "Solvabilitee", "ancree": True}]))
-    ordinaire = scorer(p=profil(skills=[{"nom": "Solvabilitee", "ancree": False}]))
-    assert ancree.detail["competences"] == 0.0
-    assert ordinaire.detail["competences"] > 0.0
+def test_reprendre_un_intitule_vise_ne_suffit_pas_si_le_reste_parle_d_un_autre_metier():
+    """« Ingénieur analyses de risques cybersécurité » reprend « analyste
+    risques » — et parle d'un tout autre métier."""
+    recherches = [["analyste risques"]]
+    cyber = scorer(o=offre(titre="Ingénieur analyse de risques cybersécurité"),
+                   recherches=recherches)
+    risques = scorer(o=offre(titre="Analyste risques opérationnels"), recherches=recherches)
+    assert risques.detail["metier"] > cyber.detail["metier"] + 20
 
 
-def test_un_profil_sans_competence_ne_bloque_pas_le_score():
-    resultat = scorer(p=profil(skills=[]))
-    assert "competences" in resultat.non_evaluables
-    assert resultat.score > 0
+def test_une_association_nouvelle_n_est_pas_un_mot_inconnu():
+    """« Trading Risk and Control » était pénalisé parce que le CV ne disait
+    pas « risk trading », alors qu'il connaissait chacun des mots."""
+    p = profil(skills=[{"nom": "Trading", "ancree": True}, {"nom": "Risque", "ancree": True},
+                       {"nom": "Contrôle", "ancree": True}])
+    resultat = scorer(p=p, o=offre(titre="Trading Risk and Control"))
+    assert resultat.metier_precision == pytest.approx(1.0)
 
 
-def test_le_score_competences_n_est_pas_plafonne_par_la_taille_du_profil():
-    """Ajouter des compétences non citées ne doit pas écraser le score : une
-    annonce ne mentionne jamais tout un profil."""
-    court = scorer(p=profil(skills=[{"nom": "Analyse financière", "ancree": True}]))
-    long = scorer(p=profil(skills=[{"nom": "Analyse financière", "ancree": True}]
-                                  + [{"nom": f"Compétence {i}", "ancree": False} for i in range(20)]))
-    assert long.detail["competences"] >= court.detail["competences"] * 0.9
+def test_les_mots_cles_d_une_experience_disent_un_metier():
+    """Aucune recherche ne disait « crédit » : sans les mots-clés de ses
+    expériences, un CV de risque de crédit ne reconnaissait pas « Analyste
+    crédit »."""
+    o = offre(titre="Analyste crédit")
+    sans_theme = profil(titre_vise="Trésorier", experiences=[
+        {"poste": "Stagiaire", "description": "Suivi des créances.", "tags": []}])
+    avec_theme = profil(titre_vise="Trésorier", experiences=[
+        {"poste": "Stagiaire", "description": "Suivi des créances.", "tags": ["Crédit"]}])
+    assert scorer(p=avec_theme, o=o).metier_rappel > scorer(p=sans_theme, o=o).metier_rappel
 
 
-# --- Secteur ---------------------------------------------------------------
-
-
-def test_un_secteur_reconnu_dans_l_intitule_vaut_mieux_que_dans_le_corps():
-    dans_titre = scorer(p=profil(secteurs=["risques"]))
-    dans_corps = scorer(p=profil(secteurs=["encours"]))
-    assert dans_titre.detail["secteur"] > dans_corps.detail["secteur"] > 0
-
-
-def test_secteur_hors_cible():
-    assert scorer(p=profil(secteurs=["boulangerie"])).detail["secteur"] == 0.0
-
-
-# --- Pays, langue, contrat -------------------------------------------------
-
-
-def test_le_lieu_compte_quatre_paliers():
-    """Le critere etait binaire : 99 % des offres retenues valaient 100, et
-    15 % du poids ne departageait rien — un poste a Morristown notait comme un
-    poste a Paris."""
-    from app.scoring.score import LOC_MEME_PAYS, LOC_MEME_VILLE, LOC_PAYS_ACCEPTE
-
-    p = profil(ville="Paris", pays="France")
-    # La ville du profil se retrouve dans le lieu de l'offre.
-    assert scorer(p=p, o=offre(lieu="75 - Paris", pays="France")).detail["pays"] == LOC_MEME_VILLE
-    # Meme pays, autre ville.
-    assert scorer(p=p, o=offre(lieu="69 - Lyon", pays="France")).detail["pays"] == LOC_MEME_PAYS
-    # Pays accepte, mais a l'etranger.
-    assert scorer(p=p, o=offre(lieu="Luxembourg", pays="Luxembourg")).detail["pays"] == LOC_PAYS_ACCEPTE
-    # Pays refuse.
-    assert scorer(p=p, o=offre(pays="Allemagne")).detail["pays"] == 0.0
-
-
-def test_sans_pays_de_residence_aucune_offre_n_est_penalisee():
-    """On ne devine pas ou habite le candidat : toutes les offres acceptees
-    valent alors le palier du meme pays, la ville restant le seul depart."""
-    from app.scoring.score import LOC_MEME_PAYS, LOC_MEME_VILLE
-
-    p = profil(ville="Paris", pays="")
-    assert scorer(p=p, o=offre(lieu="Luxembourg", pays="Luxembourg")).detail["pays"] == LOC_MEME_PAYS
-    assert scorer(p=p, o=offre(lieu="75 - Paris", pays="France")).detail["pays"] == LOC_MEME_VILLE
-
-
-def test_langue_selon_le_niveau_declare():
-    assert scorer().detail["langue"] == 100.0        # français natif
-
-
-def test_langue_non_maitrisee():
-    p = profil(langues=[{"code": "de", "niveau": "notions"}])
-    assert scorer(p=p).detail["langue"] == 0.0       # l'offre est en français
-
-
-def test_l_ordre_des_contrats_porte_la_preference():
-    p = profil(contrats_acceptes=["CDI", "CDD", "Alternance"])
-    premier = calculer(p, offre(type_contrat="CDI"), extraire(offre()), POIDS)
-    dernier = calculer(p, offre(type_contrat="Alternance"), extraire(offre()), POIDS)
-    assert premier.detail["contrat"] == 100.0
-    assert dernier.detail["contrat"] == 60.0         # accepté, mais en dernier
-
-
-def test_un_contrat_accepte_ne_tombe_jamais_a_zero():
-    p = profil(contrats_acceptes=["CDI", "CDD", "Stage", "Alternance", "V.I.E"])
-    for contrat in p.contrats_acceptes:
-        valeur = calculer(p, offre(type_contrat=contrat), extraire(offre()), POIDS).detail["contrat"]
-        assert valeur >= 60.0
-
-
-def test_contrat_non_souhaite():
-    p = profil(contrats_acceptes=["CDI"])
-    assert calculer(p, offre(type_contrat="Intérim"), extraire(offre()), POIDS).detail["contrat"] == 0.0
-
-
-# --- Critères non évaluables -----------------------------------------------
-
-
-def test_un_critere_non_evaluable_ne_penalise_pas_l_offre():
-    """Un profil sans pays acceptés ne doit pas faire chuter toutes les offres."""
-    complet = scorer()
-    sans_pays = scorer(p=profil(pays_acceptes=[]))
-    assert "pays" in sans_pays.non_evaluables
-    assert "pays" not in sans_pays.detail
-    # Le poids du pays est redistribué : le score reste du même ordre.
-    assert abs(sans_pays.score - complet.score) < 15
+def test_le_contenu_se_lit_face_aux_meilleures_offres_du_compte():
+    """Un CV court produit des similarités minuscules : étalonnées sur les
+    offres du compte, la meilleure vaut 100."""
+    p = profil()
+    offres = [offre(source_id=str(i), titre=t, description_brute=d) for i, (t, d) in enumerate([
+        ("Analyste risques de crédit", DESCRIPTION_RISQUES),
+        ("Comptable", DESCRIPTION_COMPTA),
+        ("Boulanger", "Vous confectionnez les pains et viennoiseries chaque matin."),
+    ])]
+    signaux = [extraire(o) for o in offres]
+    corpus = Corpus.depuis(signaux)
+    cible = construire(p, [])
+    etalonner(cible, signaux, corpus)
+    notes = [calculer(p, o, s, POIDS, cible, corpus).detail["competences"]
+             for o, s in zip(offres, signaux)]
+    assert notes[0] == 100.0
+    assert notes[0] > max(notes[1], notes[2])
 
 
 def test_un_profil_totalement_vide_donne_zero_sans_planter():
     resultat = scorer(p=Profile())
     assert resultat.score == 0.0
-    # La fraicheur ne depend pas du profil : elle reste evaluable, mais elle
-    # est exclue du fond et ne peut donc pas porter un score a elle seule.
-    assert set(resultat.non_evaluables) == {"competences", "secteur", "pays",
-                                            "seniorite", "langue", "contrat"}
+    assert {"metier", "competences"} <= set(resultat.non_evaluables)
+
+
+# --- L'accessibilité ne fait que retirer --------------------------------------------------
+
+
+def test_etre_au_bon_niveau_ne_rend_pas_un_poste_pertinent():
+    """Quand niveau, diplôme et langue s'additionnaient au reste, un poste
+    sans rapport mais « compatible » empochait d'office le tiers du score."""
+    boulanger = scorer(o=offre(titre="Boulanger", description_brute=(
+        "Vous confectionnez les pains et les viennoiseries de la boutique chaque "
+        "matin, dans le respect des règles d'hygiène.")))
+    assert boulanger.detail.get("seniorite") == 100.0
+    assert boulanger.score < 20
+
+
+def test_un_poste_de_direction_est_hors_de_portee():
+    resultat = scorer(o=offre(titre="Directeur administratif et financier"))
+    assert resultat.detail["seniorite"] <= 5
+    assert resultat.score <= PLAFOND_REDHIBITOIRE
+    assert any("expérience" in r for r in resultat.redhibitoires)
+
+
+def test_des_annees_chiffrees_trop_loin_du_profil_ferment_la_porte():
+    o = offre(description_brute=DESCRIPTION_RISQUES + " Au moins 10 ans d'expérience exigés.")
+    assert scorer(o=o).score <= PLAFOND_REDHIBITOIRE
+
+
+def test_un_stage_accepte_n_est_pas_un_poste_trop_junior():
+    o = offre(titre="Stage analyste risques de crédit")
+    assert scorer(o=o).detail["seniorite"] == 90.0
+    sans_stage = profil(contrats_acceptes=["CDI"])
+    assert scorer(p=sans_stage, o=o).detail["seniorite"] == 70.0
+
+
+def test_une_certification_exigee_que_le_candidat_n_a_pas_ferme_la_porte():
+    o = offre(description_brute=DESCRIPTION_RISQUES + " Diplôme d'expertise comptable exigé.")
+    resultat = scorer(o=o)
+    assert resultat.score <= PLAFOND_REDHIBITOIRE
+    assert any("expert-comptable" in r for r in resultat.redhibitoires)
+
+
+def test_un_poste_reserve_aux_fonctionnaires_ferme_la_porte():
+    o = offre(description_brute=DESCRIPTION_RISQUES + " Recrutement par voie statutaire.")
+    assert scorer(o=o).score <= PLAFOND_REDHIBITOIRE
+
+
+def test_un_poste_ouvert_aux_contractuels_reste_ouvert():
+    o = offre(description_brute=DESCRIPTION_RISQUES
+              + " Poste ouvert aux fonctionnaires et aux contractuels.")
+    assert scorer(o=o).score > PLAFOND_REDHIBITOIRE
+
+
+def test_un_poste_a_bac_plus_2_pour_un_bac_plus_5():
+    o = offre(description_brute=DESCRIPTION_RISQUES + " Titulaire d'un BTS ou d'un DUT.")
+    assert scorer(o=o).detail["formation"] == 55.0
+
+
+def test_une_langue_que_le_candidat_ne_parle_pas_ferme_la_porte():
+    o = offre(description_brute=(
+        "Sie analysieren die Kreditrisiken unserer Firmenkunden und erstellen die "
+        "Berichte für die Geschäftsleitung. Wir erwarten sehr gute Kenntnisse und "
+        "eine selbstständige Arbeitsweise in einem internationalen Team."))
+    resultat = scorer(o=o)
+    assert resultat.detail["langue"] == 0.0
+    assert resultat.score <= PLAFOND_REDHIBITOIRE
+
+
+# --- Les conditions modulent -------------------------------------------------------------
+
+
+def test_les_conditions_modulent_sans_faire_le_score():
+    ici = scorer(o=offre())
+    ailleurs = scorer(o=offre(lieu="Luxembourg", pays="Luxembourg", type_contrat="CDD"))
+    assert ailleurs.score < ici.score
+    # … mais au plus de `part_conditions` : le poste reste un bon poste.
+    assert ailleurs.score >= ici.score * (1 - POIDS.part_conditions)
+
+
+def test_un_pays_refuse_ferme_la_porte():
+    assert scorer(o=offre(pays="Brésil", lieu="São Paulo")).score <= PLAFOND_REDHIBITOIRE
+
+
+def test_un_contrat_non_souhaite_ferme_la_porte():
+    assert scorer(o=offre(type_contrat="Alternance")).score <= PLAFOND_REDHIBITOIRE
+
+
+def test_le_lieu_compte_quatre_paliers():
+    p = profil(pays_acceptes=["France", "Luxembourg"])
+    assert score_pays(p, offre(lieu="75 - Paris")) == LOC_MEME_VILLE
+    assert score_pays(p, offre(lieu="69 - Lyon")) == LOC_MEME_PAYS
+    assert score_pays(p, offre(lieu="Luxembourg", pays="Luxembourg")) == LOC_PAYS_ACCEPTE
+    assert score_pays(p, offre(pays="Brésil")) == 0.0
+
+
+def test_sans_pays_de_residence_aucune_offre_n_est_penalisee():
+    p = profil(pays="", ville="")
+    assert score_pays(p, offre(lieu="Luxembourg", pays="Luxembourg")) == LOC_MEME_PAYS
+
+
+def test_l_ordre_des_contrats_porte_la_preference():
+    p = profil(contrats_acceptes=["CDI", "CDD", "Stage"])
+    assert score_contrat(p, offre(type_contrat="CDI")) == 100.0
+    assert score_contrat(p, offre(type_contrat="CDD")) == 80.0
+    assert score_contrat(p, offre(type_contrat="Stage")) == 60.0
+
+
+def test_langue_selon_le_niveau_declare():
+    o = offre(description_brute=(
+        "You will monitor the credit risk exposures of our corporate clients and "
+        "report to the head of risk every week with clear recommendations."))
+    assert score_langue(profil(), extraire(o)) == 70.0
 
 
 def test_une_offre_trop_courte_ne_perd_pas_de_points_sur_la_langue():
-    o = offre(description_brute="Poste à pourvoir.")
-    resultat = calculer(profil(), o, extraire(o), POIDS)
+    resultat = scorer(o=offre(description_brute="Poste en CDI."))
     assert "langue" in resultat.non_evaluables
 
 
-# --- Plafond hors cible ----------------------------------------------------
+# --- L'explication ---------------------------------------------------------------------------
 
 
-def test_une_offre_hors_cible_ne_remonte_pas_grace_au_contrat_et_au_pays():
-    boulanger = offre(
-        titre="Boulanger (H/F)",
-        description_brute=("Vous confectionnez les pains et viennoiseries chaque matin "
-                           "dans notre fournil artisanal, en respectant les recettes."),
-        raw={"romeCode": "D1102", "romeLibelle": "Boulangerie - viennoiserie"},
-    )
-    sans_plafond = calculer(profil(), boulanger, extraire(boulanger), POIDS, 100.0)
-    avec_plafond = calculer(profil(), boulanger, extraire(boulanger), POIDS, 25.0)
-
-    # Le seuil était calibré quand le pays valait 100 pour toute offre
-    # acceptée ; il en vaut 80 au mieux depuis que le lieu est gradué.
-    assert sans_plafond.score >= 30.0, "sans plafond, pays+langue+contrat portent l'offre"
-    assert avec_plafond.score == 25.0
-    assert avec_plafond.hors_cible is True
-
-
-def test_le_plafond_ne_touche_pas_une_offre_pertinente():
-    resultat = scorer(plafond=25.0)
-    assert resultat.hors_cible is False
-    assert resultat.score > 25.0
-
-
-# --- Explication -----------------------------------------------------------
-
-
-def _expliquer(p=None, o=None, plafond=100.0):
+def _expliquer(p=None, o=None, recherches=None):
     p, o = p or profil(), o or offre()
     signaux = extraire(o)
-    return expliquer(calculer(p, o, signaux, POIDS, plafond), p, o, signaux)
+    resultat = calculer(p, o, signaux, POIDS, construire(p, recherches or []))
+    return expliquer(resultat, p, o, signaux)
 
 
-def test_l_explication_nomme_les_faits_qui_ont_compte():
-    texte = _expliquer()
-    assert "secteur banque et assurance" in texte
-    assert "skills ancrées" in texte
-    assert "pays OK" in texte or "votre ville" in texte
-    assert "langue FR OK" in texte
-    assert "CDI prioritaire" in texte
+def test_l_explication_dit_quel_metier_l_offre_rejoint_et_d_ou_il_vient():
+    texte = _expliquer(recherches=[["analyste risques"]])
+    assert "Métier : rejoint" in texte
+    assert "En commun avec votre CV" in texte
 
 
-def test_l_explication_dit_pourquoi_une_offre_est_ecartee():
-    texte = _expliquer(o=offre(pays="Allemagne", type_contrat="Intérim"))
-    assert "pays hors liste (Allemagne)" in texte
-    assert "Intérim non souhaité" in texte
+def test_l_explication_parle_avec_les_mots_de_l_annonce():
+    """Des racines (« solvabilit ») ne se lisent pas : on reprend le mot écrit."""
+    assert "solvabilité" in _expliquer()
 
 
-def test_l_explication_signale_un_critere_non_evalue():
-    assert "pays non évalué" in _expliquer(p=profil(pays_acceptes=[]))
+def test_un_point_redhibitoire_ouvre_l_explication():
+    texte = _expliquer(o=offre(titre="Directeur administratif et financier"))
+    assert texte.splitlines()[0].startswith("Rédhibitoire")
 
 
-def test_l_explication_d_une_offre_hors_cible_est_sans_ambiguite():
-    boulanger = offre(titre="Boulanger (H/F)",
-                      description_brute="Vous confectionnez les pains et viennoiseries "
-                                        "chaque matin dans notre fournil artisanal.",
-                      raw={"romeCode": "D1102"})
-    assert "HORS CIBLE" in _expliquer(o=boulanger, plafond=25.0)
+def test_l_explication_ne_cite_ni_l_employeur_ni_la_ville():
+    texte = _expliquer(o=offre(entreprise="Globex", description_brute=(
+        DESCRIPTION_RISQUES + " Globex recrute à Paris pour son siège.")))
+    assert "globex" not in texte.lower().split("conditions")[0]
 
 
-def test_l_explication_reste_en_ascii_imprimable():
-    """Elle finit dans l'export Excel : pas de caractère exotique."""
+def test_un_critere_non_evaluable_reste_muet_dans_l_explication():
+    texte = _expliquer(p=profil(annees_experience=0))
+    assert "Niveau" not in texte
+
+
+def test_l_explication_des_conditions_reste_lisible_dans_excel():
     texte = _expliquer(p=profil(contrats_acceptes=["CDD", "CDI"]))
     assert "2e choix" in texte
     texte.encode("cp1252")      # lève UnicodeEncodeError si un caractère passe mal
 
 
-# --- Le scoring n'appelle jamais le LLM ------------------------------------
+# --- Le scoring n'appelle jamais le LLM ------------------------------------------------------
 
 
 def test_aucun_appel_reseau_pendant_un_scoring(monkeypatch):

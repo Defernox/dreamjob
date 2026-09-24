@@ -12,6 +12,7 @@ import {
 } from '../api/profil'
 import { Bouton, Champ, Section, ZoneTexte } from '../components/champs'
 import { ChoixMultipleGroupe, ChoixOrdonne, ListeTags } from '../components/ListeTags'
+import { GROUPES, poidsDansLeGroupe } from '../components/BarresScore'
 import { dateHeureFr } from '../lib/format'
 
 /** Ramène une saisie libre dans les bornes du schéma (0 à 60).
@@ -123,7 +124,7 @@ export default function Profil() {
         </div>
       </Section>
 
-      <Section titre="Poste visé" aide="Le titre et les secteurs pèsent 25 % du score d'une offre.">
+      <Section titre="Poste visé" aide="Le titre visé, vos recherches, vos postes et vos secteurs disent au score quels métiers vous visez.">
         <div className="space-y-3">
           <Champ libelle="Titre visé" valeur={profil.titre_vise} onChange={(v) => maj('titre_vise', v)}
                  placeholder="Analyste financier, Chef de projet…" />
@@ -161,7 +162,7 @@ export default function Profil() {
 
       <Section
         titre="Préférences de recherche"
-        aide="Absentes de votre CV : à renseigner ici. Elles pèsent 25 % du score (pays 15 %, contrat 10 %)."
+        aide="Absentes de votre CV : à renseigner ici. Elles modulent le score sans le faire — un poste hors sujet ne remonte pas parce qu'il est au bon endroit."
       >
         <div className="space-y-5">
           <div>
@@ -188,7 +189,7 @@ export default function Profil() {
 
       <Section
         titre="Compétences"
-        aide="Les compétences « ancrées » sont exigées en correspondance exacte par le scoring — réservez-les à vos 3 à 6 signatures."
+        aide="Des termes courts, pas des phrases : « Risque de crédit », pas « Esprit d'analyse ». Les compétences « ancrées » pèsent le plus — réservez-les à vos 3 à 6 signatures."
         action={
           <Bouton onClick={() => maj('skills', [...profil.skills, { nom: '', niveau: '', ancree: false }])}>
             + Ajouter
@@ -232,7 +233,7 @@ export default function Profil() {
 
       <Section
         titre="Langues"
-        aide="15 % du score : une offre rédigée dans une langue que vous ne maîtrisez pas est écartée."
+        aide="Une offre rédigée dans une langue que vous ne parlez pas, ou qui en exige une, est écartée."
         action={
           <Bouton onClick={() => maj('langues', [...profil.langues, { code: '', libelle: '', niveau: '' }])}>
             + Ajouter
@@ -274,7 +275,7 @@ export default function Profil() {
 
       <Section
         titre="Expériences"
-        aide="Réordonnées automatiquement dans le CV généré, selon l'offre visée."
+        aide="Tout compte pour le score : l'intitulé, les missions, et les mots-clés, lus comme des métiers que vous savez faire. Les postes récents pèsent plus."
         action={
           <Bouton onClick={() => maj('experiences', [...profil.experiences, {
             entreprise: '', poste: '', lieu: '', debut: '', fin: '', description: '', tags: [],
@@ -473,12 +474,19 @@ function Diagnostic() {
           <h3 className="text-xs font-semibold uppercase tracking-wide text-encre-500 mt-5 mb-2">
             Poids du scoring (version {reglages.scoring.version})
           </h3>
-          <div className="flex flex-wrap gap-x-6 gap-y-1 text-sm">
-            {Object.entries(reglages.scoring.poids).map(([critere, poids]) => (
-              <span key={critere}>
-                <span className="text-encre-500">{critere}</span>{' '}
-                <span className="font-medium tabular-nums">{poids} %</span>
-              </span>
+          <div className="space-y-1.5 text-sm">
+            {GROUPES.map((groupe) => (
+              <div key={groupe.cle} className="flex flex-wrap gap-x-5 gap-y-1">
+                <span className="w-28 shrink-0 font-medium text-encre-700">{groupe.titre}</span>
+                {Object.entries(groupe.criteres).map(([critere, libelle]) => (
+                  <span key={critere}>
+                    <span className="text-encre-500">{libelle}</span>{' '}
+                    <span className="font-medium tabular-nums">
+                      {poidsDansLeGroupe(reglages.scoring.poids_normalises, critere)} %
+                    </span>
+                  </span>
+                ))}
+              </div>
             ))}
           </div>
           <p className="text-xs text-encre-400 mt-2">

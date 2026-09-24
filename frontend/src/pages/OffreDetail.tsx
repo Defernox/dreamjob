@@ -90,7 +90,7 @@ export default function OffreDetail() {
               <>
                 <BarresScore
                   detail={offre.score_detail}
-                  poids={reglages?.scoring.poids ?? {}}
+                  poids={reglages?.scoring.poids_normalises ?? {}}
                   explication={offre.score_explication}
                 />
                 <p className="text-xs text-encre-400 mt-4">

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from sqlmodel import Session, desc, select
 
 from ..config import reglages
@@ -17,6 +17,7 @@ from ..services.scan import (
     requete_par_defaut,
     requetes_actives,
 )
+from ..services.scoring import rescorer
 from .acces import utilisateur_courant
 
 router = APIRouter(prefix="/api/scans", tags=["scans"])
@@ -51,6 +52,7 @@ def _construire_requete(
 
 @router.post("", response_model=ScanLecture)
 def lancer(
+    taches: BackgroundTasks,
     demande: RequeteScan | None = None,
     session: Session = Depends(get_session),
     moi: Utilisateur = Depends(utilisateur_courant),
@@ -73,8 +75,11 @@ def lancer(
         raise HTTPException(
             409, "Rien à chercher : enregistrez une recherche, ou renseignez le "
                  "titre visé de votre profil.")
-    return _en_lecture(lancer_scan(session, requete, sources=sources, utilisateur_id=moi.id),
-                       moi)
+    scan = lancer_scan(session, requete, sources=sources, utilisateur_id=moi.id)
+    # Les nouvelles offres sont notées dans la foulée : un scan manuel les
+    # laissait sans note jusqu'au prochain clic sur « Scorer ».
+    taches.add_task(rescorer, session.get_bind(), moi.id, forcer=False)
+    return _en_lecture(scan, moi)
 
 
 @router.get("/planification")

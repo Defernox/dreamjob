@@ -24,6 +24,10 @@ VIDES = {
     "poste", "profil", "mission", "missions", "entreprise", "societe", "equipe",
     "recherche", "recherchons", "candidat", "candidate", "offre", "emploi", "travail",
     "experience", "competences", "h", "f", "hf",
+    # Mots-outils qui manquaient : « ces » ressortait comme un terme sur lequel
+    # l'annonce « insiste ».
+    "ces", "cet", "dont", "lors", "via", "sous", "entre", "chez", "vers", "sans",
+    "comme", "aussi", "egalement", "mais", "donc", "car", "ni", "ils", "elles", "on",
 }
 
 

@@ -7,30 +7,25 @@
 scoring:
   # Version des règles. Incrémentée à chaque changement de poids :
   # sert à repérer les offres dont le score doit être recalculé.
-  version: 6
-  # Competences + secteur = 60 % : c'est le metier qui decide, le reste filtre.
-  # Les trois criteres administratifs (lieu, langue, contrat) ont ete raboches
-  # pour financer cette hausse ; les deux departageurs gardent l'essentiel du
-  # leur, sans quoi le mur d'egalites reviendrait.
-  poids:            # total attendu : 100
-    competences: 35
-    secteur: 25
-    # « pays » mesure en fait le LIEU, sur quatre paliers : votre ville, meme
-    # pays, pays accepte a l'etranger, refuse.
-    pays: 12
-    # Les deux derniers sont des departageurs : peu de poids, mais ils varient
-    # beaucoup la ou langue et contrat sont presque constants.
-    seniorite: 8
-    langue: 7
-    contrat: 8
-    fraicheur: 5
+  version: 7
+  # Trois groupes, normalises chacun a part : seuls les rapports internes comptent.
+  poids:
+    # --- La pertinence : c'est elle qui fait le score ---
+    metier: 65        # l'intitule de l'offre face aux intitules vises et au CV
+    competences: 35   # le contenu de l'annonce face a tout le CV
+    # --- L'accessibilite : elle ne fait que retirer, jusqu'a part_accessibilite ---
+    seniorite: 50     # niveau du poste (intitule) et annees chiffrees
+    formation: 20     # diplome demande ; certification ou statut exiges
+    langue: 30        # langue de redaction et langues exigees
+    # --- Les conditions : elles modulent, jusqu'a part_conditions ---
+    pays: 45          # le LIEU : votre ville, votre pays, un pays accepte
+    contrat: 35       # l'ordre de vos contrats acceptes
+    fraicheur: 20     # une annonce de la semaine plutot que de l'an dernier
+    part_accessibilite: 0.6
+    part_conditions: 0.3
   seuils:           # couleur de la pastille dans l'interface
     bon: 75         # vert   >= 75
     moyen: 50       # orange 50-74, gris en dessous
-  # Une offre dont NI les competences NI le secteur ne correspondent est hors
-  # cible : pays/langue/contrat sont des filtres administratifs, ils ne doivent
-  # pas suffire a la faire remonter. Mettre a 100 pour desactiver ce plafond.
-  plafond_hors_cible: 25
 
 llm:
   # Deux modeles, deux usages :

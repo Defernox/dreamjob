@@ -39,6 +39,7 @@ log = logging.getLogger("dreamjob.planificateur")
 
 TACHE_QUOTIDIENNE = "scan_quotidien"
 TACHE_RATTRAPAGE = "scan_rattrapage"
+TACHE_RESCORING = "rescoring_demarrage"
 # Au-dela, on n'attend plus un scan en cours : fermer l'application doit rester
 # une operation rapide.
 DELAI_ARRET_SECONDES = 20
@@ -75,10 +76,12 @@ def executer_scan(declenche_par: str = "planifie") -> None:
         log.exception("Le scan %s a échoué", declenche_par)
 
 
-def _programmer_rattrapage(planificateur: BackgroundScheduler) -> None:
+def _programmer_rattrapage(planificateur: BackgroundScheduler) -> bool:
+    """Programme un scan de rattrapage si la veille n'est plus à jour. Vrai s'il
+    en a programmé un."""
     r = lire_reglages().planification
     if r.rattrapage_apres_heures <= 0:
-        return
+        return False
 
     with Session(engine) as session:
         dernier = dernier_scan_abouti(session)
@@ -88,12 +91,12 @@ def _programmer_rattrapage(planificateur: BackgroundScheduler) -> None:
         # Sortir sur le reseau avant qu'il ait seulement vu l'ecran Profil
         # serait une initiative qu'il n'a pas demandee.
         log.info("Aucun scan dans l'historique : le premier reste manuel.")
-        return
+        return False
 
     ecoule = maintenant() - dernier.started_at
     if ecoule < timedelta(hours=r.rattrapage_apres_heures):
         log.info("Dernier scan il y a %s : pas de rattrapage.", _duree_lisible(ecoule))
-        return
+        return False
 
     # Heure consciente du fuseau DU PLANIFICATEUR : un `datetime.now()` naif
     # serait relu comme une heure de Paris, et se retrouverait dans le passe des
@@ -107,6 +110,27 @@ def _programmer_rattrapage(planificateur: BackgroundScheduler) -> None:
     )
     log.info("Aucun scan depuis %s : rattrapage dans %d s.",
              _duree_lisible(ecoule), r.delai_rattrapage_secondes)
+    return True
+
+
+# Quelques secondes après l'ouverture : l'API répond d'abord.
+DELAI_RESCORING_SECONDES = 5
+
+
+def rescorer_tout() -> None:
+    """Remet à jour les notes de tous les comptes — seulement celles qui le
+    demandent (version des poids ou des signaux changée, note de la veille).
+
+    Sans lui, une mise à jour du score laissait les anciennes notes à l'écran
+    jusqu'au scan suivant, le lendemain. Ne lève jamais.
+    """
+    try:
+        with Session(engine) as session:
+            nombre = scorer_tous_les_comptes(session)
+        if nombre:
+            log.info("Notes remises à jour au démarrage : %d offres.", nombre)
+    except Exception:  # noqa: BLE001
+        log.exception("Remise à jour des notes au démarrage en échec")
 
 
 def _duree_lisible(ecoule: timedelta) -> str:
@@ -145,7 +169,14 @@ def demarrer() -> BackgroundScheduler | None:
     _planificateur.start()
     log.info("Scan quotidien programmé à %02d:%02d.", heure, minute)
 
-    _programmer_rattrapage(_planificateur)
+    # Un scan de rattrapage se termine par un scoring : inutile de le doubler.
+    if not _programmer_rattrapage(_planificateur):
+        _planificateur.add_job(
+            rescorer_tout,
+            DateTrigger(run_date=datetime.now(_planificateur.timezone)
+                        + timedelta(seconds=DELAI_RESCORING_SECONDES)),
+            id=TACHE_RESCORING, replace_existing=True,
+        )
     return _planificateur
 
 

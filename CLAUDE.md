@@ -23,6 +23,7 @@ Anthropic, aux sources d'offres et, hébergé, la notification du matin.
 | Déployer (après un commit) | `deploiement/deployer.sh dreamjob` — voir `deploiement/GUIDE.md` |
 | Nouvelle migration | `cd backend; .\.venv\Scripts\alembic.exe revision --autogenerate -m "message"` |
 | Appliquer les migrations | `cd backend; .\.venv\Scripts\alembic.exe upgrade head` |
+| Mesurer le score | `backend\.venv\Scripts\python.exe outils\evaluer_score.py --detail` |
 
 Interface : http://localhost:5173 — API : http://127.0.0.1:8000/docs
 
@@ -98,7 +99,7 @@ DreamJob/
 │     ├─ api/           routeurs HTTP
 │     ├─ connectors/    base · http (débit, cache) · registry · une source = un fichier
 │     ├─ services/      dedup · scan · scoring · acces (comptes) · budget · notification
-│     ├─ scoring/       extraction + score + couverture — pur code, jamais de LLM
+│     ├─ scoring/       lexique · exigences · extraction · cible · corpus · score · explain — pur code
 │     ├─ documents/     docx_outils · intitule · cv_render · ciblage · correspondance · lettre · controles · exemples · pdf · dossier
 │     ├─ importers/     CV .docx/.pdf → profil structuré
 │     ├─ exports/       export Excel pour France Travail
@@ -236,9 +237,11 @@ premier sans aucune erreur visible. Pour du code, l'outil d'édition — et
 
 **1. Le score n'appelle JAMAIS de LLM.**
 Scorer, ce n'est pas *extraire* : c'est comparer une offre à un profil déjà
-connu. Les cinq critères se calculent en pur code — compétences par appariement
-lexical, secteur par le **code ROME** que fournit la source, pays et contrat déjà
-structurés, langue par détection statistique. Déterministe, rejouable, gratuit.
+connu. Les huit critères se calculent en pur code — le métier et le contenu
+par comparaison lexicale pondérée (synonymes, expressions, rareté des mots), le
+niveau, le diplôme et les certifications lus dans le texte par des motifs, le
+lieu et le contrat déjà structurés, la langue par détection statistique.
+Déterministe, rejouable, gratuit.
 Un test (`test_aucun_appel_reseau_pendant_un_scoring`) casse si quelqu'un
 réintroduit un appel réseau ici.
 
@@ -362,122 +365,187 @@ Les erreurs de l'API remontent **telles quelles** à l'utilisateur
 
 ## Le score en détail
 
-| Critère | Source du signal | Particularité |
+**Le score mesure à quel point une offre correspond au CV — à tout le CV.** Il a
+été refait en version 7, et **mesuré** : 182 offres réelles de la base,
+étiquetées à la main de 0 (hors sujet) à 3 (cœur de cible), servent de
+référence (`outils/etiquettes_score.py`). `outils/evaluer_score.py` rejoue le
+score sur la base, en lecture seule, et compare son classement aux étiquettes.
+**Un réglage du score se mesure, il ne se devine pas.**
+
+| Mesure | v6 | v7 |
 |---|---|---|
-| Compétences 35 % | appariement lexical profil ↔ texte de l'offre | 50 % vient de la **meilleure** compétence ancrée, 25 % de **combien d'autres ancrées** sont reconnues (plafonné à deux), 40 % du nombre d'autres compétences **réellement retrouvées** (au-dessus de `SEUIL_TROUVEE`, plafonné à 3) — additionner les correspondances sous le seuil laissait dix compétences frôlant un mot générique saturer cette moitié du score. On mesure la **qualité** de la correspondance, jamais le taux de couverture : une annonce ne cite jamais tout un profil |
-| Secteur 25 % | intitulé + `romeLibelle` + famille ROME | se mesure avec `_presence`, comme les compétences : **synonymes et pondération des mots génériques compris**. Reconnu dans l'intitulé = signal fort, dans le corps = 60 %, et l'on retient **le meilleur des deux** — « le titre sauf s'il est muet » faisait qu'un titre à moitié reconnu écrasait un corps qui reconnaissait tout |
-| Lieu 12 % | `offre.lieu` + `offre.pays` | **quatre paliers** : votre ville 100, même pays 80, pays accepté à l'étranger 60, refusé 0. **Attention** : France Travail publie aussi hors de France (Luxembourg surtout). Le pays se déduit du préfixe de département (« 75 - Paris ») ou du nom de pays dans le libellé — tout étiqueter « France » fausserait le critère |
-| Séniorité 8 % | années chiffrées de l'annonce, sinon son vocabulaire | `annees_experience` du profil, **saisi à la main** : les dates d'un CV sont trop partielles pour une somme automatique. À 0 le critère se tait — on ne note personne débutant faute de réponse. Les chiffres priment sur les mots : « junior » dans un intitulé qui réclame ensuite huit ans ne trompe pas. Un écart d'un an vaut 100, de six vaut 0 ; sans chiffre, « senior » face à un profil junior vaut 40 et non 0, les intitulés mentent trop souvent. Évalué sur **552 offres sur 2 490** |
-| Langue 7 % | mots-outils (`scoring/langue.py`) | texte trop court ⇒ non évalué, jamais pénalisé. Le niveau du profil est saisi en texte libre : plusieurs niveaux reconnus dans la même saisie ⇒ on retient **le plus prudent** (« courant (B2) » vaut B2), et une saisie illisible retombe sur `NIVEAU_LANGUE_PAR_DEFAUT` = 70, jamais au-dessus d'« intermédiaire » |
-| Contrat 8 % | champ structuré | l'ordre de `contrats_acceptes` porte la préférence : de 100 à 60, jamais 0 pour un contrat accepté |
-| Fraîcheur 5 % | `date_publication`, sinon `date_recuperation` | décroissance **linéaire** de 7 à 120 jours. Renseigné sur **100 %** des offres et étalé sur 1 072 jours : le seul départageur continu dont on dispose, d'où le refus des paliers, qui recréeraient les égalités qu'on défait. **Seul critère exclu du fond** (`CRITERES_DE_FOND`) : il dit si l'annonce est encore ouverte, pas si le poste convient |
+| Offres pertinentes (étiquette ≥ 2) dans le top 20 | 6 | **20** |
+| Offres hors sujet dans le top 20 | 2 | **0** |
+| NDCG@50 — qualité du haut du classement | 0,37 | **0,89** |
+| Concordance — paires d'offres dans le bon ordre (0,5 = hasard) | 0,62 | **0,84** |
+| Note moyenne, étiquettes 3 / 2 / 1 / 0 | 58 / 56 / **63** / 42 | **70 / 54 / 37 / 21** |
 
-**Compétences + secteur pèsent 60 % : c'est le métier qui décide.** Les trois
-critères administratifs — lieu, langue, contrat — ont financé la hausse ; les
-deux départageurs gardent l'essentiel du leur, sans quoi le mur d'égalités
-reviendrait. Mesuré : plus grosse égalité tombée de 147 à **61**, et 90 des 100
-premières offres inchangées — on affine un classement, on ne le refait pas.
+En v6, les postes « à la marge » (comptable, RAF) avaient une meilleure note
+moyenne que le cœur de cible : le mot « financier » suffisait à donner 100 sur
+le secteur, et le top 20 était plein de « Responsable administratif et
+financier », dont un DAF pour trois ans d'expérience.
 
-**Le dénominateur d'un critère est ce que le PROFIL peut offrir.** Le quart
-« compétences périphériques » divisait par 3 un profil qui n'en comptait que 2 :
-plafonné à 2/3 quelle que soit l'offre. Le critère culminait à 77,6 sur 2 490
-annonces là où tous les autres atteignent 100 — et une moyenne pondérée qui
-mélange deux échelles est fausse : donner 35 % à ce critère réservait des points
-que personne ne pouvait gagner. On pénalisait le candidat pour la forme de son
-profil, pas pour l'adéquation de l'annonce.
+### Trois étages, et une seule question fait le score
 
-**Le vrai plafond reste le profil, et c'est mesurable.** À poids identiques,
-un profil de 6 compétences donne 66 offres vertes et un plafond de 85 ; le même
-profil enrichi à 14 compétences en donne **242**, et le critère atteint 100.
-Aucun réglage de poids ne rattrape une liste de compétences trop courte — ni
-une compétence rédigée en phrase (« Esprit d'analyse et de synthèse » n'est
-reconnue par aucune annonce).
+`note = pertinence × facteur(accessibilité) × facteur(conditions)`
 
-**Le nombre d'ancrées reconnues compte, pas seulement la meilleure.** La
-première version ne retenait que `max(présence)` pour 60 % du critère. Mesuré
-sur 2 490 offres, le résultat était perverti : une offre reconnaissant **trois**
-compétences signature obtenait 40 sur ce critère, moins que la moyenne (36,1) de
-celles qui n'en reconnaissaient qu'une. Et 83 des 84 offres à égalité sur 76
-points avaient exactement une ancrée trouvée — c'était la machine à égalités.
+| Étage | Critères | Rôle |
+|---|---|---|
+| **Pertinence** | métier 65, contenu 35 | le poste est-il celui du candidat ? **C'est elle qui fait le score** |
+| **Accessibilité** | niveau 50, diplôme 20, langue 30 | peut-il l'obtenir ? **Ne fait que retirer**, jusqu'à 60 % (`part_accessibilite`) |
+| **Conditions** | lieu 45, contrat 35, fraîcheur 20 | le veut-il, ici et maintenant ? **Module**, jusqu'à 30 % (`part_conditions`) |
 
-**Deux critères ont été ajoutés pour départager, pas pour juger.** Le score
-avait un défaut de résolution avant d'avoir un défaut de justesse : 252 offres
-sur 2 490 partageaient exactement la même note, et l'écran affichait un mur de
-« 76 ». Sur la centaine de signaux disponibles, deux seulement couvrent assez
-d'offres pour trancher — la date de publication (100 % des offres, 1 072 jours
-d'amplitude) et l'ancienneté demandée (22 %). Mesuré après : **562 notes
-distinctes** au dixième près, plus grosse égalité tombée de 252 à 149, et **16**
-seulement parmi les 180 offres vertes — celles qu'on lit vraiment.
+Chaque groupe est normalisé à part. **Quand niveau, diplôme et langue
+s'additionnaient au reste, un poste sans rapport mais « compatible » empochait
+d'office le tiers du score** : les faire multiplier a fait passer la
+concordance de 0,79 à 0,83 d'un coup.
 
-**La fraîcheur ne dit rien de l'adéquation, et le code doit le savoir.** C'est le
-seul critère toujours évaluable ; la redistribution des poids lui donnait donc
-la totalité sur un profil dont aucun autre critère n'était jugeable, et sortait
-100 sur une offre que personne n'a pu évaluer. D'où `CRITERES_DE_FOND` : si
-aucun critère **de fond** ne se prononce, le score est nul, fraîcheur ou pas.
+**Les points rédhibitoires plafonnent à 15**, quoi qu'il arrive ailleurs : une
+langue exigée que le candidat ne parle pas, un poste hors de portée en
+expérience (direction, ou six ans d'écart), un contrat ou un pays refusés, une
+certification exigée qu'il n'a pas (expert-comptable, DSCG, CFA…), un poste
+réservé aux fonctionnaires titulaires. Ils ouvrent l'explication.
 
-**Un score de fraîcheur vieillit en base.** La promesse « mêmes entrées, même
-score » tient — la date du jour EST une entrée — mais une note stockée devient
-fausse le lendemain. `services/scoring.py` rescore donc ce qui a plus d'un jour,
-en plus des deux compteurs de version. L'opération prend une seconde pour 2 490
-offres.
+### Ce que le score lit du CV (`scoring/cible.py`)
 
-**Le lieu n'est plus binaire.** Il valait 100 pour 99 % des offres retenues :
-15 % du poids qui ne départageait rien, un poste à Morristown notant comme un
-poste à Paris. Il compte désormais quatre paliers, sur un signal renseigné à
-99,9 %. Deux précautions : sans `profil.pays`, on ne sait pas distinguer « chez
-moi » de « à l'étranger » — on ne le devine pas et on ne pénalise personne, tout
-ce qui est accepté vaut le palier du même pays ; et un pays accepté reste noté
-haut (60), car le candidat a dit oui.
+**Tout le CV, pas six phrases.** La v6 ne regardait que la liste de compétences
+et les secteurs ; les expériences, les missions, les diplômes et les recherches
+enregistrées étaient ignorés. Il en est tiré :
 
-**Un secteur d'un seul mot ne prouve presque rien dans le corps.** « Finance »
-croisé une fois dans deux mille mots donnait 60 sur ce critère à un poste de
-pharmacovigilance. Dans l'intitulé, le même mot reste un signal fort — c'est le
-sujet de l'annonce. D'où `CREDIT_SECTEUR_UN_MOT`.
+- **les intitulés visés**, pondérés : titre visé et recherches (1,0 — ce que le
+  candidat dit chercher), postes occupés (0,9 pour le plus récent, puis
+  dégressif), diplômes et secteurs (0,6), **mots-clés de chaque expérience**
+  (0,6 × récence). Sans ces derniers, un CV de risque de crédit ne reconnaissait
+  pas « Analyste crédit » : aucune recherche ne disait « crédit » ;
+- **un vocabulaire pondéré** : chaque terme selon l'endroit où il apparaît —
+  une compétence ancrée pèse 1,0, un mot d'une mission ancienne 0,4. Les mots
+  creux (« connaissance », « maîtrise », « pack ») n'y entrent pas ;
+- **le vocabulaire des domaines visés** (`DOMAINES`), à 0,35 : un junior qui vise
+  le middle office n'a pas encore écrit « règlement-livraison ». **Ces mots ne
+  servent qu'à classer — ils n'entrent jamais dans un document**, où ils
+  seraient des mensonges.
 
-Deux règles qui évitent des scores absurdes :
+### Le vocabulaire commun (`scoring/lexique.py`)
 
-- **Critère non évaluable ⇒ poids redistribué.** Un profil sans pays acceptés ne
-  doit ni tout mettre à 0 ni tout gonfler à 100.
-- **Plafond hors cible** (`plafond_hors_cible`, 25 par défaut). Si compétences
-  *et* secteur sont à 0, l'offre est plafonnée : pays, langue et contrat sont des
-  filtres administratifs, ils ne doivent pas faire remonter un poste sans rapport.
+Tout passe par `jetons` : mots vides retirés, chaque mot ramené à sa **forme
+canonique** — sa famille de synonymes, sinon sa racine (pluriel, féminin,
+« directrice » → « directeur », « administrative » → « administratif »).
+**Les expressions comptent** : les paires de mots voisins, sans ordre —
+« risque de crédit » et « credit risk » donnent la même ; « middle office »
+n'est pas « office manager ».
+
+Retirés d'un intitulé, parce que jugés ailleurs : contrat, niveau, genre, lieu,
+restes d'écriture inclusive (« administratif(ve) »), et **les mots de diplôme**
+— le « Master » d'un Master 2 rapprochait le CV d'un poste de « Scrum Master ».
+
+Deux familles de synonymes étaient fausses et ont été séparées :
+**« négociation » n'est pas « trading »** (un CV qui négocie des partenariats
+devenait un CV de trader) et **« manager » n'est pas « gestion »** (c'est un
+niveau, rangé avec « responsable »).
+
+### Pertinence 1 — le métier
+
+L'intitulé de l'offre face aux intitulés visés, dans les deux sens :
+
+- **rappel** : l'offre reprend-elle un intitulé visé ? Le meilleur, pondéré, plus
+  un peu du second. Un intitulé visé d'un seul mot banal (« Finance », une
+  recherche V.I.E) ne peut pas à lui seul faire une cible : sa **spécificité**
+  se mesure à la rareté de ses mots dans les annonces ;
+- **précision** : le candidat parle-t-il le vocabulaire de l'intitulé ?
+
+Combinés par **moyenne harmonique** : les deux sont nécessaires. Reprendre
+« analyste risques » ne suffit pas si le reste dit « cybersécurité » ;
+connaître tous les mots ne suffit pas si ce n'est aucun des postes cherchés.
+Mesurée contre les étiquettes, elle devance toute moyenne pondérée.
+
+Deux défauts corrigés en route, mesurés : **une expression n'entre dans la
+précision que reconnue** — « Trading Risk and Control » était pénalisé parce
+que le CV ne dit pas « risk trading », alors qu'il en connaît chaque mot (+0,05
+de concordance) ; et le poids d'un mot de l'intitulé suit la **racine** de sa
+rareté, pour qu'un mot rare (« Guardian ») n'écrase pas tout ce que le candidat
+reconnaît.
+
+### Pertinence 2 — le contenu
+
+Similarité cosinus entre l'annonce (chaque terme selon sa répétition et sa
+rareté, l'intitulé compté double) et le vocabulaire pondéré du CV. **Étalonnée
+sur les offres du compte** : celle qui atteint le 95e centile vaut 100
+(`score.etalonner`, une fois par scoring). Un CV court donne des similarités
+minuscules — le 95e centile réel est à 0,047 — et un plancher fixe à 0,12
+écrasait tout le critère.
+
+Une première version extrayait les « termes clés » de l'annonce puis mesurait
+leur couverture : sur des annonces courtes, où chaque mot n'apparaît qu'une
+fois, « le plus rare » n'est pas « le plus exigé », et la liste se remplissait
+de « Sopra », « Steria » et « autonome, méthodique ». Un mot ne compte que s'il
+revient dans quelques annonces — seuil qui **suit la taille du corpus**, sans
+quoi le fil d'un compte qui démarre serait vide.
+
+### Accessibilité (`scoring/exigences.py`)
+
+- **Niveau** : lu dans l'intitulé (stage, junior, intermédiaire, senior,
+  encadrement, direction), confronté aux années du profil ; les années
+  chiffrées priment. Les grades bancaires trompent : un « Assistant Vice
+  President » a quelques années, un « Vice President » encadre sans diriger.
+  « 3 à 5 ans » s'ouvre à 3, et « fort de 30 ans d'expérience » parle de
+  l'entreprise. **Un stage n'est pas « trop junior »** si le candidat accepte
+  les stages.
+- **Diplôme** : Bac+2 pour un Bac+5 vaut 55 — pas fermé, rarement le bon poste.
+  **« Maîtrise d'Excel » n'est pas un diplôme** : le mot transformait un poste
+  Bac+2 en Bac+4, dans une annonce française sur deux.
+- **Certifications et statut** : exigées seulement près d'un « requis »,
+  « obligatoire »… — « le CFA est un plus » ne ferme rien. Un poste ouvert
+  aussi aux contractuels n'est pas réservé aux fonctionnaires.
+- **Langue** : la langue de rédaction ET celles exigées — la plus dure décide.
+  Le niveau du profil est saisi en texte libre : plusieurs niveaux reconnus ⇒ le
+  plus prudent (« courant (B2) » vaut B2) ; une saisie illisible (« TOEIC 775 »)
+  vaut 70, jamais plus.
+
+### Conditions
+
+**Lieu** sur quatre paliers (votre ville 100, votre pays 80, pays accepté 60,
+refusé 0) — sans pays de résidence, on ne devine pas et on ne pénalise
+personne. **Contrat** selon l'ordre des préférences, de 100 à 60. **Fraîcheur**
+linéaire de 7 à 120 jours : le seul départageur continu.
+
+### Les seuils de couleur
+
+Vert à 75, orange à 50 — inchangés, et validés contre les étiquettes : sont
+vertes 54 % des offres cœur de cible, 14 % des offres proches, **aucune** offre
+à la marge ou hors sujet.
+
+### Tenir les notes à jour
+
+**Le score lit tout le CV et toutes les recherches : chaque changement les
+recalcule.** Enregistrer le profil, importer un CV, créer ou modifier une
+recherche relance le calcul du compte, après la réponse (`services.scoring.rescorer`) ;
+un scan manuel note ses nouvelles offres ; et l'application, à son démarrage,
+remet à jour ce qu'une nouvelle version du score a rendu caduc
+(`scheduler.rescorer_tout`). Avant, un profil modifié ou un score amélioré
+laissaient les anciennes notes à l'écran jusqu'au lendemain. Le recalcul reçoit le moteur de la requête,
+**jamais le moteur global** — depuis un test, celui-ci viserait la vraie base.
+
+Le corpus et l'étalonnage portent toujours sur **tout** le fil du compte, même
+quand quelques offres seulement sont à noter : une offre se juge par rapport aux
+autres. Un score stocké vieillit (fraîcheur, corpus) : ce qui a plus d'un jour
+est recalculé. Les 4 486 offres du propriétaire se notent en 15 secondes,
+extraction comprise.
+
+**Deux compteurs de version.** `scoring.version` (`config.yaml`) marque un
+changement de poids ; `extraction.VERSION` un changement de signaux — lu sur la
+note de chaque compte, car le premier qui rescore met à jour les signaux de
+l'offre.
 
 **Synonymes métier** (`scoring/synonymes.py`) : les offres de ce domaine sont
-massivement bilingues. Sans table d'équivalences, « risques de crédit » ne
-rencontre jamais « credit risk » et la moitié du marché est écartée.
-
-La table sert **les compétences et le secteur**. Le secteur s'en passait, et
-c'était sa plus grosse faiblesse : « Finance » ne rencontrait pas « financial
-markets », 597 offres sur 2 300 en ressortaient sous-notées sur un critère qui
-pèse 25 %. Les deux critères passent maintenant par la même fonction
-(`_presence`), donc par les mêmes synonymes et la même pondération.
-
-Les familles qui partagent un mot sont fusionnées **avant** la construction de
-l'index inversé (`_index_inverse`) : sinon le mot commun hériterait de l'union
-des deux familles pendant que ses voisins garderaient la leur, et le score
-dépendrait de quel terme se trouve dans le profil plutôt que dans l'annonce.
-
-**Langue : deux questions distinctes.** Celle dans laquelle l'annonce est
-écrite, et celles qu'elle **exige** (`langues_exigees`). Une offre en français
-réclamant « anglais courant » était jugée parfaitement accessible. C'est
-l'exigence la plus dure qui décide. Une langue seulement citée, sans marqueur
-d'exigence à proximité, n'est pas retenue : mieux vaut manquer une exigence que
-d'écarter une offre à tort.
-
-Les mots génériques d'une compétence (« gestion », « analyse ») pèsent 0,4 contre
-1 pour les mots spécifiques : dans « gestion de trésorerie », c'est
-« trésorerie » qui compte.
-
-**Deux compteurs de version, deux rôles.** `scoring.version` (dans
-`config.yaml`) marque un changement de **poids** ; `extraction.VERSION` marque un
-changement de **signaux**. `scorer_toutes` interroge les deux — sans quoi
-incrémenter le second ne servait à rien : l'offre déjà scorée n'était jamais
-revisitée et gardait ses signaux périmés, sans le moindre message.
+massivement bilingues. Les familles qui partagent un mot sont fusionnées
+**avant** l'index inversé, sans quoi la relation cesserait d'être symétrique.
 
 **Le cache de `normaliser` ne sert que les chaînes courtes**
-(`LONGUEUR_CACHABLE`). Il recevait aussi des descriptions d'offres entières,
-uniques par offre : jamais un succès de cache, mais la clé *et* la valeur — le
-texte en double — retenues pour la durée du processus.
+(`LONGUEUR_CACHABLE`) : une description entière n'y fait jamais mouche.
+
+**Le vrai plafond reste le profil.** Des compétences en phrases (« Esprit
+d'analyse et de synthèse ») ne rencontrent aucune annonce ; des termes courts
+(« Risque de crédit ») et des mots-clés d'expérience renseignés, si.
 
 ---
 
@@ -1156,3 +1224,4 @@ Sans LibreOffice, les documents sont générés en Word uniquement — même pri
 - [x] **13.** Rédaction payante — lettre par Opus 5.5, CV ciblé par Sonnet 5 sous contrôles puce par puce, coût de chaque dossier dans `generation.json`, panneau « Ce que verra le recruteur »
 - [x] **14.** Hébergement prêt — comptes et verrou, téléchargement des documents, interface servie par l'API, image Docker (Carlito), résumé du matin par ntfy, scripts d'installation et de déploiement. Déploiement réel : à faire
 - [x] **15.** Un compte par personne — profil, recherches, notes, candidatures, documents et notifications séparés ; offres partagées mais fil propre à chacun ; DogFinance réservé au propriétaire ; budget mensuel des amis ; migration vérifiée sur la vraie base
+- [x] **16.** Score refait et mesuré — tout le CV lu, métier reconnu dans les deux sens, contenu étalonné, niveau / diplôme / certifications / statut lus dans l'annonce, pertinence × accessibilité × conditions, points rédhibitoires, explication en lignes, recalcul automatique ; 182 offres étiquetées, top 20 : 6 → 20 offres pertinentes

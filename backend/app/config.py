@@ -8,6 +8,7 @@ from __future__ import annotations
 import os
 from functools import lru_cache
 from pathlib import Path
+from typing import ClassVar
 
 import yaml
 from dotenv import load_dotenv
@@ -21,37 +22,47 @@ load_dotenv(RACINE / ".env")
 
 
 class PoidsScoring(BaseModel):
-    """Sept critères. Les deux derniers sont des départageurs : ils portent peu
-    de poids mais varient beaucoup, là où langue et contrat sont presque
-    constants. C'est la variance, pas le poids, qui défait les égalités."""
+    """Trois groupes, trois questions — et une seule fait le score.
 
+    - La **pertinence** (métier, contenu) : le poste est-il celui du candidat ?
+      C'est elle qui fait le score.
+    - L'**accessibilité** (niveau, diplôme, langue) : peut-il l'obtenir ? Elle
+      ne fait que retirer, jusqu'à `part_accessibilite` : être au bon niveau
+      pour un poste sans rapport ne le rend pas pertinent. Quand ces critères
+      s'additionnaient au reste, un poste de comptable « compatible » empochait
+      d'office le tiers du score.
+    - Les **conditions** (lieu, contrat, fraîcheur) : le veut-il, ici et
+      maintenant ? Elles modulent, jusqu'à `part_conditions`.
+
+    Chaque groupe est normalisé à part : seuls les rapports internes comptent.
+    """
+
+    metier: int = 65
     competences: int = 35
-    secteur: int = 25
-    pays: int = 12
-    seniorite: int = 8
-    langue: int = 7
-    contrat: int = 8
-    fraicheur: int = 5
+    seniorite: int = 50
+    formation: int = 20
+    langue: int = 30
+    pays: int = 45
+    contrat: int = 35
+    fraicheur: int = 20
+    part_accessibilite: float = Field(default=0.6, ge=0.0, le=1.0)
+    part_conditions: float = Field(default=0.3, ge=0.0, le=1.0)
 
-    @property
-    def total(self) -> int:
-        return sum(self.en_dict().values())
+    PERTINENCE: ClassVar[tuple[str, ...]] = ("metier", "competences")
+    ACCESSIBILITE: ClassVar[tuple[str, ...]] = ("seniorite", "formation", "langue")
+    CONDITIONS: ClassVar[tuple[str, ...]] = ("pays", "contrat", "fraicheur")
 
     def en_dict(self) -> dict[str, int]:
-        return {
-            "competences": self.competences,
-            "secteur": self.secteur,
-            "pays": self.pays,
-            "seniorite": self.seniorite,
-            "langue": self.langue,
-            "contrat": self.contrat,
-            "fraicheur": self.fraicheur,
-        }
+        return {c: getattr(self, c)
+                for c in (*self.PERTINENCE, *self.ACCESSIBILITE, *self.CONDITIONS)}
 
     def normalises(self) -> dict[str, float]:
-        """Poids ramenés à une somme de 1.0, quelle que soit la saisie."""
-        total = self.total or 1
-        return {cle: valeur / total for cle, valeur in self.en_dict().items()}
+        """Chaque groupe ramené à une somme de 1.0, quelle que soit la saisie."""
+        resultat: dict[str, float] = {}
+        for groupe in (self.PERTINENCE, self.ACCESSIBILITE, self.CONDITIONS):
+            total = sum(getattr(self, c) for c in groupe) or 1
+            resultat.update({c: getattr(self, c) / total for c in groupe})
+        return resultat
 
 
 class SeuilsScoring(BaseModel):
@@ -63,7 +74,6 @@ class Scoring(BaseModel):
     version: int = 1
     poids: PoidsScoring = Field(default_factory=PoidsScoring)
     seuils: SeuilsScoring = Field(default_factory=SeuilsScoring)
-    plafond_hors_cible: float = 25.0
 
 
 class Llm(BaseModel):

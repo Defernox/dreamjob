@@ -1,171 +1,391 @@
 """Le calcul du score — code pur, déterministe, sans réseau ni LLM.
 
+**Ce que le score mesure : à quel point une offre correspond au CV.** Deux
+étages, parce que deux questions :
+
+1. **L'adéquation** — le poste est-il fait pour ce candidat ? Le métier
+   (l'intitulé), les exigences de l'annonce couvertes par le CV, le niveau du
+   poste, le diplôme demandé, la langue. C'est le fond, et c'est lui qui décide.
+2. **Les conditions** — le lieu, le contrat, la fraîcheur de l'annonce. Elles
+   **modulent** le score (jusqu'à `part_conditions`), elles ne le font pas.
+   Dans la première version, elles pesaient autant que le reste dans une même
+   moyenne : un poste sans rapport, en CDI à Paris, remontait au seul motif
+   qu'il était en CDI à Paris.
+
+Et des **points rédhibitoires** : une langue exigée que le candidat ne parle
+pas, un poste de direction pour trois ans d'expérience, une certification ou un
+statut qu'il n'a pas. Ceux-là plafonnent le score, quel que soit le reste.
+
 Deux propriétés à préserver :
 
-- **Rejouable.** Mêmes entrées, même score, toujours. Changer un poids dans
-  `config.yaml` recalcule tout sans rien réinterroger.
-- **Explicable.** Chaque sous-score se justifie en une ligne (cf. `explain.py`).
+- **Rejouable.** Mêmes entrées, même score. Les entrées sont le profil, l'offre,
+  les poids, le corpus des offres du compte (`corpus.py`) et la date du jour.
+- **Explicable.** Chaque critère garde la matière de sa justification
+  (`Resultat`), que `explain.py` met en phrases.
 
-Un critère qu'on ne peut pas juger (profil incomplet) vaut `None` : son poids est
-alors **redistribué** sur les autres. Lui donner 0 punirait l'offre pour une
-lacune du profil ; lui donner 100 fabriquerait un score flatteur.
+Un critère qu'on ne peut pas juger vaut `None` : son poids est alors
+**redistribué** sur les autres. Lui donner 0 punirait l'offre pour une lacune du
+profil ; lui donner 100 fabriquerait un score flatteur.
 """
 
 from __future__ import annotations
 
+import math
+import re
 from dataclasses import dataclass, field
 from datetime import datetime
-import re
 
 from rapidfuzz import fuzz, process
 
 from ..config import PoidsScoring
 from ..models import Offer, Profile
 from ..models.base import maintenant
+from .cible import ProfilCible
+from .corpus import NEUTRE, Corpus
+from .exigences import RANG
 from .extraction import Signaux
+from .lexique import CREUX, canon
 from .synonymes import present as synonyme_present
-from .texte import mots, poids_jeton
+from .texte import GENERIQUES, mots, normaliser, poids_jeton
 
-CRITERES = ("competences", "secteur", "pays", "seniorite", "langue",
-            "contrat", "fraicheur")
+CRITERES_PERTINENCE = ("metier", "competences")
+CRITERES_ACCESSIBILITE = ("seniorite", "formation", "langue")
+CRITERES_CONDITIONS = ("pays", "contrat", "fraicheur")
+CRITERES = CRITERES_PERTINENCE + CRITERES_ACCESSIBILITE + CRITERES_CONDITIONS
 
-# La fraîcheur ne dit rien de l'ADÉQUATION : elle mesure si l'annonce est encore
-# ouverte, pas si le poste convient. Elle est donc exclue du fond — sans quoi un
-# profil vide, dont aucun critère de fond n'est évaluable, verrait la
-# redistribution lui donner tout le poids et sortir un score de 100 sur une
-# offre que personne n'a pu juger.
-CRITERES_DE_FOND = tuple(c for c in CRITERES if c != "fraicheur")
-
-# Une annonce ne cite jamais tout un profil : on mesure la QUALITÉ des meilleures
-# correspondances, pas la proportion de compétences citées. Sans quoi le score
-# serait mécaniquement plafonné à 20 % pour un profil un peu fourni.
-# Trois parts, et non deux. La première version ne retenait QUE la meilleure
-# ancrée pour 60 % du critère : le nombre d'ancrées reconnues était ignoré.
-# Mesuré sur 2 490 offres, le résultat était perverti — une offre reconnaissant
-# trois compétences signature obtenait 40 sur ce critère, MOINS que la moyenne
-# (36,1) de celles qui n'en reconnaissaient qu'une, et 83 des 84 offres à
-# égalité sur 76 points avaient exactement une ancrée trouvée. C'était la
-# machine à égalités.
-PART_MEILLEURE_ANCREE = 0.50   # la signature qui colle le mieux
-PART_AUTRES_ANCREES = 0.25     # combien d'AUTRES signatures collent aussi
-PART_PERIPHERIQUES = 0.25      # les compétences non ancrées
-# Au-delà de la meilleure, deux ancrées supplémentaires suffisent : une annonce
-# ne cite jamais tout un profil.
-NB_ANCREES_ATTENDUES = 2
-NB_AUTRES_ATTENDUES = 3      # au-delà, une annonce n'en dit pas plus
-# Ressemblance minimale pour accepter une variante (gestion / gestionnaire).
-SEUIL_FLOU = 88
-# Une correspondance approximative ne vaut jamais une correspondance exacte.
-CREDIT_FLOU = 0.8
 # Proportion des mots d'une compétence à retrouver pour la dire « trouvée ».
+# Sert aux documents (ordre des puces, correspondance) : voir `presence`.
 SEUIL_TROUVEE = 0.5
-# Secteur reconnu seulement dans le corps de l'annonce, pas dans l'intitulé.
-CREDIT_SECTEUR_FAIBLE = 0.6
-# Un secteur d'UN SEUL mot reconnu dans le corps n'est presque pas une preuve :
-# « Finance » cité une fois dans deux mille mots donnait 60 sur ce critère à un
-# poste de pharmacovigilance. Dans l'intitulé, en revanche, le même mot reste un
-# signal fort — c'est le sujet de l'annonce.
-CREDIT_SECTEUR_UN_MOT = 0.3
+SEUIL_FLOU = 88
+CREDIT_FLOU = 0.8
 
-# --- Séniorité ---------------------------------------------------------------
-# Une annonce qui réclame dix ans d'expérience quand on en a trois n'est pas une
-# bonne offre, si bien notée soit-elle par ailleurs. Le signal ne couvre qu'une
-# annonce sur dix : le reste du temps le critère n'est pas évaluable, et son
-# poids est redistribué — c'est exactement l'usage prévu pour ce mécanisme.
-
+# Gardé pour `documents/correspondance.py`, qui lit les années exigées.
 _ANNEES_EXIGEES = re.compile(
     r"(\d{1,2})\s*(?:\+|ans?|années?)\s*(?:\+)?\s*(?:minimum|mini|au moins)?\s*"
     r"(?:d[e'’]\s*)?(?:exp[ée]rience|exp\b)", re.IGNORECASE)
 
-_JUNIOR = re.compile(
-    r"\bjunior\b|\bd[ée]butant|jeune dipl[oô]m|premi[eè]re exp[ée]rience|"
-    r"sans exp[ée]rience|profil junior", re.IGNORECASE)
-_SENIOR = re.compile(
-    r"\bsenior\b|\bconfirm[ée]s?\b|\bexp[ée]riment[ée]s?\b|\bexpert\b|"
-    r"\bdirecteur\b|\bhead of\b|\bchief\b", re.IGNORECASE)
 
-# Écart toléré avant de pénaliser : réclamer un an de plus que ce qu'on a ne
-# ferme aucune porte, en réclamer cinq de plus, si.
+# --- Présence d'une expression dans un vocabulaire (documents) ---------------------
+
+
+def presence(terme: str, vocabulaire: set[str], *, flou: bool) -> float:
+    """À quel point `terme` est présent dans le vocabulaire : de 0 à 1.
+
+    Sert aux documents — l'ordre des puces du CV, le panneau « Ce que verra le
+    recruteur », le contrôle du CV ciblé. Le score, lui, compare des jetons
+    canoniques (`lexique.py`).
+
+    Une compétence est souvent une expression qu'aucune annonce ne reprend mot
+    pour mot : on mesure la proportion pondérée de ses mots retrouvés, les mots
+    génériques (gestion, analyse…) comptant moins que les mots spécifiques.
+    """
+    jetons_terme = mots(terme)
+    if not jetons_terme:
+        return 0.0
+    total = obtenu = 0.0
+    for jeton in jetons_terme:
+        poids = poids_jeton(jeton)
+        total += poids
+        if synonyme_present(jeton, vocabulaire):
+            obtenu += poids
+        elif flou:
+            proche = process.extractOne(jeton, vocabulaire, scorer=fuzz.ratio,
+                                        score_cutoff=SEUIL_FLOU)
+            if proche is not None:
+                obtenu += poids * (proche[1] / 100.0) * CREDIT_FLOU
+    return obtenu / total if total else 0.0
+
+
+# --- Poids d'un terme ---------------------------------------------------------------
+
+# Les mots qui disent la FORME d'un poste, pas son contenu : « Responsable
+# financier » et « Chargé financier » font le même métier à deux niveaux — le
+# niveau a son propre critère.
+_GENERIQUES_INTITULE = {canon(normaliser(m)) for m in (
+    *GENERIQUES, "specialist", "specialiste", "officer", "associate", "consultant",
+    "consultante", "conseiller", "conseillere", "agent", "collaborateur", "collaboratrice",
+    "employe", "technicien", "technicienne", "operateur", "operator", "coordinateur",
+    "coordinator", "administrateur", "administrator", "representative", "expert",
+    "adjoint", "adjointe", "business", "senior", "director", "directeur", "head", "lead",
+    "team", "equipe", "department", "service", "group", "groupe",
+)}
+POIDS_GENERIQUE = 0.4
+
+
+def _poids_forme(terme: str, generiques: set[str]) -> float:
+    """Un mot générique pèse moins ; une expression pèse selon ses deux mots."""
+    if "|" in terme:
+        a, b = terme.split("|", 1)
+        return max(_poids_forme(a, generiques), _poids_forme(b, generiques))
+    return POIDS_GENERIQUE if terme in generiques else 1.0
+
+
+_GENERIQUES_CORPS = {canon(normaliser(m)) for m in GENERIQUES}
+
+# Des mots que toute annonce emploie pour parler d'elle-même — le cadre, les
+# avantages, la candidature — et qui ne disent rien de ce que le poste exige.
+_BANALITES = {canon(normaliser(m)) for m in (
+    "remuneration", "salaire", "salary", "avantage", "avantages", "benefits", "mutuelle",
+    "ticket", "tickets", "restaurant", "prime", "primes", "conge", "conges", "rtt",
+    "teletravail", "remote", "hybrid", "hybride", "cdi", "cdd", "contrat", "contract",
+    "temps", "plein", "horaire", "horaires", "heure", "heures", "semaine", "jour", "jours",
+    "lundi", "vendredi", "candidature", "candidatures", "postuler", "apply", "application",
+    "recrutement", "recruteur", "recruiter", "recruitment", "cabinet", "handicap",
+    "egalite", "diversite", "diversity", "inclusion", "rqth", "carriere", "career",
+    "rejoindre", "rejoignez", "join", "integrer", "integrez", "filiale", "siege", "locaux",
+    "ville", "region", "transport", "parking", "date", "debut", "demarrage", "start",
+    "opportunite", "opportunity", "role", "company", "entreprise", "societe", "leader",
+    "acteur", "croissance", "developpement", "dynamique", "passion", "valeur", "valeurs",
+    "culture", "ambiance", "bienveillance", "annee", "annees", "ans", "year", "years",
+    "euros", "eur", "brut", "k", "mois", "month", "work", "working", "vous", "notre",
+    "etc", "description", "descriptif", "poste", "missions", "profil", "recherche",
+    "recherchons", "souhaitez", "possible", "rapidement", "asap", "immediat",
+)}
+
+
+# --- 1. Le métier : l'intitulé face à ce que le candidat vise --------------------------
+
+# Deux sens : le rappel (l'offre reprend-elle un intitulé visé ?) et la
+# précision (le candidat parle-t-il le vocabulaire de l'intitulé de l'offre ?),
+# combinés par `combiner_metier`.
+# Un intitulé visé d'un seul mot banal — « Finance » — ne peut pas, à lui seul,
+# faire d'une offre une offre ciblée. Sa spécificité se mesure à l'IDF de ses
+# mots dans le corps des annonces : il en faut ce total pour peser pleinement.
+SPECIFICITE_PLEINE = 3.0
+# Un second intitulé visé retrouvé dans la même offre ajoute un peu : deux
+# recherches qui se rejoignent sont une preuve de plus.
+BONUS_SECOND_INTITULE = 0.2
+# Poids du CV à partir duquel un terme est « pleinement » connu du candidat.
+POIDS_PLEIN = 0.7
+
+
+def _couvert(cible: ProfilCible, terme: str) -> float:
+    return min(1.0, cible.poids(terme) / POIDS_PLEIN)
+
+
+def score_metier(cible: ProfilCible, signaux: Signaux, corpus: Corpus,
+                 resultat: "Resultat") -> float | None:
+    intitule = set(signaux.intitule) | set(signaux.intitule_bigrammes)
+    if not signaux.intitule or not cible.intitules:
+        return None
+
+    def poids(terme: str) -> float:
+        # La racine de l'IDF : un mot rare de l'intitulé (« Guardian ») ne doit
+        # pas écraser à lui seul tout ce que le candidat reconnaît.
+        return _poids_forme(terme, _GENERIQUES_INTITULE) * math.sqrt(corpus.idf_intitule(terme))
+
+    # Le rappel : le meilleur intitulé visé retrouvé dans celui de l'offre.
+    notes = []
+    for visé in cible.intitules:
+        termes = set(visé.jetons) | visé.bigrammes
+        total = sum(poids(t) for t in termes)
+        if total <= 0:
+            continue
+        trouve = [t for t in termes if t in intitule]
+        proportion = sum(poids(t) for t in trouve) / total
+        specificite = min(1.0, sum(corpus.idf_corps(t) for t in set(visé.jetons))
+                          / SPECIFICITE_PLEINE)
+        notes.append((proportion * specificite * visé.poids, visé, trouve))
+    notes.sort(key=lambda n: -n[0])
+    rappel = 0.0
+    if notes and notes[0][0] > 0:
+        second = notes[1][0] if len(notes) > 1 else 0.0
+        rappel = min(1.0, notes[0][0] + BONUS_SECOND_INTITULE * second)
+        resultat.intitule_vise = notes[0][1].libelle
+        resultat.intitule_origine = notes[0][1].origine
+
+    # La précision : les mots de l'intitulé de l'offre que le CV connaît. Les
+    # expressions n'y entrent que reconnues : « Trading Risk and Control » était
+    # pénalisé parce que le CV ne dit pas « risk trading », alors qu'il connaît
+    # chacun des mots. Une association nouvelle n'est pas un mot inconnu.
+    connus = {t: _couvert(cible, t) for t in intitule}
+    comptes = [t for t in intitule if "|" not in t or connus[t] > 0]
+    total = sum(poids(t) for t in comptes)
+    precision = sum(poids(t) * connus[t] for t in comptes) / total if total else 0.0
+    resultat.intitule_connus = [t for t in signaux.intitule if connus.get(t, 0) >= 0.5]
+    resultat.intitule_inconnus = [t for t in signaux.intitule
+                                  if connus.get(t, 0) < 0.5 and t not in _GENERIQUES_INTITULE]
+    resultat.metier_rappel, resultat.metier_precision = rappel, precision
+    return 100.0 * combiner_metier(rappel, precision)
+
+
+def combiner_metier(rappel: float, precision: float) -> float:
+    """Moyenne harmonique : les deux sens sont nécessaires. Reprendre un
+    intitulé visé ne suffit pas si le reste de l'intitulé parle d'un autre
+    métier (« Ingénieur analyses de risques cybersécurité » face à une recherche
+    « analyste risques ») ; parler le vocabulaire du CV ne suffit pas si le
+    poste n'est aucun de ceux que le candidat cherche. Mesuré contre les
+    étiquettes posées à la main, elle devance toute moyenne pondérée."""
+    return 2 * rappel * precision / (rappel + precision) if rappel + precision else 0.0
+
+
+# --- 2. Le contenu : ce que l'annonce demande, face à ce que le CV contient -------------
+#
+# Une similarité cosinus entre deux vecteurs pondérés : l'annonce (chaque terme
+# selon sa répétition et sa rareté) et le CV (chaque terme selon l'endroit où il
+# apparaît). Un terme rare que les deux partagent pèse lourd ; le bruit propre à
+# une seule annonce — un nom propre, un voisinage fortuit — ne fait que diluer.
+#
+# Une première version extrayait les « termes clés » de l'annonce, puis
+# mesurait leur couverture : sur des annonces courtes, où chaque mot n'apparaît
+# qu'une fois, « le plus rare » n'était pas « le plus exigé », et la liste se
+# remplissait de « Sopra », « Steria » et « autonome, méthodique ».
+
+# Une expression partagée (« risque de crédit ») pèse plus qu'un mot.
+BONUS_EXPRESSION = 1.3
+# L'intitulé dit ce qu'est le poste : ses mots comptent aussi dans le contenu.
+POIDS_INTITULE_CONTENU = 2.0
+# Combien d'annonces doivent employer un mot, ou une expression, pour qu'il
+# compte : vu une seule fois, c'est presque toujours un nom propre, une coquille
+# ou un voisinage fortuit — et sa rareté lui donnait le poids le plus fort.
+MINIMUM_MOT, MINIMUM_EXPRESSION = 3, 4
+# La similarité se lit par rapport aux meilleures offres du compte : celle qui
+# atteint ce centile vaut 100. Sans étalonnage (un score calculé isolément), on
+# retient `REFERENCE_PAR_DEFAUT`. Un plancher empêche qu'un fil sans aucune
+# bonne offre fasse passer la moins mauvaise pour excellente.
+CENTILE_REFERENCE = 0.95
+REFERENCE_PAR_DEFAUT = 0.05
+REFERENCE_MINIMALE = 0.02
+
+
+def vecteur_offre(signaux: Signaux, corpus: Corpus) -> dict[str, float]:
+    vecteur: dict[str, float] = {}
+    for terme, frequence in signaux.corps.items():
+        if (terme in _BANALITES or terme in CREUX or len(terme) < 2 or terme.isdigit()
+                or not corpus.etabli(terme, MINIMUM_MOT)):
+            continue
+        vecteur[terme] = ((1 + math.log(frequence)) * corpus.idf_corps(terme)
+                          * _poids_forme(terme, _GENERIQUES_CORPS))
+    for expression in signaux.corps_bigrammes:
+        a, b = expression.split("|", 1)
+        if {a, b} & (_BANALITES | CREUX) or not corpus.etabli(expression, MINIMUM_EXPRESSION):
+            continue
+        vecteur[expression] = (BONUS_EXPRESSION * corpus.idf_corps(expression)
+                               * _poids_forme(expression, _GENERIQUES_CORPS))
+    for terme in [*signaux.intitule, *signaux.intitule_bigrammes]:
+        vecteur[terme] = vecteur.get(terme, 0.0) + POIDS_INTITULE_CONTENU * corpus.idf_corps(
+            terme) * _poids_forme(terme, _GENERIQUES_CORPS)
+    return vecteur
+
+
+def vecteur_cv(cible: ProfilCible, corpus: Corpus) -> dict[str, float]:
+    return {t: p * corpus.idf_corps(t) * _poids_forme(t, _GENERIQUES_CORPS)
+            for t, p in cible.vocabulaire.items() if t not in _BANALITES}
+
+
+def similarite(cv: dict[str, float], offre: dict[str, float]) -> tuple[float, dict[str, float]]:
+    """Cosinus, et la contribution de chaque terme partagé."""
+    communs = {t: offre[t] * cv[t] for t in offre.keys() & cv.keys()}
+    normes = math.sqrt(sum(v * v for v in offre.values())) * math.sqrt(
+        sum(v * v for v in cv.values()))
+    return (sum(communs.values()) / normes if normes else 0.0), communs
+
+
+def etalonner(cible: ProfilCible, signaux: list[Signaux], corpus: Corpus) -> None:
+    """Fixe la similarité qui vaut 100 : le centile `CENTILE_REFERENCE` des
+    offres du compte. Appelé une fois par scoring, avant les offres."""
+    cv = vecteur_cv(cible, corpus)
+    valeurs = sorted(similarite(cv, vecteur_offre(s, corpus))[0] for s in signaux if s.corps)
+    if valeurs:
+        rang = min(len(valeurs) - 1, int(CENTILE_REFERENCE * len(valeurs)))
+        cible.reference_contenu = max(REFERENCE_MINIMALE, valeurs[rang])
+    cible.vecteur = cv
+
+
+def score_competences(cible: ProfilCible, signaux: Signaux, corpus: Corpus,
+                      resultat: "Resultat") -> float | None:
+    if not (signaux.corps or signaux.intitule) or not cible.vocabulaire:
+        return None
+    cv = cible.vecteur if cible.vecteur is not None else vecteur_cv(cible, corpus)
+    offre = vecteur_offre(signaux, corpus)
+    valeur, communs = similarite(cv, offre)
+    reference = cible.reference_contenu or REFERENCE_PAR_DEFAUT
+
+    resultat.cles_couvertes = [t for t, _ in sorted(communs.items(), key=lambda kv: -kv[1])
+                               if "|" not in t][:8]
+    resultat.cles_manquantes = [t for t, _ in sorted(offre.items(), key=lambda kv: -kv[1])
+                                if t not in cv and "|" not in t][:6]
+    return min(100.0, 100.0 * valeur / reference)
+
+
+# --- 3. Le niveau du poste ------------------------------------------------------------
+
+# Écart de niveau (poste - candidat) -> note. Un cran en dessous reste
+# accessible ; au-dessus, la porte se ferme vite — c'est ce qui filtrera la
+# candidature, avant même la lecture du CV.
+NOTE_ECART = {-3: 60.0, -2: 70.0, -1: 90.0, 0: 100.0, 1: 65.0, 2: 30.0, 3: 5.0}
+# Années chiffrées : réclamer un an de plus ne ferme rien, cinq de plus, si.
 ECART_INDIFFERENT = 1
 ECART_REDHIBITOIRE = 6
 
-# Sans années chiffrées, on se rabat sur le vocabulaire. Un profil junior face à
-# une annonce « senior » perd, mais pas tout : les intitulés mentent souvent.
-SENIORITE_VOCABULAIRE_CONTRE = 40.0
-SENIORITE_VOCABULAIRE_POUR = 100.0
 
-# Au-dessous, on se considère junior. Volontairement bas : c'est le seuil à
-# partir duquel une annonce « confirmé » cesse d'être hors de portée.
-ANNEES_JUNIOR = 4
+def niveau_candidat(annees: int) -> str:
+    if annees < 2:
+        return "junior"
+    if annees < 6:
+        return "intermediaire"
+    if annees < 10:
+        return "confirme"
+    return "encadrement"
 
 
-def score_seniorite(profil: Profile, offre: Offer) -> float | None:
-    """L'offre est-elle à la portée du candidat, en termes d'ancienneté ?
+def score_seniorite(cible: ProfilCible, signaux: Signaux, resultat: "Resultat") -> float | None:
+    """Le poste est-il à la portée du candidat ? Le niveau que dit l'intitulé,
+    et les années que chiffre l'annonce : la plus sévère des deux décide.
 
-    Deux signaux, dans cet ordre : les années chiffrées quand l'annonce en
-    donne, le vocabulaire sinon. Ni l'un ni l'autre n'étant présent, le critère
-    n'est pas évaluable — et son poids part sur les autres.
+    Sans années d'expérience saisies, on ne juge pas : on ne note personne
+    débutant faute de réponse.
     """
-    if not profil.annees_experience:
+    if not cible.annees:
         return None
+    resultat.niveau_poste = signaux.niveau_poste
+    ecart = RANG[signaux.niveau_poste] - RANG[niveau_candidat(cible.annees)]
+    note = NOTE_ECART[max(-3, min(3, ecart))]
+    if signaux.niveau_poste == "stage" and cible.accepte_stage:
+        note = NOTE_ECART[-1]
 
-    texte = f"{offre.titre or ''} {offre.description_brute or ''}"
-
-    exigees = [int(m.group(1)) for m in _ANNEES_EXIGEES.finditer(texte)]
-    if exigees:
-        # La plus forte exigence décide : c'est elle qui filtrera la candidature.
-        ecart = max(exigees) - profil.annees_experience
-        if ecart <= ECART_INDIFFERENT:
-            return 100.0
-        if ecart >= ECART_REDHIBITOIRE:
-            return 0.0
-        reste = (ECART_REDHIBITOIRE - ecart) / (ECART_REDHIBITOIRE - ECART_INDIFFERENT)
-        return 100.0 * reste
-
-    junior = profil.annees_experience < ANNEES_JUNIOR
-    if _SENIOR.search(texte):
-        return SENIORITE_VOCABULAIRE_CONTRE if junior else SENIORITE_VOCABULAIRE_POUR
-    if _JUNIOR.search(texte):
-        return SENIORITE_VOCABULAIRE_POUR if junior else SENIORITE_VOCABULAIRE_CONTRE
-    return None
+    if signaux.annees_exigees:
+        resultat.annees_exigees = signaux.annees_exigees
+        manque = signaux.annees_exigees - cible.annees
+        if manque >= ECART_REDHIBITOIRE:
+            note_annees = 0.0
+        elif manque <= ECART_INDIFFERENT:
+            note_annees = 100.0
+        else:
+            note_annees = 100.0 * (ECART_REDHIBITOIRE - manque) / (
+                ECART_REDHIBITOIRE - ECART_INDIFFERENT)
+        note = min(note, note_annees)
+    return note
 
 
-# --- Fraîcheur ----------------------------------------------------------------
-# Une annonce de septembre 2023 notait exactement comme celle de ce matin. Le
-# signal est renseigné sur 100 % des offres et s'étale de 0 à 1 072 jours :
-# c'est le meilleur départageur dont on dispose.
-#
-# **Ce critère dépend du jour où l'on score.** La promesse « mêmes entrées, même
-# score » tient toujours — la date du jour EST une entrée — mais un score stocké
-# vieillit. `services/scoring.py` rescore donc ce qui a plus d'un jour ; sur
-# 2 490 offres l'opération prend une seconde.
-FRAICHEUR_PLEINE_JOURS = 7      # une offre de la semaine vaut le maximum
-FRAICHEUR_NULLE_JOURS = 120     # au-delà, elle n'est probablement plus ouverte
+# --- 4. Diplôme, certifications, statut -------------------------------------------------
 
 
-def score_fraicheur(offre: Offer, aujourd_hui: datetime | None = None) -> float | None:
-    """Décroissance linéaire entre une semaine et quatre mois.
-
-    Linéaire et non par paliers : une valeur continue départage, des paliers
-    recréeraient les égalités qu'on cherche à défaire.
-    """
-    publiee = offre.date_publication or offre.date_recuperation
-    if publiee is None:
+def score_formation(cible: ProfilCible, signaux: Signaux, resultat: "Resultat") -> float | None:
+    if signaux.statut_public:
+        resultat.redhibitoires.append("poste réservé aux fonctionnaires titulaires")
+        return 10.0
+    manquantes = [c for c in signaux.certifications if c not in cible.certifications]
+    if manquantes:
+        resultat.redhibitoires.append(f"exige : {', '.join(manquantes)}")
+        return 20.0
+    if not signaux.etudes or cible.etudes is None:
         return None
-    # `maintenant()` et non `datetime.utcnow()` : le second est déprécié
-    # depuis Python 3.12, et c'est déjà l'horloge de toute la base — les
-    # dates stockées sont en UTC naïf, la comparaison doit l'être aussi.
-    jours = ((aujourd_hui or maintenant()) - publiee).days
-    if jours <= FRAICHEUR_PLEINE_JOURS:
-        return 100.0
-    if jours >= FRAICHEUR_NULLE_JOURS:
-        return 0.0
-    reste = (FRAICHEUR_NULLE_JOURS - jours) / (FRAICHEUR_NULLE_JOURS - FRAICHEUR_PLEINE_JOURS)
-    return 100.0 * reste
+    requis, plafond = min(signaux.etudes), max(signaux.etudes)
+    resultat.etudes_demandees = (requis, plafond)
+    if cible.etudes < requis:
+        return max(0.0, 100.0 - 35.0 * (requis - cible.etudes))
+    # Un poste à Bac+2 pour un Bac+5 n'est pas fermé — mais c'est rarement le
+    # bon poste, et le recruteur le pensera aussi.
+    if plafond <= cible.etudes - 3:
+        return 55.0
+    if plafond <= cible.etudes - 2:
+        return 75.0
+    return 100.0
 
 
-# Le niveau est saisi en texte libre : il faut couvrir les deux nombres et les
-# deux langues, sans quoi une saisie non reconnue tombe sur le repli.
+# --- 5. La langue ---------------------------------------------------------------------------
+
 NIVEAUX_LANGUE = {
     "natif": 100.0, "native": 100.0, "bilingue": 100.0, "bilingual": 100.0,
     "maternelle": 100.0, "maternel": 100.0, "courant": 100.0, "couramment": 100.0,
@@ -179,233 +399,14 @@ NIVEAUX_LANGUE = {
     "base": 40.0, "bases": 40.0, "basique": 40.0, "basic": 40.0,
     "elementaire": 40.0, "beginner": 40.0, "limite": 40.0, "limitee": 40.0,
 }
-# Niveau retenu quand la saisie n'est pas reconnue. Il valait 85 — au-dessus
-# d'« intermédiaire » — ce qui faisait passer une saisie incomprise pour une
-# quasi-maîtrise : « TOEIC 775 » et « Notion » d'allemand étaient tous deux lus
-# comme 85. Deux tiers des offres tiraient leur note de ce repli.
+# Niveau retenu quand la saisie n'est pas reconnue (« TOEIC 775 ») : jamais
+# au-dessus d'« intermédiaire ».
 NIVEAU_LANGUE_PAR_DEFAUT = 70.0
-
-
-@dataclass
-class Resultat:
-    score: float
-    hors_cible: bool = False
-    detail: dict[str, float] = field(default_factory=dict)
-    non_evaluables: list[str] = field(default_factory=list)
-    # Matière première de l'explication.
-    ancrees_trouvees: list[str] = field(default_factory=list)
-    ancrees_manquantes: list[str] = field(default_factory=list)
-    autres_trouvees: list[str] = field(default_factory=list)
-    secteur_reconnu: str = ""
-    explication: str = ""
-
-
-# --------------------------------------------------------------- compétences
-
-
-def presence(terme: str, vocabulaire: set[str], *, flou: bool) -> float:
-    """À quel point `terme` est présent dans le vocabulaire : de 0 à 1.
-
-    Une compétence est souvent une expression (« gestion des risques de crédit »)
-    qu'aucune annonce ne reprend mot pour mot. On mesure donc la **proportion
-    pondérée** de ses mots retrouvés : les mots génériques (gestion, analyse…)
-    comptent moins que les mots spécifiques (trésorerie, crédit).
-    """
-    jetons = mots(terme)
-    if not jetons:
-        return 0.0
-
-    total = obtenu = 0.0
-    for jeton in jetons:
-        poids = poids_jeton(jeton)
-        total += poids
-        # Les synonymes comptent comme le mot lui-même : « risques de crédit »
-        # doit rencontrer « credit risk », sinon la moitié du marché est écartée.
-        if synonyme_present(jeton, vocabulaire):
-            obtenu += poids
-        elif flou:
-            # Variante proche (gestion/gestionnaire) : jamais autant qu'un mot exact.
-            proche = process.extractOne(
-                jeton, vocabulaire, scorer=fuzz.ratio, score_cutoff=SEUIL_FLOU
-            )
-            if proche is not None:
-                obtenu += poids * (proche[1] / 100.0) * CREDIT_FLOU
-
-    return obtenu / total if total else 0.0
-
-
-def score_competences(profil: Profile, signaux: Signaux, resultat: Resultat,
-                      vocabulaire: set[str] | None = None) -> float | None:
-    """Qualité de la correspondance, pas taux de couverture.
-
-    - 50 % : la **meilleure** compétence ancrée retrouvée. Une signature qui
-      colle vaut toujours plus que dix compétences périphériques.
-    - 25 % : combien d'AUTRES ancrées sont reconnues, plafonné à deux. C'est
-      cette part qui départage : sans elle, reconnaître trois signatures
-      rapportait autant qu'en reconnaître une seule.
-    - 25 % : les compétences non ancrées retrouvées, plafonné à trois.
-
-    On mesure toujours la qualité, jamais le taux de couverture — une annonce
-    ne cite jamais tout un profil. Mais à qualité égale, en reconnaître
-    davantage doit valoir davantage.
-
-    Un profil sans compétence ancrée est jugé sur la dernière part seule.
-    """
-    if not profil.skills:
-        return None
-
-    def _nb(skills: list[dict], *, ancree: bool) -> int:
-        return sum(1 for s in skills if bool(s.get("ancree")) is ancree and s.get("nom"))
-
-    if vocabulaire is None:
-        vocabulaire = set(signaux.vocabulaire)
-    meilleure_ancree = 0.0
-    ancrees_trouvees = 0
-    a_des_ancrees = False
-    somme_autres = 0.0
-
-    for skill in profil.skills:
-        nom = skill.get("nom") or ""
-        if not nom:
-            continue
-        ancree = bool(skill.get("ancree"))
-        # Une compétence ancrée est une signature : pas d'à-peu-près dessus.
-        trouvee = presence(nom, vocabulaire, flou=not ancree)
-
-        if ancree:
-            a_des_ancrees = True
-            meilleure_ancree = max(meilleure_ancree, trouvee)
-            if trouvee >= SEUIL_TROUVEE:
-                ancrees_trouvees += 1
-                resultat.ancrees_trouvees.append(nom)
-            else:
-                resultat.ancrees_manquantes.append(nom)
-        elif trouvee >= SEUIL_TROUVEE:
-            # Seules les compétences réellement retrouvées comptent. Additionner
-            # les correspondances sous le seuil laissait dix compétences frôlant
-            # un mot générique saturer cette moitié du score : une offre de
-            # boulangerie atteignait 83/100 sur un profil finance, sans qu'aucune
-            # compétence ne soit rapportée à l'utilisateur.
-            somme_autres += trouvee
-            resultat.autres_trouvees.append(nom)
-
-    # Le dénominateur est ce que le PROFIL peut offrir, pas un idéal abstrait.
-    #
-    # Mesuré : un profil de six compétences, dont deux seulement non ancrées, ne
-    # pouvait jamais dépasser 2/3 sur ce quart du score — quelle que soit
-    # l'offre. Le critère plafonnait à 77,6 sur 2 490 annonces là où tous les
-    # autres atteignent 100, ce qui fausse la moyenne pondérée : lui donner
-    # 35 % du poids revenait à réserver des points que personne ne peut gagner.
-    # On pénalisait le candidat pour la forme de son profil, pas pour
-    # l'adéquation de l'annonce.
-    attendues_autres = min(NB_AUTRES_ATTENDUES, _nb(profil.skills, ancree=False)) or 1
-    part_autres = min(1.0, somme_autres / attendues_autres)
-    if not a_des_ancrees:
-        return 100.0 * part_autres
-
-    # La meilleure ancrée est déjà comptée par `meilleure_ancree` : on ne
-    # dénombre ici que les SUIVANTES — d'où le « - 1 » des deux côtés.
-    attendues_ancrees = min(NB_ANCREES_ATTENDUES, _nb(profil.skills, ancree=True) - 1) or 1
-    part_ancrees = min(1.0, max(0, ancrees_trouvees - 1) / attendues_ancrees)
-    return 100.0 * (
-        PART_MEILLEURE_ANCREE * meilleure_ancree
-        + PART_AUTRES_ANCREES * part_ancrees
-        + PART_PERIPHERIQUES * part_autres
-    )
-
-
-# ------------------------------------------------------------------- secteur
-
-
-def score_secteur(profil: Profile, signaux: Signaux, resultat: Resultat,
-                  vocabulaire: set[str] | None = None) -> float | None:
-    """Le secteur se mesure comme les compétences, avec `presence`.
-
-Il utilisait une simple appartenance d'ensemble, donc sans les synonymes ni
-    la pondération des mots génériques : « Finance » ne rencontrait jamais
-    « financial markets », et un secteur reconnu sur le seul mot « gestion »
-    valait autant qu'un secteur reconnu en entier. Sur un critère qui pèse 25 %,
-    un quart des offres en sortaient sous-notées.
-
-    Le crédit accordé au corps de l'annonce dépend de la **spécificité** du
-    secteur : « Banque et assurance » reconnu en entier est une preuve,
-    « Finance » croisé une fois dans deux mille mots n'en est pas une.
-    """
-    if not profil.secteurs:
-        return None
-
-    mots_titre = set(mots(signaux.texte_secteur))
-    mots_corps = set(signaux.vocabulaire) if vocabulaire is None else vocabulaire
-
-    meilleur = 0.0
-    for secteur in profil.secteurs:
-        # Reconnu dans l'intitulé ou le libellé ROME : signal fort.
-        fort = presence(secteur, mots_titre, flou=False) * 100.0
-        # Seulement dans le corps de l'annonce : signal plus faible, et plus
-        # faible encore si le secteur tient en un mot — un terme courant croisé
-        # au détour d'une longue annonce ne dit rien du métier.
-        credit = (CREDIT_SECTEUR_FAIBLE if len(mots(secteur)) > 1
-                  else CREDIT_SECTEUR_UN_MOT)
-        faible = presence(secteur, mots_corps, flou=False) * 100.0 * credit
-        # Le meilleur des deux, et non « le fort sauf s'il est nul » : un titre
-        # à moitié reconnu écrasait un corps qui, lui, reconnaissait tout — le
-        # critère n'était pas monotone, un titre muet valait mieux.
-        valeur = max(fort, faible)
-        if valeur > meilleur:
-            meilleur, resultat.secteur_reconnu = valeur, secteur
-    return meilleur
-
-
-# ----------------------------------------------------- pays, langue, contrat
-
-
-# Quatre paliers plutôt qu'un oui/non. Le critère était binaire : 99 % des
-# offres retenues valaient 100, si bien que 15 % du poids ne départageait
-# strictement rien — un poste à Morristown, New Jersey, notait exactement comme
-# un poste à Paris. Le lieu est pourtant renseigné sur 99,9 % des offres, et
-# déménager n'est pas un détail.
-LOC_MEME_VILLE = 100.0
-LOC_MEME_PAYS = 80.0
-LOC_PAYS_ACCEPTE = 60.0     # accepté, donc pas pénalisé — mais pas équivalent
-LOC_REFUSE = 0.0
-
-
-def score_pays(profil: Profile, offre: Offer) -> float | None:
-    """À quel point l'offre est commodément située, de 0 à 100.
-
-    Un pays accepté reste noté haut : le candidat a dit oui, on ne le punit
-    pas. Mais « oui, j'irais » et « c'est à côté de chez moi » ne sont pas la
-    même chose, et le score doit savoir les distinguer.
-
-    La ville se reconnaît par appariement de jetons, sans table de communes :
-    les sources écrivent « 75 - Paris », « Paris, Ile-de-France » ou « Paris »
-    selon leur humeur, et le nom suffit à les rapprocher.
-    """
-    if not profil.pays_acceptes or not offre.pays:
-        return None
-    if offre.pays not in profil.pays_acceptes:
-        return LOC_REFUSE
-
-    ville = set(mots(profil.ville))
-    if ville and ville & set(mots(offre.lieu)):
-        return LOC_MEME_VILLE
-
-    # Sans pays de résidence renseigné, on ne sait pas distinguer « chez moi »
-    # de « à l'étranger » : on ne le devine pas, et on ne pénalise personne.
-    # Toutes les offres acceptées valent alors le palier du même pays, la ville
-    # restant le seul moyen de se démarquer.
-    if not profil.pays or offre.pays == profil.pays:
-        return LOC_MEME_PAYS
-    return LOC_PAYS_ACCEPTE
 
 
 def _niveau_du_profil(profil: Profile, code: str) -> float | None:
     """Note du candidat pour cette langue, ou None s'il ne la parle pas.
-
-    Plusieurs niveaux reconnus dans la même saisie ⇒ on retient **le plus
-    prudent** : « courant (B2) » vaut B2, pas « courant ». Retenir le premier
-    jeton rencontré surestimait le candidat selon l'ordre de sa frappe.
-    """
+    Plusieurs niveaux reconnus dans la même saisie ⇒ le plus prudent."""
     for langue in profil.langues:
         if (langue.get("code") or "").lower() != code:
             continue
@@ -416,25 +417,39 @@ def _niveau_du_profil(profil: Profile, code: str) -> float | None:
 
 
 def score_langue(profil: Profile, signaux: Signaux) -> float | None:
-    """Deux questions distinctes : la langue dans laquelle l'annonce est écrite,
-    et celles qu'elle **exige**.
-
-    Une offre en français réclamant « anglais courant » était jugée
-    parfaitement accessible : seule la langue de rédaction comptait. C'est
-    l'exigence la plus dure qui décide.
-    """
+    """La langue de rédaction ET celles que l'annonce exige : la plus dure décide."""
     if not profil.langues:
         return None
-
     notes: list[float] = []
     if signaux.langue:
         notes.append(_niveau_du_profil(profil, signaux.langue) or 0.0)
     for code in signaux.exigences_langues:
         notes.append(_niveau_du_profil(profil, code) or 0.0)
-
     if not notes:
-        return None      # texte trop court, aucune exigence : on ne pénalise pas
+        return None
     return min(notes)
+
+
+# --- Conditions : lieu, contrat, fraîcheur ---------------------------------------------------
+
+LOC_MEME_VILLE = 100.0
+LOC_MEME_PAYS = 80.0
+LOC_PAYS_ACCEPTE = 60.0
+LOC_REFUSE = 0.0
+
+
+def score_pays(profil: Profile, offre: Offer) -> float | None:
+    """Quatre paliers : votre ville, votre pays, un pays accepté, un pays refusé."""
+    if not profil.pays_acceptes or not offre.pays:
+        return None
+    if offre.pays not in profil.pays_acceptes:
+        return LOC_REFUSE
+    ville = set(mots(profil.ville))
+    if ville and ville & set(mots(offre.lieu)):
+        return LOC_MEME_VILLE
+    if not profil.pays or offre.pays == profil.pays:
+        return LOC_MEME_PAYS
+    return LOC_PAYS_ACCEPTE
 
 
 def score_contrat(profil: Profile, offre: Offer) -> float | None:
@@ -445,13 +460,68 @@ def score_contrat(profil: Profile, offre: Offer) -> float | None:
         return 0.0
     if len(acceptes) == 1:
         return 100.0
-    # L'ordre porte la préférence, mais un contrat accepté reste acceptable :
-    # on descend de 100 à 60, pas jusqu'à zéro.
     rang = acceptes.index(offre.type_contrat)
     return 100.0 - 40.0 * rang / (len(acceptes) - 1)
 
 
-# ------------------------------------------------------------------ synthèse
+FRAICHEUR_PLEINE_JOURS = 7
+FRAICHEUR_NULLE_JOURS = 120
+
+
+def score_fraicheur(offre: Offer, aujourd_hui: datetime | None = None) -> float | None:
+    """Décroissance linéaire entre une semaine et quatre mois : une valeur
+    continue départage, des paliers recréeraient des égalités."""
+    publiee = offre.date_publication or offre.date_recuperation
+    if publiee is None:
+        return None
+    jours = ((aujourd_hui or maintenant()) - publiee).days
+    if jours <= FRAICHEUR_PLEINE_JOURS:
+        return 100.0
+    if jours >= FRAICHEUR_NULLE_JOURS:
+        return 0.0
+    return 100.0 * (FRAICHEUR_NULLE_JOURS - jours) / (FRAICHEUR_NULLE_JOURS - FRAICHEUR_PLEINE_JOURS)
+
+
+# --- Synthèse -----------------------------------------------------------------------------------
+
+# Au-dessous de ces notes, le critère ferme la porte : le score est plafonné.
+PLAFOND_REDHIBITOIRE = 15.0
+SEUIL_LANGUE_REDHIBITOIRE = 0.0
+SEUIL_NIVEAU_REDHIBITOIRE = 5.0
+SEUIL_FORMATION_REDHIBITOIRE = 20.0
+
+
+@dataclass
+class Resultat:
+    score: float
+    hors_cible: bool = False
+    detail: dict[str, float] = field(default_factory=dict)
+    non_evaluables: list[str] = field(default_factory=list)
+    pertinence: float = 0.0
+    accessibilite: float | None = None
+    conditions: float | None = None
+    redhibitoires: list[str] = field(default_factory=list)
+    # Matière de l'explication (jetons canoniques, remis en mots par explain.py).
+    metier_rappel: float = 0.0
+    metier_precision: float = 0.0
+    intitule_vise: str = ""
+    intitule_origine: str = ""
+    intitule_connus: list[str] = field(default_factory=list)
+    intitule_inconnus: list[str] = field(default_factory=list)
+    cles_couvertes: list[str] = field(default_factory=list)
+    cles_manquantes: list[str] = field(default_factory=list)
+    niveau_poste: str = ""
+    annees_exigees: int | None = None
+    etudes_demandees: tuple[int, int] | None = None
+    explication: str = ""
+
+
+def _moyenne(notes: dict[str, float | None], poids: dict[str, float]) -> float | None:
+    evaluables = {c: v for c, v in notes.items() if v is not None and poids.get(c, 0) > 0}
+    total = sum(poids[c] for c in evaluables)
+    if not total:
+        return None
+    return sum(v * poids[c] for c, v in evaluables.items()) / total
 
 
 def calculer(
@@ -459,56 +529,56 @@ def calculer(
     offre: Offer,
     signaux: Signaux,
     poids: PoidsScoring,
-    plafond_hors_cible: float = 100.0,
+    cible: ProfilCible,
+    corpus: Corpus = NEUTRE,
 ) -> Resultat:
     resultat = Resultat(score=0.0)
 
-    # Construit une fois : les deux critères qui s'en servent le reconstruisaient
-    # chacun de leur côté, sur plusieurs centaines de mots, pour chaque offre.
-    vocabulaire = set(signaux.vocabulaire)
-
-    sous_scores: dict[str, float | None] = {
-        "competences": score_competences(profil, signaux, resultat, vocabulaire),
-        "secteur": score_secteur(profil, signaux, resultat, vocabulaire),
-        "pays": score_pays(profil, offre),
-        "seniorite": score_seniorite(profil, offre),
+    notes: dict[str, float | None] = {
+        "metier": score_metier(cible, signaux, corpus, resultat),
+        "competences": score_competences(cible, signaux, corpus, resultat),
+        "seniorite": score_seniorite(cible, signaux, resultat),
+        "formation": score_formation(cible, signaux, resultat),
         "langue": score_langue(profil, signaux),
+        "pays": score_pays(profil, offre),
         "contrat": score_contrat(profil, offre),
         "fraicheur": score_fraicheur(offre),
     }
+    resultat.non_evaluables = [c for c in CRITERES if notes[c] is None]
+    resultat.detail = {c: round(v, 1) for c, v in notes.items() if v is not None}
 
-    normalises = poids.normalises()
-    evaluables = {c: v for c, v in sous_scores.items() if v is not None}
-    resultat.non_evaluables = [c for c in CRITERES if sous_scores[c] is None]
-    resultat.detail = {c: round(v, 1) for c, v in evaluables.items()}
-
-    # Aucun critère de fond évaluable : il n'y a rien à dire de cette offre, et
-    # la fraîcheur seule ne fera pas un score.
-    if not any(sous_scores[c] is not None for c in CRITERES_DE_FOND):
+    # Ni le métier ni les exigences ne se jugent : on ne sait rien dire de
+    # l'adéquation, et les conditions seules ne feront pas un score.
+    if notes["metier"] is None and notes["competences"] is None:
         return resultat
 
-    poids_utile = sum(normalises[c] for c in evaluables)
-    if poids_utile == 0:
-        return resultat
+    ponderation = poids.normalises()
+    pertinence = _moyenne({c: notes[c] for c in CRITERES_PERTINENCE}, ponderation) or 0.0
+    accessibilite = _moyenne({c: notes[c] for c in CRITERES_ACCESSIBILITE}, ponderation)
+    conditions = _moyenne({c: notes[c] for c in CRITERES_CONDITIONS}, ponderation)
+    resultat.pertinence = round(pertinence, 1)
+    resultat.accessibilite = round(accessibilite, 1) if accessibilite is not None else None
+    resultat.conditions = round(conditions, 1) if conditions is not None else None
 
-    # Redistribution : le poids des critères non évaluables est réparti au
-    # prorata sur ceux qui le sont.
-    brut = sum(valeur * normalises[c] for c, valeur in evaluables.items()) / poids_utile
+    def facteur(valeur: float | None, part: float) -> float:
+        # Non évaluable : rien à retirer.
+        return 1.0 if valeur is None else 1 - part + part * valeur / 100
 
-    # Ni les compétences ni le secteur ne correspondent : pays, langue et contrat
-    # sont des filtres, pas des mérites. Une offre hors cible ne doit pas remonter
-    # au seul motif qu'elle est en CDI près de chez soi.
-    #
-    # `None` compte ici comme un 0, volontairement : un critère non évaluable
-    # n'est pas une preuve de pertinence, et une offre dont on ne peut juger ni
-    # les compétences ni le secteur ne doit pas remonter. C'est la seule entorse
-    # assumée à la règle « non évaluable ⇒ pas de pénalité », et elle ne change
-    # rien tant qu'un des deux critères est évaluable.
-    pertinence = max(sous_scores.get("competences") or 0.0,
-                     sous_scores.get("secteur") or 0.0)
-    if pertinence <= 0.0 and brut > plafond_hors_cible:
+    brut = (pertinence * facteur(accessibilite, poids.part_accessibilite)
+            * facteur(conditions, poids.part_conditions))
+
+    # --- Ce qui ferme la porte, quoi qu'il arrive ailleurs ---
+    if notes["langue"] is not None and notes["langue"] <= SEUIL_LANGUE_REDHIBITOIRE:
+        resultat.redhibitoires.append("annonce dans une langue que vous ne parlez pas")
+    if notes["seniorite"] is not None and notes["seniorite"] <= SEUIL_NIVEAU_REDHIBITOIRE:
+        resultat.redhibitoires.append("poste hors de portée en expérience")
+    if notes["contrat"] == 0.0:
+        resultat.redhibitoires.append("contrat que vous n'acceptez pas")
+    if notes["pays"] == LOC_REFUSE:
+        resultat.redhibitoires.append("pays que vous n'acceptez pas")
+    if resultat.redhibitoires:
         resultat.hors_cible = True
-        brut = plafond_hors_cible
+        brut = min(brut, PLAFOND_REDHIBITOIRE)
 
     resultat.score = round(brut, 1)
     return resultat

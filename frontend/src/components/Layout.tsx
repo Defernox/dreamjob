@@ -1,4 +1,5 @@
 import { NavLink, Outlet } from 'react-router-dom'
+import { useDeconnexion, useEtatAcces } from '../api/acces'
 import { useStatistiques } from '../api/offres'
 import { BandeauSante } from './BandeauSante'
 import { BasculeTheme } from './BasculeTheme'
@@ -13,6 +14,8 @@ const onglets = [
 export function Layout() {
   const { data: stats } = useStatistiques()
   const nouvelles = stats?.nouvelles ?? 0
+  const { data: acces } = useEtatAcces()
+  const deconnexion = useDeconnexion()
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -54,7 +57,20 @@ export function Layout() {
               </NavLink>
             ))}
           </nav>
-          <BasculeTheme />
+          <div className="ml-auto flex items-center gap-3">
+            {acces?.connexion_requise && acces.email && (
+              <>
+                <span className="hidden sm:inline text-xs text-encre-300">{acces.email}</span>
+                <button
+                  onClick={() => deconnexion.mutate()}
+                  className="text-xs text-encre-300 hover:text-white transition-colors"
+                >
+                  Se déconnecter
+                </button>
+              </>
+            )}
+            <BasculeTheme />
+          </div>
         </div>
       </header>
       <BandeauSante />

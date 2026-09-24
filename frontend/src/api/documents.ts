@@ -1,4 +1,4 @@
-import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from './client'
 
 export type ResultatDocuments = {
@@ -19,6 +19,7 @@ export function useGenererDocuments() {
     onSuccess: (_, offreId) => {
       qc.invalidateQueries({ queryKey: ['offre', offreId] })
       qc.invalidateQueries({ queryKey: ['candidatures'] })
+      qc.invalidateQueries({ queryKey: ['documents', offreId] })
     },
   })
 }
@@ -29,3 +30,19 @@ export function useOuvrirDossier() {
       api.post<{ ouvert: boolean; dossier: string }>(`/api/offres/${offreId}/documents/ouvrir`),
   })
 }
+
+export type DocumentsOffre = {
+  dossier: string | null
+  fichiers: { nom: string; taille: number }[]
+}
+
+/** Les documents déjà générés pour une offre, téléchargeables depuis l'interface. */
+export const useDocumentsOffre = (offreId: number | null) =>
+  useQuery({
+    queryKey: ['documents', offreId],
+    queryFn: () => api.get<DocumentsOffre>(`/api/offres/${offreId}/documents`),
+    enabled: offreId !== null,
+  })
+
+export const lienDocument = (offreId: number, nom: string) =>
+  `/api/offres/${offreId}/documents/${encodeURIComponent(nom)}`

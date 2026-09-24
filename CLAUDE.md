@@ -3,8 +3,9 @@
 Application **locale** de recherche d'emploi : agréger les offres → les scorer →
 générer CV et lettre → postuler → tracer les candidatures pour France Travail.
 
-Mono-utilisateur, aucun déploiement. Rien ne sort de la machine sauf les appels
-à l'API Anthropic et aux sources d'offres.
+Mono-utilisateur. Tourne en local, ou hébergé sur un VPS joignable uniquement
+par Tailscale (`deploiement/GUIDE.md`). Rien ne sort sauf les appels à l'API
+Anthropic, aux sources d'offres et, hébergé, la notification du matin.
 
 ---
 
@@ -16,7 +17,9 @@ Mono-utilisateur, aucun déploiement. Rien ne sort de la machine sauf les appels
 | **Raccourci de bureau** (une seule fois) | `.\creer-raccourci.cmd` |
 | **Lancer** (API + interface) | double-clic sur *DreamJob*, ou `.\dev.cmd` |
 | Tests backend | `cd backend; .\.venv\Scripts\python.exe -m pytest` |
-| Typage frontend | `cd frontend; npx tsc --noEmit` |
+| Typage frontend | `cd frontend; npx tsc -b` |
+| Compiler l'interface | `cd frontend; npm run build` |
+| Déployer (après un commit) | `deploiement/deployer.sh dreamjob` — voir `deploiement/GUIDE.md` |
 | Nouvelle migration | `cd backend; .\.venv\Scripts\alembic.exe revision --autogenerate -m "message"` |
 | Appliquer les migrations | `cd backend; .\.venv\Scripts\alembic.exe upgrade head` |
 
@@ -56,6 +59,14 @@ seule** — elle ne peut pas joindre `::1`, quelle que soit la façon d'écrire
 l'adresse. La sonde déclarait l'interface morte alors qu'elle répondait.
 
 `make` fonctionne aussi (`make dev`, `make test`) si GnuWin32 est dans le PATH.
+
+**`npx tsc --noEmit` ne vérifie RIEN.** Le `tsconfig.json` racine a
+`"files": []` et ne fait que référencer les deux autres : sans `-b`, tsc n'a
+aucun fichier à contrôler et répond OK. C'était la commande documentée ici ;
+tous les « typage OK » annoncés avec elle étaient vides. La première vraie
+compilation (`npm run build`, qui lance `tsc -b`) a trouvé trois erreurs, dont
+une propriété de paramètre refusée par `erasableSyntaxOnly` — l'interface
+n'avait jamais été compilée pour la production.
 
 ---
 
@@ -967,6 +978,73 @@ planificateur resterait muet jusqu'au prochain redémarrage.
 
 ---
 
+## Hébergement
+
+Un VPS (Hetzner CX23, ~7 €/mois) joignable **uniquement** par Tailscale.
+`deploiement/GUIDE.md` déroule l'installation ; `installer-serveur.sh` prépare
+une Ubuntu neuve, `deployer.sh` envoie le dernier commit depuis le PC — sans
+passer par GitHub — et, au premier déploiement, la base, le modèle de CV et les
+dossiers. Le `.env` n'est jamais envoyé par script : les secrets se déposent à
+la main.
+
+**Le mode serveur est une variable d'environnement de l'image**
+(`DREAMJOB_MODE=serveur`, fixée dans le `Dockerfile`), pas un réglage de
+`config.yaml` : un conteneur lancé sans elle resterait ouvert. Il rend la
+connexion obligatoire, les cookies `Secure`, et supprime l'ouverture du dossier.
+
+**Trois barrières, et aucune ne suffit seule.** Le conteneur n'écoute que sur
+`127.0.0.1` ; le pare-feu n'ouvre que SSH et l'interface `tailscale0` ;
+l'application exige une session. `tailscale serve` relaie en HTTPS, avec un
+certificat valide, sur le réseau privé.
+
+**Le verrou est un intergiciel, pas une dépendance par routeur**
+(`api/acces.verrou`) : une route oubliée serait une route ouverte. Tout `/api/`
+est fermé sans session, sauf `/api/acces/*` et `/api/sante`. La page elle-même
+se charge — il faut bien afficher le formulaire. Pas d'inscription par l'API :
+un compte se crée en ligne de commande sur le serveur (`python -m app.compte`),
+le mot de passe saisi sans écho.
+
+**Rien de secret n'est stocké en clair.** Mots de passe en scrypt
+(`hashlib`, aucune dépendance ajoutée), sel aléatoire ; sessions stockées par
+l'empreinte SHA-256 de leur jeton — une sauvegarde égarée n'ouvre aucune
+session. Un seul message pour « adresse inconnue » et « mauvais mot de passe »,
+et le même coût de calcul dans les deux cas : ni le texte ni la durée ne disent
+quels comptes existent. Dix échecs en un quart d'heure bloquent l'adresse.
+
+**L'API sert l'interface compilée** : un seul processus, un seul port. Toute
+adresse qui n'est ni `/api/` ni un fichier de `frontend/dist` renvoie
+`index.html` ; `resolve()` puis vérification du parent empêchent
+`/..%2F..%2F.env` de sortir du dossier — vérifié.
+
+**Les documents se téléchargent** (`GET /api/offres/{id}/documents/{nom}`) :
+un simple nom, d'un type servi (PDF, Word), présent dans le dossier de CETTE
+offre. Le dossier se retrouve par l'`offre.json` qu'il archive quand aucune
+candidature ne le retient encore.
+
+**Carlito, sinon le CV change de page.** Le modèle de CV et la lettre
+n'utilisent que Calibri, absente de Linux. Carlito a les mêmes métriques :
+sans elle, LibreOffice substitue une autre police, les lignes changent de
+longueur, et la mesure « une page » n'est plus celle de Windows.
+
+**Les fichiers exécutés sur le serveur sont en LF** (`.gitattributes`). Un
+script bash en CRLF échoue sur `bash` ; et le `sed -i` de Git Bash réécrit
+en mode texte Windows — il remet les CRLF qu'on croyait retirer.
+
+**Le résumé du matin** (`services/notification.py`) part après le scan
+planifié, vers ntfy, seulement s'il y a des offres vertes jamais ouvertes : une
+alerte quotidienne « rien de nouveau » apprend à ignorer les autres. Le sujet
+ntfy (`NTFY_SUJET`) tient lieu de mot de passe ; ne transitent que des
+intitulés, des employeurs et des scores.
+
+**Les tests n'agissent plus sur la vraie base.** Le client de test démarrait
+l'application complète : `creer_tables()` avait créé les tables de comptes
+dans la base réelle — l'autogénération Alembic est alors sortie **vide** — et
+chaque test sauvegardait cette base et démarrait le planificateur. Le démarrage
+est désormais neutralisé dans `conftest.py`, et la migration des comptes crée
+ses tables seulement si elles manquent, pour passer sur les deux bases.
+
+---
+
 ## Mode dégradé
 
 Sans `ANTHROPIC_API_KEY`, l'application démarre quand même : scoring lexical
@@ -992,3 +1070,4 @@ Sans LibreOffice, les documents sont générés en Word uniquement — même pri
 - [x] **11.** Connecteur DogFinance (spécialisé finance) — validé en réel : 63 offres, 12 vertes, descriptions médianes à 2 300 caractères ; prélèvement plafonné à 40 pages par scan
 - [x] **12.** Ce que voit le recruteur — intitulé nettoyé (45 % des offres portaient « (H/F) »), élision de l'objet, fichiers et métadonnées au nom du candidat, expériences et formations dans l'ordre des dates, accord saisi et jamais déduit
 - [x] **13.** Rédaction payante — lettre par Opus 5.5, CV ciblé par Sonnet 5 sous contrôles puce par puce, coût de chaque dossier dans `generation.json`, panneau « Ce que verra le recruteur »
+- [x] **14.** Hébergement prêt — comptes et verrou, téléchargement des documents, interface servie par l'API, image Docker (Carlito), résumé du matin par ntfy, scripts d'installation et de déploiement. Déploiement réel : à faire

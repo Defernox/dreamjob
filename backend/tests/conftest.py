@@ -66,10 +66,22 @@ def session(engine):
 
 
 @pytest.fixture
-def client(engine):
-    """API de test branchée sur la base jetable."""
+def client(engine, monkeypatch):
+    """API de test branchée sur la base jetable.
+
+    Le démarrage de l'application est neutralisé : il agissait sur la VRAIE
+    base. `creer_tables()` y a créé les tables de comptes avant toute migration
+    — l'autogénération Alembic est alors sortie vide — et chaque test
+    sauvegardait la base réelle et démarrait le planificateur, qui pouvait
+    programmer un scan de rattrapage.
+    """
+    import app.main as principal
     from app.db import get_session
     from app.main import app
+
+    for nom in ("creer_tables", "sauvegarder", "demarrer_planificateur",
+                "arreter_planificateur", "checkpoint"):
+        monkeypatch.setattr(principal, nom, lambda *a, **kw: None)
 
     def _session():
         with Session(engine) as s:

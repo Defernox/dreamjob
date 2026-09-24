@@ -1,0 +1,24 @@
+# Sur le serveur, dans /opt/dreamjob :   docker compose up -d --build
+services:
+  dreamjob:
+    build: .
+    restart: unless-stopped
+    # Les secrets (clé Anthropic, identifiants France Travail et Adzuna,
+    # NTFY_SUJET, DREAMJOB_URL) sont injectés depuis .env, jamais copiés dans
+    # l'image.
+    env_file: .env
+    environment:
+      TZ: Europe/Paris
+    # 127.0.0.1 uniquement : l'application n'est JAMAIS joignable depuis
+    # Internet. `tailscale serve` la relaie en HTTPS, sur ton réseau privé.
+    ports:
+      - "127.0.0.1:8000:8000"
+    volumes:
+      - ./data:/app/data                                     # base, sauvegardes, cache
+      - ./templates:/app/templates:ro                        # ton modèle de CV
+      - ./candidatures:/home/dreamjob/Jobscout/candidatures  # les dossiers générés
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/sante')"]
+      interval: 60s
+      timeout: 10s
+      retries: 3

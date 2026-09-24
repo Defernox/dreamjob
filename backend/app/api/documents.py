@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import json
 import logging
+from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import FileResponse
 from sqlmodel import Session, select
 
 from ..config import reglages
@@ -46,6 +49,9 @@ def generer_documents(
         raise HTTPException(503, probleme)
 
     ouvrir_apres = r.documents.ouvrir_le_dossier if ouvrir_dossier is None else ouvrir_dossier
+    # Sur un serveur, il n'y a pas d'explorateur de fichiers à ouvrir : les
+    # documents se téléchargent depuis l'interface.
+    ouvrir_apres = ouvrir_apres and not r.serveur
 
     try:
         resultat = generer(
@@ -100,3 +106,68 @@ def ouvrir_dossier_existant(offre_id: int, session: Session = Depends(get_sessio
     if not dossier.exists():
         raise HTTPException(404, f"Le dossier n'existe plus : {dossier}")
     return {"ouvert": ouvrir(dossier), "dossier": str(dossier)}
+
+
+# --- Téléchargement ---------------------------------------------------------
+# Sur un serveur, les documents ne s'ouvrent pas dans un explorateur : ils se
+# téléchargent. En local aussi, d'ailleurs — c'est plus rapide que de chercher
+# le dossier.
+
+TELECHARGEABLES = {".pdf": "application/pdf",
+                   ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document"}
+
+
+def _dossier_de(offre: Offer, session: Session) -> Path | None:
+    """Le dernier dossier généré pour cette offre.
+
+    La candidature le retient quand elle existe. Sinon — juste après une
+    génération, avant d'avoir postulé — on le retrouve par l'`offre.json` que
+    chaque dossier archive : le nom du dossier dépend du jour et de l'intitulé
+    nettoyé, il ne suffit pas à l'identifier.
+    """
+    candidature = session.exec(select(Application).where(Application.offer_id == offre.id)).first()
+    if candidature and candidature.dossier_local and Path(candidature.dossier_local).is_dir():
+        return Path(candidature.dossier_local)
+
+    racine = reglages().chemins.candidatures
+    trouves = []
+    for archive in racine.glob("*/offre.json"):
+        try:
+            contenu = json.loads(archive.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        if contenu.get("source") == offre.source and contenu.get("source_id") == offre.source_id:
+            trouves.append(archive.parent)
+    return max(trouves, key=lambda d: d.stat().st_mtime) if trouves else None
+
+
+@router.get("/{offre_id}/documents")
+def lister_documents(offre_id: int, session: Session = Depends(get_session)) -> dict:
+    offre = session.get(Offer, offre_id)
+    if offre is None:
+        raise HTTPException(404, "Offre introuvable.")
+    dossier = _dossier_de(offre, session)
+    if dossier is None:
+        return {"dossier": None, "fichiers": []}
+    fichiers = sorted(
+        ({"nom": f.name, "taille": f.stat().st_size} for f in dossier.iterdir()
+         if f.is_file() and f.suffix.lower() in TELECHARGEABLES),
+        # Les PDF d'abord : c'est ce qu'on envoie.
+        key=lambda f: (not f["nom"].lower().endswith(".pdf"), f["nom"]))
+    return {"dossier": dossier.name, "fichiers": fichiers}
+
+
+@router.get("/{offre_id}/documents/{nom}")
+def telecharger_document(offre_id: int, nom: str,
+                         session: Session = Depends(get_session)) -> FileResponse:
+    offre = session.get(Offer, offre_id)
+    dossier = _dossier_de(offre, session) if offre else None
+    # Un simple nom de fichier, d'un type attendu, présent dans CE dossier :
+    # « ../../.env » ou « data/dreamjob.db » ne passent aucun des trois tests.
+    if (dossier is None or nom != Path(nom).name
+            or Path(nom).suffix.lower() not in TELECHARGEABLES):
+        raise HTTPException(404, "Document introuvable.")
+    chemin = dossier / nom
+    if not chemin.is_file():
+        raise HTTPException(404, "Document introuvable.")
+    return FileResponse(chemin, filename=nom, media_type=TELECHARGEABLES[chemin.suffix.lower()])

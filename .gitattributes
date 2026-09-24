@@ -1,0 +1,6 @@
+# Ce qui s'exécute sur le serveur Linux garde des fins de ligne LF, même
+# extrait sous Windows : un script bash en CRLF échoue sur « bash\r ».
+*.sh             text eol=lf
+Dockerfile       text eol=lf
+.dockerignore    text eol=lf
+docker-compose.yml text eol=lf

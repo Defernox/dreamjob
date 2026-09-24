@@ -1,7 +1,7 @@
 import { Link, useParams } from 'react-router-dom'
 import { useReglages } from '../api/hooks'
 import { usePostuler } from '../api/candidatures'
-import { useGenererDocuments } from '../api/documents'
+import { lienDocument, useDocumentsOffre, useGenererDocuments } from '../api/documents'
 import { useCorrespondance, useOffre } from '../api/offres'
 import { BarresScore } from '../components/BarresScore'
 import { CorrespondanceAts } from '../components/CorrespondanceAts'
@@ -15,6 +15,7 @@ export default function OffreDetail() {
   const { data: offre, isLoading, isError, error } = useOffre(identifiant)
   const { data: reglages } = useReglages()
   const { data: correspondance } = useCorrespondance(identifiant)
+  const { data: documentsOffre } = useDocumentsOffre(identifiant)
   const postuler = usePostuler()
   const documents = useGenererDocuments()
 
@@ -135,9 +136,28 @@ export default function OffreDetail() {
             </Bouton>
             {documents.isPending && (
               <p className="text-xs text-encre-500">
-                Le CV se rend depuis votre modèle, la lettre est écrite en local et
-                vérifiée. Comptez une minute.
+                Le CV se rend depuis votre modèle et s&apos;adapte à l&apos;offre ; la lettre
+                est rédigée puis vérifiée. Comptez une minute.
               </p>
+            )}
+            {documentsOffre && documentsOffre.fichiers.length > 0 && (
+              <div className="rounded-md border border-craie-200 px-3 py-2.5">
+                <p className="text-xs font-medium text-encre-600 mb-1.5">Vos documents</p>
+                <ul className="space-y-1">
+                  {documentsOffre.fichiers.map((f) => (
+                    <li key={f.nom}>
+                      <a
+                        href={lienDocument(offre.id, f.nom)}
+                        download
+                        className="text-sm text-ambre-700 hover:text-ambre-800 hover:underline break-all"
+                      >
+                        {f.nom}
+                      </a>
+                      <span className="text-xs text-encre-400"> · {Math.max(1, Math.round(f.taille / 1024))} Ko</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
             )}
             {documents.isError && (
               <p className="text-xs text-red-700">{(documents.error as Error).message}</p>
@@ -148,18 +168,14 @@ export default function OffreDetail() {
                   ✓ {documents.data.fichiers.length} fichiers générés
                   {documents.data.ouvert && ' — dossier ouvert'}
                 </p>
-                <ul className="mt-1 space-y-0.5">
-                  {documents.data.fichiers.map((f) => <li key={f}>· {f}</li>)}
-                </ul>
+
                 {documents.data.lettre_essais > 1 && (
                   <p className="mt-1.5 text-succes-800">
                     Lettre acceptée au {documents.data.lettre_essais}e essai — les
                     versions précédentes contenaient des éléments absents de votre profil.
                   </p>
                 )}
-                <p className="mt-1.5 font-mono text-[11px] text-succes-800 break-all">
-                  {documents.data.dossier}
-                </p>
+
                 {documents.data.avertissements.map((a) => (
                   <p key={a} className="mt-1.5 text-alerte-800">⚠ {a}</p>
                 ))}

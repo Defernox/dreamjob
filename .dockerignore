@@ -1,0 +1,19 @@
+# Rien de personnel ni de lourd n'entre dans l'image : les données, le modèle de
+# CV et les secrets arrivent par des volumes et par l'environnement.
+.git
+.env
+.env.*
+!.env.example
+data/
+Jobscout/
+templates/
+**/__pycache__/
+**/.pytest_cache/
+backend/.venv/
+backend/tests/
+frontend/node_modules/
+frontend/dist/
+hooks/
+outils/
+*.cmd
+*.ps1

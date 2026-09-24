@@ -1,7 +1,8 @@
 """Point d'entrée de l'API DreamJob.
 
-Application locale, mono-utilisateur : l'API n'écoute que sur 127.0.0.1 et ne
-parle qu'à SQLite, à l'API Anthropic et aux sources d'offres.
+En local, l'API n'écoute que sur 127.0.0.1. Hébergée (`DREAMJOB_MODE=serveur`),
+elle exige une connexion et sert elle-même l'interface compilée. Elle ne parle
+qu'à SQLite, à l'API Anthropic et aux sources d'offres.
 """
 
 from __future__ import annotations
@@ -9,11 +10,13 @@ from __future__ import annotations
 import logging
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 
-from .api import applications, documents, meta, offers, profile, recherches, scans
-from .config import reglages
+from .api import acces, applications, documents, meta, offers, profile, recherches, scans
+from .config import RACINE, reglages
 from .db import checkpoint, creer_tables
 from .services.sauvegarde import sauvegarder
 from .scheduler import arreter as arreter_planificateur
@@ -73,6 +76,11 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Le verrou passe avant tout routeur : ce qui n'est pas explicitement ouvert
+# est fermé dès que la connexion est requise (mode serveur).
+app.middleware("http")(acces.verrou)
+
+app.include_router(acces.router)
 app.include_router(meta.router)
 app.include_router(profile.router)
 app.include_router(scans.router)
@@ -82,6 +90,27 @@ app.include_router(applications.router)
 app.include_router(documents.router)
 
 
-@app.get("/")
-def racine() -> dict:
-    return {"application": "DreamJob", "documentation": "/docs", "sante": "/api/sante"}
+# --- L'interface compilée, servie par l'API elle-même -------------------------
+# En local, Vite sert l'interface sur 5173 et relaie /api. Sur le serveur, un
+# seul processus sur un seul port : `npm run build` produit frontend/dist, que
+# l'API sert directement — rien d'autre à installer ni à surveiller.
+FRONT = RACINE / "frontend" / "dist"
+
+if FRONT.is_dir():
+    app.mount("/assets", StaticFiles(directory=FRONT / "assets"), name="assets")
+
+    @app.get("/{chemin:path}", include_in_schema=False)
+    def interface(chemin: str) -> FileResponse:
+        if chemin.startswith("api/"):
+            raise HTTPException(404, "Route d'API inconnue.")
+        fichier = (FRONT / chemin).resolve()
+        # `resolve` puis vérification du parent : « ../../.env » ne sort pas du dossier.
+        if chemin and fichier.is_file() and FRONT.resolve() in fichier.parents:
+            return FileResponse(fichier)
+        # Toute autre adresse est une page de l'application : c'est le routeur
+        # du navigateur qui l'affiche.
+        return FileResponse(FRONT / "index.html")
+else:
+    @app.get("/")
+    def racine() -> dict:
+        return {"application": "DreamJob", "documentation": "/docs", "sante": "/api/sante"}

@@ -31,6 +31,7 @@ from .db import engine
 from .models.base import maintenant
 from .services.scan import dernier_scan_abouti, lancer_scan, requetes_actives
 from .services.scoring import ProfilVide, scorer_toutes
+from .services.notification import notifier
 
 log = logging.getLogger("dreamjob.planificateur")
 
@@ -64,6 +65,9 @@ def executer_scan(declenche_par: str = "planifie") -> None:
                     log.info("Scoring : %d offres", resultat["scorees"])
             except ProfilVide as e:
                 log.warning("Offres non scorées — %s", e)
+            # Après le scoring : on ne signale que ce qui est noté. Sans
+            # NTFY_SUJET dans .env, rien ne part.
+            notifier(session, depuis=scan.started_at)
     except Exception:  # noqa: BLE001
         log.exception("Le scan %s a échoué", declenche_par)
 

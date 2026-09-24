@@ -1,8 +1,13 @@
 /** Client HTTP minimal vers l'API locale (relayée par Vite sur /api). */
 
 export class ErreurApi extends Error {
-  constructor(public statut: number, message: string) {
+  // Champ déclaré à part : `erasableSyntaxOnly` refuse les propriétés de
+  // paramètre (`constructor(public statut…)`), qui ne sont pas du JavaScript.
+  statut: number
+
+  constructor(statut: number, message: string) {
     super(message)
+    this.statut = statut
   }
 }
 

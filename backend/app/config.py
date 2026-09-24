@@ -251,6 +251,28 @@ class Reglages(BaseModel):
     def secret(self, nom: str) -> str | None:
         return os.getenv(nom) or None
 
+    # --- Hébergement ---
+    @property
+    def serveur(self) -> bool:
+        """Vrai dans l'image Docker (`DREAMJOB_MODE=serveur`), faux en local.
+
+        Une variable d'environnement et non un réglage de config.yaml : c'est
+        l'image qui la fixe. Un conteneur lancé sans elle — erreur de
+        manipulation — resterait sinon ouvert à qui connaît son adresse, et le
+        profil contient un téléphone, un e-mail et un parcours complet.
+        """
+        return os.getenv("DREAMJOB_MODE", "").strip().lower() == "serveur"
+
+    @property
+    def connexion_requise(self) -> bool:
+        return self.serveur
+
+    @property
+    def adresse_publique(self) -> str | None:
+        """L'adresse à laquelle l'utilisateur ouvre l'application — pour le lien
+        des notifications. Ex. https://dreamjob.tailnet-xxxx.ts.net"""
+        return os.getenv("DREAMJOB_URL") or None
+
 
 def _charger() -> Reglages:
     donnees: dict = {}

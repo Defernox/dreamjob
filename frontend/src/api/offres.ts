@@ -113,7 +113,7 @@ export function useLancerScan() {
 export function useScorer() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (forcer = false) =>
+    mutationFn: (forcer: boolean) =>
       api.post<{ scorees: number; total: number; appels_llm: number }>(
         `/api/offres/scorer?forcer=${forcer}`,
       ),

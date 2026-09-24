@@ -13,6 +13,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
+from sqlalchemy import Index
 from sqlmodel import Field, SQLModel
 
 from .base import colonne_json, maintenant
@@ -20,9 +21,15 @@ from .base import colonne_json, maintenant
 
 class Recherche(SQLModel, table=True):
     __tablename__ = "recherche"
+    __table_args__ = (
+        # Un nom unique PAR utilisateur : deux amis peuvent chacun avoir leur
+        # « CDI Paris ».
+        Index("ix_recherche_utilisateur_nom", "utilisateur_id", "nom", unique=True),
+    )
 
     id: int | None = Field(default=None, primary_key=True)
-    nom: str = Field(index=True, unique=True)
+    utilisateur_id: int | None = Field(default=None, foreign_key="utilisateur.id", index=True)
+    nom: str = Field(index=True)
 
     mots_cles: list = Field(default_factory=list, sa_column=colonne_json())
     # Vides = on reprend les préférences du profil. Renseignés, ils les

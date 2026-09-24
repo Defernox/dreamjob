@@ -33,15 +33,34 @@ def test_meme_hash_refuse_entre_deux_sources(session):
         session.commit()
 
 
-def test_une_seule_candidature_par_offre(session):
+def test_une_seule_candidature_par_offre_et_par_compte(session):
+    from app.services.acces import proprietaire
+
     offre = _offre()
     session.add(offre)
     session.commit()
-    session.add(Application(offer_id=offre.id))
+    moi = proprietaire(session).id
+    session.add(Application(utilisateur_id=moi, offer_id=offre.id))
     session.commit()
-    session.add(Application(offer_id=offre.id))   # double clic sur « Postuler »
+    session.add(Application(utilisateur_id=moi, offer_id=offre.id))   # double clic
     with pytest.raises(IntegrityError):
         session.commit()
+
+
+def test_deux_comptes_peuvent_postuler_a_la_meme_offre(session):
+    from app.models import Utilisateur
+    from app.services.acces import proprietaire
+
+    offre = _offre()
+    session.add(offre)
+    session.commit()
+    moi = proprietaire(session).id
+    ami = Utilisateur(email="ami@exemple.fr", mot_de_passe="")
+    session.add(ami)
+    session.commit()
+    session.add(Application(utilisateur_id=moi, offer_id=offre.id))
+    session.add(Application(utilisateur_id=ami.id, offer_id=offre.id))
+    session.commit()
 
 
 def test_champs_json_survivent_a_un_aller_retour(session):

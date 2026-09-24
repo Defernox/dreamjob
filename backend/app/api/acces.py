@@ -15,6 +15,7 @@ from sqlmodel import Session
 
 from ..config import reglages
 from ..db import get_session
+from ..models import Utilisateur
 from ..services.acces import (
     COOKIE,
     DUREE_SESSION,
@@ -22,6 +23,7 @@ from ..services.acces import (
     fermer_session,
     limiteur,
     ouvrir_session,
+    proprietaire,
     utilisateur_de,
 )
 
@@ -44,6 +46,23 @@ def _adresse(request: Request) -> str:
     return transmise.split(",")[0].strip() or (request.client.host if request.client else "?")
 
 
+def utilisateur_courant(request: Request, session: Session = Depends(get_session)) -> Utilisateur:
+    """Le compte au nom duquel la requête est servie. Toute route qui lit ou
+    écrit des données personnelles en dépend.
+
+    En local, personne ne se connecte : c'est le propriétaire. Sur le serveur,
+    c'est celui dont le verrou a reconnu la session — jamais une valeur venue
+    du client.
+    """
+    if not reglages().connexion_requise:
+        return proprietaire(session)
+    identifiant = getattr(request.state, "utilisateur_id", None)
+    utilisateur = session.get(Utilisateur, identifiant) if identifiant is not None else None
+    if utilisateur is None:
+        raise HTTPException(401, "Connexion requise.")
+    return utilisateur
+
+
 @router.get("/etat")
 def etat(request: Request, session: Session = Depends(get_session)) -> dict:
     """Ce que l'interface doit afficher : l'application, ou l'écran de connexion."""
@@ -51,7 +70,8 @@ def etat(request: Request, session: Session = Depends(get_session)) -> dict:
     utilisateur = utilisateur_de(session, request.cookies.get(COOKIE)) if requise else None
     return {"connexion_requise": requise,
             "connecte": (not requise) or utilisateur is not None,
-            "email": utilisateur.email if utilisateur else None}
+            "email": utilisateur.email if utilisateur else None,
+            "proprietaire": (not requise) or bool(utilisateur and utilisateur.proprietaire)}
 
 
 @router.post("/connexion")
@@ -106,4 +126,7 @@ async def verrou(request: Request, call_next):
         generateur.close()
     if utilisateur is None:
         return JSONResponse({"detail": "Connexion requise."}, status_code=401)
+    # Transmis aux routes par `utilisateur_courant` : le compte est établi une
+    # fois, ici, à partir du cookie.
+    request.state.utilisateur_id = utilisateur.id
     return await call_next(request)

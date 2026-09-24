@@ -22,7 +22,7 @@ import docx
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.shared import Cm, Pt
 
-from ..models import Offer, Profile
+from ..models import Offer, Profile, ScoreOffre
 from ..scoring.couverture import mots_cles_non_couverts
 from . import pdf as pdf_outil
 from .cv_render import PUCES_PAR_ESSAI
@@ -277,11 +277,14 @@ def generer(
     reordonner_cv: bool = True,
     ouvrir_apres: bool = True,
     cibleur=None,
+    note: ScoreOffre | None = None,
 ) -> Resultat:
     """Produit le dossier complet. Ce qui échoue est signalé, pas fatal.
 
     Un CV sans lettre reste utile ; un dossier vide ne l'est pas. Seule
     l'impossibilité de rendre le CV interrompt la génération.
+
+    `note` est le score de l'offre pour ce compte, archivé avec l'annonce.
     """
     from .lettre import rediger      # import tardif : évite un cycle
 
@@ -392,8 +395,9 @@ def generer(
         "pays": offre.pays, "type_contrat": offre.type_contrat,
         "date_publication": offre.date_publication.isoformat() if offre.date_publication else None,
         "description_brute": offre.description_brute,
-        "score": offre.score, "score_detail": offre.score_detail,
-        "score_explication": offre.score_explication,
+        "score": note.score if note else None,
+        "score_detail": note.score_detail if note else {},
+        "score_explication": note.score_explication if note else "",
         "raw": offre.raw,
     }, ensure_ascii=False, indent=2), encoding="utf-8")
     resultat.fichiers.append(archive)

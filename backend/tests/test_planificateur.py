@@ -141,7 +141,10 @@ def test_le_scan_planifie_suit_les_pays_du_profil(session):
     from app.models import Profile
     from app.services.scan import requete_depuis_profil
 
-    session.add(Profile(pays_acceptes=["Belgique", "Luxembourg"],
+    from app.services.acces import proprietaire
+
+    session.add(Profile(utilisateur_id=proprietaire(session).id,
+                        pays_acceptes=["Belgique", "Luxembourg"],
                         contrats_acceptes=["V.I.E", "CDI"]))
     session.commit()
 
@@ -201,7 +204,7 @@ def test_un_historique_ancien_declenche_bien_le_rattrapage(session, monkeypatch)
     assert faux.taches == [scheduler.TACHE_RATTRAPAGE]
 
 
-def test_l_heure_de_prochaine_execution_est_en_utc():
+def test_l_heure_de_prochaine_execution_est_en_utc(session):
     """Convention de l'API (CLAUDE.md) : de l'UTC naïf, jamais une heure locale
     — le front suffixe systématiquement d'un « Z »."""
     from datetime import datetime, timezone as tz
@@ -217,6 +220,8 @@ def test_l_heure_de_prochaine_execution_est_en_utc():
 
     monkeypatch = pytest.MonkeyPatch()
     monkeypatch.setattr(scheduler, "_planificateur", FauxPlanificateur())
+    # `etat()` lit aussi le dernier scan : sur la base de test, jamais la vraie.
+    monkeypatch.setattr(scheduler, "engine", session.get_bind())
     try:
         prochaine = scheduler.etat()["prochaine_execution"]
     finally:

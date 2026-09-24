@@ -196,6 +196,15 @@ class Source(BaseModel):
     actif: bool = False
     libelle: str = ""
     remarque: str = ""
+    # Réservée au propriétaire : ses annonces ne sont collectées que pour ses
+    # recherches, et n'entrent jamais dans le fil d'un autre compte.
+    personnel: bool = False
+
+
+class Comptes(BaseModel):
+    # Budget d'API par mois civil d'un compte ami, en dollars. Un dossier coûte
+    # environ 0,08 $ : 2 $ en font vingt-cinq. Le propriétaire n'a pas de limite.
+    budget_mensuel_usd: float = 2.0
 
 
 class Planification(BaseModel):
@@ -227,6 +236,7 @@ class Reglages(BaseModel):
     sauvegardes: Sauvegardes = Field(default_factory=Sauvegardes)
     recherche: Recherche = Field(default_factory=Recherche)
     offres: Offres = Field(default_factory=Offres)
+    comptes: Comptes = Field(default_factory=Comptes)
     candidatures: Candidatures = Field(default_factory=Candidatures)
     sources: dict[str, Source] = Field(default_factory=dict)
     planification: Planification = Field(default_factory=Planification)

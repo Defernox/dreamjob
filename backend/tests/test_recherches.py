@@ -11,7 +11,12 @@ from sqlmodel import Session
 from app.config import reglages
 from app.connectors.base import BaseConnector, RawOffer, SearchQuery
 from app.models import Profile, Recherche
+from app.services.acces import proprietaire
 from app.services.scan import lancer_scan, requetes_actives
+
+
+def _moi(session) -> int:
+    return proprietaire(session).id
 
 
 def _creer(client, **kw):
@@ -67,7 +72,8 @@ def test_supprimer_une_recherche(client):
 
 def test_sans_recherche_on_retombe_sur_le_profil(session):
     """L'application reste utilisable avant qu'une recherche ait été créée."""
-    session.add(Profile(pays_acceptes=["Belgique"], contrats_acceptes=["V.I.E"]))
+    session.add(Profile(utilisateur_id=_moi(session), pays_acceptes=["Belgique"],
+                        contrats_acceptes=["V.I.E"]))
     session.commit()
 
     requetes = requetes_actives(session, reglages())
@@ -76,9 +82,10 @@ def test_sans_recherche_on_retombe_sur_le_profil(session):
 
 
 def test_les_recherches_actives_deviennent_autant_de_requetes(session):
-    session.add(Profile(pays_acceptes=["France"]))
+    session.add(Profile(utilisateur_id=_moi(session), pays_acceptes=["France"]))
     for i, nom in enumerate(["Analyste", "Middle office", "V.I.E"]):
-        session.add(Recherche(nom=nom, mots_cles=[nom.lower()], ordre=i))
+        session.add(Recherche(utilisateur_id=_moi(session), nom=nom,
+                              mots_cles=[nom.lower()], ordre=i))
     session.commit()
 
     requetes = requetes_actives(session, reglages())
@@ -86,9 +93,10 @@ def test_les_recherches_actives_deviennent_autant_de_requetes(session):
 
 
 def test_une_recherche_desactivee_n_est_pas_jouee(session):
-    session.add(Profile())
-    session.add(Recherche(nom="Active", mots_cles=["a"]))
-    session.add(Recherche(nom="En pause", mots_cles=["b"], active=False))
+    session.add(Profile(utilisateur_id=_moi(session)))
+    session.add(Recherche(utilisateur_id=_moi(session), nom="Active", mots_cles=["a"]))
+    session.add(Recherche(utilisateur_id=_moi(session), nom="En pause", mots_cles=["b"],
+                          active=False))
     session.commit()
 
     assert [r.mots_cles[0] for r in requetes_actives(session, reglages())] == ["a"]
@@ -96,16 +104,17 @@ def test_une_recherche_desactivee_n_est_pas_jouee(session):
 
 def test_une_recherche_sans_pays_herite_de_ceux_du_profil(session):
     """Une recherche n'a pas à répéter les pays acceptés si elle ne les restreint pas."""
-    session.add(Profile(pays_acceptes=["France", "Belgique"]))
-    session.add(Recherche(nom="Générale", mots_cles=["finance"]))
+    session.add(Profile(utilisateur_id=_moi(session), pays_acceptes=["France", "Belgique"]))
+    session.add(Recherche(utilisateur_id=_moi(session), nom="Générale", mots_cles=["finance"]))
     session.commit()
 
     assert requetes_actives(session, reglages())[0].pays == ["France", "Belgique"]
 
 
 def test_une_recherche_avec_ses_propres_pays_les_impose(session):
-    session.add(Profile(pays_acceptes=["France"]))
-    session.add(Recherche(nom="V.I.E monde", mots_cles=["vie"], pays=["Singapour"]))
+    session.add(Profile(utilisateur_id=_moi(session), pays_acceptes=["France"]))
+    session.add(Recherche(utilisateur_id=_moi(session), nom="V.I.E monde", mots_cles=["vie"],
+                          pays=["Singapour"]))
     session.commit()
 
     assert requetes_actives(session, reglages())[0].pays == ["Singapour"]

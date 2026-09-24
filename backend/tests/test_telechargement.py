@@ -5,15 +5,15 @@ import json
 import pytest
 
 from app.config import reglages
-from app.models import Offer
+
+from .conftest import ajouter_offre
 
 
 @pytest.fixture
 def dossier(tmp_path, monkeypatch, session):
     monkeypatch.setattr(reglages().chemins, "dossier_candidatures", str(tmp_path))
-    offre = Offer(source="france_travail", source_id="42", titre="Analyste", entreprise="Banque",
-                  hash="h42")
-    session.add(offre)
+    offre = ajouter_offre(session, source="france_travail", source_id="42", titre="Analyste",
+                          entreprise="Banque", hash="h42")
     session.commit()
     session.refresh(offre)
 
@@ -52,8 +52,7 @@ def test_rien_d_autre_ne_sort(client, dossier, nom):
 
 
 def test_une_offre_sans_dossier_n_a_aucun_document(client, session, dossier):
-    autre = Offer(source="adzuna", source_id="7", titre="Autre", hash="h7")
-    session.add(autre)
+    autre = ajouter_offre(session, source="adzuna", source_id="7", titre="Autre", hash="h7")
     session.commit()
     session.refresh(autre)
     assert client.get(f"/api/offres/{autre.id}/documents").json() == {"dossier": None,

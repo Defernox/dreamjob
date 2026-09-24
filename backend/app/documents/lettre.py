@@ -35,7 +35,7 @@ from .controles import (  # ré-exportés : l'API publique des contrôles passe 
     rythme_mecanique,
     voix_incorrecte,
 )
-from .exemples import EXEMPLES_STYLE_COURT
+from .exemples import bloc_exemples
 from .intitule import intitule_pour_cv
 
 log = logging.getLogger("dreamjob.lettre")
@@ -263,9 +263,7 @@ def _message(profil: Profile, offre: Offer) -> str:
     accord = {"masculin": "\nAccord : masculin",
               "feminin": "\nAccord : féminin"}.get(profil.accord, "")
 
-    return f"""{EXEMPLES_STYLE_COURT}
-
-PROFIL
+    return f"""{bloc_exemples(profil.exemples_style)}PROFIL
 Nom : {profil.prenom} {profil.nom}{accord}
 Situation actuelle : {profil.situation_actuelle or '(non renseignée)'}
 Titre visé : {profil.titre_vise}

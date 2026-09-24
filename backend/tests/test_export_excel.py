@@ -12,7 +12,10 @@ from openpyxl import load_workbook
 from sqlmodel import Session
 
 from app.exports.excel import COLONNES, exporter, lire
-from app.models import Application, Offer
+from app.models import Application
+from app.services.acces import proprietaire
+
+from .conftest import ajouter_offre
 
 
 def _donnee(**kw) -> dict:
@@ -145,14 +148,14 @@ def test_un_fichier_illisible_le_dit():
 @pytest.fixture
 def candidature(client, engine):
     with Session(engine) as s:
-        offre = Offer(source="france_travail", source_id="1", hash="h1",
-                      titre="Analyste risques de crédit", entreprise="Banque A",
-                      pays="France", score=88.0, url="https://exemple.test/offre/1")
-        s.add(offre)
+        offre = ajouter_offre(s, source="france_travail", source_id="1", hash="h1",
+                              titre="Analyste risques de crédit", entreprise="Banque A",
+                              pays="France", score=88.0, url="https://exemple.test/offre/1")
         s.commit()
         s.refresh(offre)
         identifiant = offre.id          # lu AVANT la fermeture de la session
-        s.add(Application(offer_id=identifiant, notes="À relancer"))
+        s.add(Application(utilisateur_id=proprietaire(s).id, offer_id=identifiant,
+                          notes="À relancer"))
         s.commit()
     return identifiant
 

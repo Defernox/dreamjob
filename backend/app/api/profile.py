@@ -8,19 +8,22 @@ import unicodedata
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
-from sqlmodel import Session, select
+from sqlmodel import Session
 
 from ..config import reglages
 from ..db import get_session
+from .acces import utilisateur_courant
 from ..importers.cv_import import (
     EXTENSIONS,
     CvIllisible,
     FormatNonSupporte,
     importer_cv,
 )
-from ..llm.client import LlmErreur, LlmIndisponible
-from ..models import Profile
+from ..llm.client import ClientLlm, LlmErreur, LlmIndisponible
+from ..models import Profile, Utilisateur
 from ..models.base import maintenant
+from ..services.budget import BudgetEpuise, consigner, verifier_budget
+from ..services.scoring import profil_de
 from ..schemas.profile import ProfilLecture, ProfilMaj, ResultatImport
 
 log = logging.getLogger("dreamjob.profil")
@@ -28,17 +31,6 @@ log = logging.getLogger("dreamjob.profil")
 router = APIRouter(prefix="/api/profil", tags=["profil"])
 
 TAILLE_MAX = 10 * 1024 * 1024  # 10 Mo : très au-delà d'un CV normal
-
-
-def profil_courant(session: Session) -> Profile:
-    """Le profil unique. Créé vide au premier appel plutôt que renvoyer 404."""
-    profil = session.exec(select(Profile).order_by(Profile.id)).first()
-    if profil is None:
-        profil = Profile()
-        session.add(profil)
-        session.commit()
-        session.refresh(profil)
-    return profil
 
 
 def _en_lecture(profil: Profile) -> ProfilLecture:
@@ -54,13 +46,15 @@ def _nom_sur(nom: str) -> str:
 
 
 @router.get("", response_model=ProfilLecture)
-def lire(session: Session = Depends(get_session)) -> ProfilLecture:
-    return _en_lecture(profil_courant(session))
+def lire(session: Session = Depends(get_session),
+         moi: Utilisateur = Depends(utilisateur_courant)) -> ProfilLecture:
+    return _en_lecture(profil_de(session, moi.id))
 
 
 @router.put("", response_model=ProfilLecture)
-def enregistrer(maj: ProfilMaj, session: Session = Depends(get_session)) -> ProfilLecture:
-    profil = profil_courant(session)
+def enregistrer(maj: ProfilMaj, session: Session = Depends(get_session),
+                moi: Utilisateur = Depends(utilisateur_courant)) -> ProfilLecture:
+    profil = profil_de(session, moi.id)
     for champ, valeur in maj.model_dump(mode="json").items():
         setattr(profil, champ, valeur)
     profil.updated_at = maintenant()
@@ -75,6 +69,7 @@ async def importer(
     fichier: UploadFile = File(...),
     forcer: bool = False,
     session: Session = Depends(get_session),
+    moi: Utilisateur = Depends(utilisateur_courant),
 ) -> ResultatImport:
     """Lit un CV .docx/.pdf et en déduit le profil.
 
@@ -88,15 +83,22 @@ async def importer(
     contenu = await fichier.read()
     if len(contenu) > TAILLE_MAX:
         raise HTTPException(413, "Fichier trop volumineux (10 Mo maximum).")
+    try:
+        verifier_budget(session, moi)
+    except BudgetEpuise as e:
+        raise HTTPException(429, str(e)) from e
 
-    dossier = reglages().chemins.dossier_cache / "cv"
+    # Un dossier par compte : deux amis qui déposent chacun un « CV.pdf » ne
+    # s'écrasent pas.
+    dossier = reglages().chemins.dossier_cache / "cv" / str(moi.id)
     dossier.mkdir(parents=True, exist_ok=True)
     destination = dossier / _nom_sur(fichier.filename or f"cv{suffixe}")
     destination.write_bytes(contenu)
 
+    client = ClientLlm(session)
     try:
         structure, depuis_cache, modele, caracteres = importer_cv(
-            destination, session, forcer=forcer
+            destination, session, forcer=forcer, client=client
         )
     except FormatNonSupporte as e:
         raise HTTPException(400, str(e)) from e
@@ -106,8 +108,10 @@ async def importer(
         raise HTTPException(503, str(e)) from e
     except LlmErreur as e:
         raise HTTPException(502, str(e)) from e
+    finally:
+        consigner(session, moi.id, None, client)
 
-    profil = profil_courant(session)
+    profil = profil_de(session, moi.id)
     for champ, valeur in structure.model_dump(mode="json").items():
         setattr(profil, champ, valeur)
     profil.cv_source_path = str(destination)

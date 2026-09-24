@@ -103,6 +103,10 @@ ssh -t root@dreamjob "cd /opt/dreamjob && docker compose exec dreamjob python -m
 Tu saisis le mot de passe au clavier (12 caractères minimum) : il n'apparaît
 nulle part.
 
+Ce premier compte est **le tien** : il reprend tout ce que l'étape 6 a envoyé
+(profil, recherches, offres notées, candidatures). Crée-le avant ceux de tes
+amis.
+
 ## 8. Ouvrir l'accès HTTPS — 1 min
 
 ```bash
@@ -118,6 +122,45 @@ Installe l'application **ntfy** et abonne-toi au sujet choisi à l'étape 5.
 
 ---
 
+## Ajouter un ami
+
+Chacun a son propre compte : son profil, ses recherches, ses notes, ses
+candidatures, ses documents. Il ne voit rien des tiens, et tu ne vois rien des
+siens. Les offres trouvées pour vous deux ne sont téléchargées qu'une fois.
+
+1. **L'accès réseau (toi).** Console Tailscale → **Machines** → `dreamjob` →
+   **Share** : ton ami accepte avec son propre compte Tailscale (gratuit) et ne
+   voit que cette machine, pas le reste de ton réseau.
+2. **Son compte (toi, avec lui à côté pour taper son mot de passe)** :
+
+   ```bash
+   ssh -t root@dreamjob "cd /opt/dreamjob && docker compose exec dreamjob python -m app.compte creer ami@email.fr"
+   ```
+
+3. **Lui** : il se connecte, remplit son **Profil** (ou importe son CV), crée
+   ses **recherches**, et peut saisir son propre sujet ntfy dans son profil.
+
+**Ce que ça te coûte.** Ses lettres et ses CV ciblés passent par ta clé
+Anthropic. Chaque compte ami a donc un budget : **2 $ par mois** par défaut
+(environ vingt-cinq dossiers), au-delà la génération est refusée jusqu'au 1er du
+mois. Pour le changer, ou voir qui a dépensé quoi :
+
+```bash
+ssh -t root@dreamjob "cd /opt/dreamjob && docker compose exec dreamjob python -m app.compte budget ami@email.fr 5"
+```
+
+```bash
+ssh -t root@dreamjob "cd /opt/dreamjob && docker compose exec dreamjob python -m app.compte lister"
+```
+
+`aucun` à la place du montant retire la limite.
+
+**DogFinance reste à toi seul** : ses conditions n'autorisent qu'un usage
+personnel. Les recherches de tes amis interrogent France Travail, Civiweb et
+Adzuna, jamais DogFinance.
+
+---
+
 ## Ensuite
 
 | Pour… | Commande (Git Bash, racine du projet) |
@@ -125,7 +168,8 @@ Installe l'application **ntfy** et abonne-toi au sujet choisi à l'étape 5.
 | Mettre à jour le code | `deploiement/deployer.sh dreamjob` |
 | Voir les journaux | `ssh root@dreamjob "cd /opt/dreamjob && docker compose logs --tail 100"` |
 | Changer ton mot de passe | `ssh -t root@dreamjob "cd /opt/dreamjob && docker compose exec dreamjob python -m app.compte mot-de-passe ton@email.fr"` |
-| Ajouter un ami (plus tard) | lui créer un compte (étape 7) et l'inviter dans ton réseau Tailscale |
+| Ajouter un ami | voir « Ajouter un ami » ci-dessus |
+| Voir les comptes et leurs dépenses | `ssh -t root@dreamjob "cd /opt/dreamjob && docker compose exec dreamjob python -m app.compte lister"` |
 
 **Ta machine locale** continue de fonctionner comme avant, avec sa propre base.
 Une fois le serveur en place, c'est lui qui fait foi : évite de postuler depuis

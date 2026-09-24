@@ -33,3 +33,5 @@ class ScanRun(SQLModel, table=True):
     statut: str = Field(default=StatutScan.EN_COURS.value)
 
     declenche_par: str = "manuel"    # "manuel" | "planifie"
+    # Qui l'a lancé. Vide pour le scan planifié, joué pour tous les comptes.
+    utilisateur_id: int | None = Field(default=None, foreign_key="utilisateur.id", index=True)

@@ -3,8 +3,11 @@
 import pytest
 from sqlmodel import Session, select
 
-from app.models import Application, Offer, Profile
+from app.models import Application, Profile, ScoreOffre
 from app.models.base import maintenant
+from app.services.acces import proprietaire
+
+from .conftest import ajouter_offre
 
 
 @pytest.fixture
@@ -32,7 +35,7 @@ def base_remplie(engine):
     ]
     with Session(engine) as s:
         for i, ligne in enumerate(lignes):
-            s.add(Offer(date_publication=maintenant(), **ligne))
+            ajouter_offre(s, date_publication=maintenant(), **ligne)
         s.commit()
     return engine
 
@@ -124,7 +127,7 @@ def test_offre_introuvable(client, base_remplie):
 def test_le_detail_signale_une_candidature_existante(client, base_remplie, engine):
     identifiant = client.get("/api/offres").json()["offres"][0]["id"]
     with Session(engine) as s:
-        s.add(Application(offer_id=identifiant))
+        s.add(Application(utilisateur_id=proprietaire(s).id, offer_id=identifiant))
         s.commit()
     assert client.get(f"/api/offres/{identifiant}").json()["a_candidature"] is True
 
@@ -145,10 +148,10 @@ def test_le_badge_ne_compte_que_la_derniere_recherche(client, base_remplie, engi
     assert client.get("/api/offres/statistiques").json()["nouvelles"] == 0
 
     with Session(engine) as s:
-        # Les six offres de la fixture datent d'« il y a une heure ».
-        for offre in s.exec(select(Offer)).all():
-            offre.date_recuperation = maintenant() - timedelta(hours=1)
-            s.add(offre)
+        # Les six offres de la fixture sont entrées dans le fil il y a une heure.
+        for note in s.exec(select(ScoreOffre)).all():
+            note.ajoutee_le = maintenant() - timedelta(hours=1)
+            s.add(note)
         # Une recherche vient de se terminer : elle n'a rien ramené de nouveau.
         s.add(ScanRun(started_at=maintenant(), statut=StatutScan.TERMINE.value))
         s.commit()
@@ -178,7 +181,8 @@ def test_scorer_sans_profil_explique_au_lieu_de_planter(client, base_remplie):
 
 def test_scorer_ne_fait_aucun_appel_llm(client, base_remplie, engine):
     with Session(engine) as s:
-        s.add(Profile(skills=[{"nom": "Analyse financière", "ancree": True}],
+        s.add(Profile(utilisateur_id=proprietaire(s).id,
+                      skills=[{"nom": "Analyse financière", "ancree": True}],
                       secteurs=["banque"], pays_acceptes=["France"],
                       contrats_acceptes=["CDI"], langues=[{"code": "fr", "niveau": "natif"}]))
         s.commit()
@@ -198,12 +202,13 @@ def test_une_offre_scoree_sans_version_de_poids_est_bien_rescoree(client, base_r
     from sqlmodel import select
 
     with Session(engine) as s:
-        s.add(Profile(skills=[{"nom": "Analyse financière", "ancree": True}],
+        s.add(Profile(utilisateur_id=proprietaire(s).id,
+                      skills=[{"nom": "Analyse financière", "ancree": True}],
                       secteurs=["banque"], pays_acceptes=["France"],
                       contrats_acceptes=["CDI"], langues=[{"code": "fr", "niveau": "natif"}]))
         s.commit()
         # État de départ : un score existe, mais aucune version de poids.
-        assert all(o.poids_version is None for o in s.exec(select(Offer)).all() if o.score)
+        assert all(n.poids_version is None for n in s.exec(select(ScoreOffre)).all() if n.score)
 
     assert client.post("/api/offres/scorer").json()["scorees"] == 6
 
@@ -213,7 +218,7 @@ def test_une_offre_scoree_sans_version_de_poids_est_bien_rescoree(client, base_r
     from app.config import reglages as lire_reglages
     attendue = lire_reglages().scoring.version
     with Session(engine) as s:
-        assert all(o.poids_version == attendue for o in s.exec(select(Offer)).all())
+        assert all(n.poids_version == attendue for n in s.exec(select(ScoreOffre)).all())
 
 
 # --- Corrections issues de l'audit ------------------------------------------
@@ -232,8 +237,8 @@ def test_les_jokers_sql_ne_sont_plus_interpretes(client, base_remplie, terme, at
 
 def test_un_souligne_est_cherche_litteralement(client, base_remplie, engine):
     with Session(engine) as s:
-        s.add(Offer(source="test", source_id="9", hash="h9", titre="Poste middle_office",
-                    entreprise="X", pays="France"))
+        ajouter_offre(s, source="test", source_id="9", hash="h9", titre="Poste middle_office",
+                      entreprise="X", pays="France")
         s.commit()
     assert client.get("/api/offres?recherche=middle_office").json()["total"] == 1
     # « middleXoffice » ne doit rien trouver : le souligné n'est plus un joker.

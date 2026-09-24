@@ -134,29 +134,47 @@ def test_le_score_et_l_explication_ne_se_contredisent_pas():
 def test_une_version_de_signaux_perimee_force_un_rescoring(session):
     """Incrémenter extraction.VERSION ne servait à rien : l'offre n'était pas
     revisitée et gardait ses signaux d'avant."""
+    from app.config import reglages
+    from app.models import ScoreOffre
+    from app.models.base import maintenant
+    from app.services.acces import proprietaire
     from app.services.scoring import scorer_toutes
 
-    session.add(profil())
+    moi = proprietaire(session).id
+    p = profil()
+    p.utilisateur_id = moi
+    session.add(p)
     o = offre()
-    o.score, o.poids_version = 42.0, 1
     o.extraction = {"version": VERSION_SIGNAUX - 1, "langue": "fr",
                     "exigences_langues": [], "texte_secteur": "", "vocabulaire": []}
     session.add(o)
+    session.flush()
+    # Une note à jour en tout, sauf la version des signaux qui l'a produite.
+    session.add(ScoreOffre(utilisateur_id=moi, offer_id=o.id, score=42.0,
+                           poids_version=reglages().scoring.version,
+                           version_signaux=VERSION_SIGNAUX - 1, scored_at=maintenant()))
     session.commit()
 
-    assert scorer_toutes(session)["scorees"] == 1
+    assert scorer_toutes(session, moi)["scorees"] == 1
     session.refresh(o)
     assert o.extraction["version"] == VERSION_SIGNAUX
 
 
 def test_une_offre_a_jour_n_est_pas_rescoree_pour_rien(session):
+    from app.services.acces import proprietaire
     from app.services.scoring import scorer_toutes
 
-    session.add(profil())
-    session.add(offre())
+    from .conftest import ajouter_offre
+
+    moi = proprietaire(session).id
+    p = profil()
+    p.utilisateur_id = moi
+    session.add(p)
+    o = offre()
+    ajouter_offre(session, moi, **{k: v for k, v in o.model_dump().items() if v is not None})
     session.commit()
-    scorer_toutes(session)
-    assert scorer_toutes(session)["scorees"] == 0
+    scorer_toutes(session, moi)
+    assert scorer_toutes(session, moi)["scorees"] == 0
 
 
 # --- 6. L'explication nomme la bonne langue ---------------------------------

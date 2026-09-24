@@ -15,7 +15,10 @@ from app.scoring.langue import langues_exigees
 from app.scoring.score import calculer, score_langue
 from app.scoring.synonymes import equivalents, present
 from app.scoring.texte import normaliser
+from app.services.acces import proprietaire
 from app.services.sauvegarde import sauvegarder
+
+from .conftest import ajouter_offre
 
 
 def fichier_de(engine) -> Path:
@@ -27,8 +30,8 @@ def fichier_de(engine) -> Path:
 
 def test_une_offre_revue_recemment_n_est_pas_expiree(client, engine):
     with Session(engine) as s:
-        s.add(Offer(source="t", source_id="1", hash="h1", titre="Analyste",
-                    derniere_vue_le=maintenant()))
+        ajouter_offre(s, source="t", source_id="1", hash="h1", titre="Analyste",
+                      derniere_vue_le=maintenant())
         s.commit()
     assert client.get("/api/offres").json()["offres"][0]["expiree"] is False
     assert client.get("/api/offres/statistiques").json()["expirees"] == 0
@@ -38,8 +41,8 @@ def test_une_offre_plus_revue_depuis_longtemps_est_signalee(client, engine):
     """Une annonce retirée du site cesse d'être revue par les scans. La
     signaler évite de préparer un dossier pour rien."""
     with Session(engine) as s:
-        s.add(Offer(source="t", source_id="1", hash="h1", titre="Analyste",
-                    derniere_vue_le=maintenant() - timedelta(days=40)))
+        ajouter_offre(s, source="t", source_id="1", hash="h1", titre="Analyste",
+                      derniere_vue_le=maintenant() - timedelta(days=40))
         s.commit()
     assert client.get("/api/offres").json()["offres"][0]["expiree"] is True
     assert client.get("/api/offres/statistiques").json()["expirees"] == 1
@@ -47,10 +50,10 @@ def test_une_offre_plus_revue_depuis_longtemps_est_signalee(client, engine):
 
 def test_on_peut_isoler_ou_masquer_les_offres_expirees(client, engine):
     with Session(engine) as s:
-        s.add(Offer(source="t", source_id="1", hash="h1", titre="Récente",
-                    derniere_vue_le=maintenant()))
-        s.add(Offer(source="t", source_id="2", hash="h2", titre="Ancienne",
-                    derniere_vue_le=maintenant() - timedelta(days=40)))
+        ajouter_offre(s, source="t", source_id="1", hash="h1", titre="Récente",
+                      derniere_vue_le=maintenant())
+        ajouter_offre(s, source="t", source_id="2", hash="h2", titre="Ancienne",
+                      derniere_vue_le=maintenant() - timedelta(days=40))
         s.commit()
     assert client.get("/api/offres?expirees=false").json()["total"] == 1
     assert client.get("/api/offres?expirees=true").json()["total"] == 1
@@ -64,14 +67,15 @@ def test_revoir_une_offre_rafraichit_sa_date(session):
 
     brute = RawOffer(source="t", source_id="1", titre="Analyste", entreprise="X",
                      description_brute="Une description suffisamment longue.")
-    _stocker(session, [brute], [SearchQuery()])
+    moi = proprietaire(session).id
+    _stocker(session, [(brute, {moi})], {moi: [SearchQuery()]})
 
     offre = session.exec(select(Offer)).one()
     offre.derniere_vue_le = maintenant() - timedelta(days=40)
     session.add(offre)
     session.commit()
 
-    _stocker(session, [brute], [SearchQuery()])
+    _stocker(session, [(brute, {moi})], {moi: [SearchQuery()]})
     session.expire_all()
     revue = session.exec(select(Offer)).one().derniere_vue_le
     assert revue > maintenant() - timedelta(minutes=1)
@@ -82,11 +86,10 @@ def test_revoir_une_offre_rafraichit_sa_date(session):
 
 def _candidature(client, engine, *, jours: int, statut: str = "Envoyée") -> dict:
     with Session(engine) as s:
-        offre = Offer(source="t", source_id="1", hash="h1", titre="Analyste")
-        s.add(offre)
+        offre = ajouter_offre(s, source="t", source_id="1", hash="h1", titre="Analyste")
         s.commit()
         s.refresh(offre)
-        s.add(Application(offer_id=offre.id, statut=statut,
+        s.add(Application(utilisateur_id=proprietaire(s).id, offer_id=offre.id, statut=statut,
                           date_candidature=maintenant() - timedelta(days=jours)))
         s.commit()
     return client.get("/api/candidatures").json()[0]

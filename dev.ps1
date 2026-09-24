@@ -90,9 +90,15 @@ if ($apiVivante -and $interfaceVivante) {
 }
 
 if (-not $apiVivante) {
+  # Les migrations d'abord, comme dans l'image Docker : `create_all` au
+  # demarrage cree les tables manquantes mais n'ajoute jamais une colonne. Une
+  # mise a jour du code qui en apporte une faisait planter l'API a la premiere
+  # requete. Dans la fenetre de l'API, pour qu'un echec s'y lise.
   Write-Host "Demarrage de l'API       -> http://127.0.0.1:$PORT_API/docs" -ForegroundColor Cyan
   Start-Fenetre -Titre "DreamJob - API" -Dossier "$racine\backend" `
-    -Commande ".\.venv\Scripts\python.exe -m uvicorn app.main:app --reload --port $PORT_API"
+    -Commande (".\.venv\Scripts\alembic.exe upgrade head; if (`$LASTEXITCODE -eq 0) { " +
+               ".\.venv\Scripts\python.exe -m uvicorn app.main:app --reload --port $PORT_API } " +
+               "else { Write-Host 'Migration de la base en echec : API non demarree.' -ForegroundColor Red }")
 } else {
   Write-Host "API deja en ecoute sur le port $PORT_API." -ForegroundColor DarkGray
 }

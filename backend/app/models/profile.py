@@ -1,6 +1,6 @@
 """Le profil : mon CV structuré.
 
-Une seule ligne en pratique (id=1). Les blocs riches (compétences, expériences…)
+Un profil par compte (`utilisateur_id`). Les blocs riches (compétences, expériences…)
 sont stockés en JSON : ils sont édités d'un seul tenant depuis l'interface et
 n'ont aucune vie propre côté base — pas de jointure, pas de migration à chaque
 champ ajouté.
@@ -19,6 +19,8 @@ class Profile(SQLModel, table=True):
     __tablename__ = "profile"
 
     id: int | None = Field(default=None, primary_key=True)
+    utilisateur_id: int | None = Field(default=None, foreign_key="utilisateur.id",
+                                       unique=True, index=True)
 
     # --- Identité ---
     prenom: str = ""
@@ -69,6 +71,15 @@ class Profile(SQLModel, table=True):
     experiences: list = Field(default_factory=list, sa_column=colonne_json())
     # [{"etablissement", "diplome", "annee", "lieu"}]
     formations: list = Field(default_factory=list, sa_column=colonne_json())
+
+    # Extraits annotés des vraies lettres du candidat, montrés au modèle comme
+    # exemples de style (voir `documents/lettre.py`). Ce sont SES phrases, ses
+    # chiffres, ses employeurs : ils appartiennent au profil, pas au code — dans
+    # le code, ils partaient dans le prompt de tous les comptes.
+    exemples_style: str = ""
+    # Sujet ntfy du résumé du matin. Vide : pas de notification (le
+    # propriétaire peut aussi le fixer par NTFY_SUJET dans .env).
+    ntfy_sujet: str = ""
 
     # Traçabilité de l'import
     cv_source_path: str = ""

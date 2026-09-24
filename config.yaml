@@ -109,6 +109,13 @@ offres:
   # car une source en panne ne doit pas faire disparaitre des offres valides.
   expiree_apres_jours: 10
 
+comptes:
+  # Budget d'API d'un compte ami, en dollars par mois civil : c'est la cle du
+  # proprietaire qui paie. Un dossier coute environ 0,08 $ ; 2 $ en font vingt-
+  # cinq. Le proprietaire n'a pas de limite. Se change compte par compte :
+  # python -m app.compte budget ami@exemple.fr 5
+  budget_mensuel_usd: 2.0
+
 recherche:
   # Un filtre trop large vaut mieux qu'un filtre trop etroit : le tri fin est
   # fait par le scoring, pas par la source.
@@ -152,6 +159,10 @@ sources:
   dogfinance:
     actif: true
     libelle: "DogFinance"
+    # Reservee au proprietaire : ses CGU ne tolerent qu'un usage personnel.
+    # Les recherches des comptes amis n'y sont jamais envoyees, et ses annonces
+    # n'entrent jamais dans leur fil.
+    personnel: true
     remarque: >-
       Site specialise finance (~11 000 offres, editeur Carrevolutis). robots.txt
       autorise / et publie trois sitemaps d'offres ; la seule interdiction qui

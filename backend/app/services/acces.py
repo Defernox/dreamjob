@@ -22,7 +22,7 @@ from datetime import timedelta
 
 from sqlmodel import Session, select
 
-from ..models import SessionUtilisateur, Utilisateur
+from ..models import EMAIL_LOCAL, SessionUtilisateur, Utilisateur
 from ..models.base import maintenant
 
 log = logging.getLogger("dreamjob.acces")
@@ -125,11 +125,53 @@ def authentifier(session: Session, email: str, mot_de_passe: str) -> Utilisateur
 
 
 def creer_utilisateur(session: Session, email: str, mot_de_passe: str) -> Utilisateur:
-    utilisateur = Utilisateur(email=email.strip().lower(), mot_de_passe=hacher(mot_de_passe))
+    """Crée un compte — ou reprend le compte local, s'il n'a jamais été réclamé.
+
+    Le premier compte créé sur une base devient le propriétaire, et hérite des
+    données d'une installation locale (profil, candidatures, recherches). Les
+    suivants partent d'un profil vide, avec le budget mensuel par défaut.
+    """
+    from ..config import reglages
+
+    empreinte = hacher(mot_de_passe)
+    email = email.strip().lower()
+    local = session.exec(select(Utilisateur).where(Utilisateur.email == EMAIL_LOCAL)).first()
+    if local is not None:
+        local.email, local.mot_de_passe = email, empreinte
+        utilisateur = local
+    elif session.exec(select(Utilisateur)).first() is None:
+        utilisateur = Utilisateur(email=email, mot_de_passe=empreinte, proprietaire=True)
+    else:
+        utilisateur = Utilisateur(email=email, mot_de_passe=empreinte,
+                                  budget_mensuel_usd=reglages().comptes.budget_mensuel_usd)
     session.add(utilisateur)
     session.commit()
     session.refresh(utilisateur)
     return utilisateur
+
+
+def proprietaire(session: Session) -> Utilisateur:
+    """Le compte propriétaire, créé d'office s'il n'existe pas encore.
+
+    C'est l'utilisateur servi en local, où personne ne se connecte : une
+    installation qui n'a jamais eu de compte continue de fonctionner comme
+    avant, ses données rattachées à ce compte-là.
+    """
+    trouve = session.exec(
+        select(Utilisateur).order_by(Utilisateur.proprietaire.desc(), Utilisateur.id)).first()
+    if trouve is not None:
+        if not trouve.proprietaire:
+            # Une base où des comptes existaient avant la notion de
+            # propriétaire : le plus ancien l'est.
+            trouve.proprietaire = True
+            session.add(trouve)
+            session.commit()
+        return trouve
+    local = Utilisateur(email=EMAIL_LOCAL, mot_de_passe="", proprietaire=True)
+    session.add(local)
+    session.commit()
+    session.refresh(local)
+    return local
 
 
 _EMPREINTE_LEURRE = hacher(secrets.token_urlsafe(16))

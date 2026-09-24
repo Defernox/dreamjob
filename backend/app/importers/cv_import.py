@@ -163,8 +163,12 @@ def importer_cv(
     session: Session,
     *,
     forcer: bool = False,
+    client: ClientLlm | None = None,
 ) -> tuple[ProfilStructure, bool, str, int]:
     """Renvoie `(profil, depuis_cache, modele, caracteres_lus)`.
+
+    `client` : fourni par l'appelant qui veut relever ce qu'a coûté l'import
+    (`client.consommation`), pour l'imputer au bon compte.
 
     Le CV est lu une fois, puis soumis en quatre passes ciblées : identité,
     expériences, formations, compétences. Chaque passe est mise en cache
@@ -175,7 +179,7 @@ def importer_cv(
     r = reglages()
     modele = r.llm.modele_actif
     empreinte_cv = empreinte(texte)
-    client = ClientLlm(session)
+    client = client or ClientLlm(session)
 
     profil = ProfilStructure()
     tout_en_cache = True

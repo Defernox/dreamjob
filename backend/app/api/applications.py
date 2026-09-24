@@ -15,16 +15,36 @@ from sqlmodel import Session, desc, select
 from ..config import reglages
 from ..db import get_session
 from ..exports.excel import exporter, lire
-from ..models import Application, Offer
+from ..models import Application, Offer, ScoreOffre, Utilisateur
 from ..models.base import maintenant
 from ..models.enums import StatutCandidature
 from ..schemas.candidature import CandidatureCreation, CandidatureLecture, CandidatureMaj
 from ..scoring.texte import normaliser
+from .acces import utilisateur_courant
 
 router = APIRouter(prefix="/api/candidatures", tags=["candidatures"])
 
 
-def _en_lecture(candidature: Application, offre: Offer | None) -> CandidatureLecture:
+def _les_miennes(utilisateur_id: int):
+    return select(Application).where(Application.utilisateur_id == utilisateur_id)
+
+
+def _la_mienne(session: Session, candidature_id: int, utilisateur_id: int) -> Application:
+    """La candidature, si elle appartient au compte. Celle d'un autre répond
+    404, comme une candidature inexistante : on ne confirme pas qu'elle existe."""
+    candidature = session.get(Application, candidature_id)
+    if candidature is None or candidature.utilisateur_id != utilisateur_id:
+        raise HTTPException(404, "Candidature introuvable.")
+    return candidature
+
+
+def _score(session: Session, candidature: Application) -> float | None:
+    suivi = session.get(ScoreOffre, (candidature.utilisateur_id, candidature.offer_id))
+    return suivi.score if suivi else None
+
+
+def _en_lecture(candidature: Application, offre: Offer | None,
+                score: float | None = None) -> CandidatureLecture:
     jours = max(0, (maintenant() - candidature.date_candidature).days)
     seuil = reglages().candidatures.relance_apres_jours
     # Seul le statut « Envoyée » appelle une relance : une candidature refusée
@@ -42,24 +62,27 @@ def _en_lecture(candidature: Application, offre: Offer | None) -> CandidatureLec
         titre=offre.titre if offre else "",
         entreprise=offre.entreprise if offre else "",
         pays=offre.pays if offre else "",
-        score=offre.score if offre else None,
+        score=score,
         url=offre.url if offre else "",
     )
 
 
 @router.get("", response_model=list[CandidatureLecture])
-def lister(session: Session = Depends(get_session)) -> list[CandidatureLecture]:
+def lister(session: Session = Depends(get_session),
+           moi: Utilisateur = Depends(utilisateur_courant)) -> list[CandidatureLecture]:
     candidatures = session.exec(
-        select(Application).order_by(desc(Application.date_candidature))
+        _les_miennes(moi.id).order_by(desc(Application.date_candidature))
     ).all()
-    return [_en_lecture(c, session.get(Offer, c.offer_id)) for c in candidatures]
+    return [_en_lecture(c, session.get(Offer, c.offer_id), _score(session, c))
+            for c in candidatures]
 
 
 @router.get("/export.xlsx")
-def exporter_xlsx(session: Session = Depends(get_session)) -> Response:
+def exporter_xlsx(session: Session = Depends(get_session),
+                  moi: Utilisateur = Depends(utilisateur_courant)) -> Response:
     """Le justificatif de recherche d'emploi, prêt à envoyer à France Travail."""
     candidatures = list(session.exec(
-        select(Application).order_by(desc(Application.date_candidature))
+        _les_miennes(moi.id).order_by(desc(Application.date_candidature))
     ).all())
     # Une seule requête pour toutes les offres : un `session.get` par
     # candidature ferait autant d'allers-retours que de lignes exportées.
@@ -76,7 +99,7 @@ def exporter_xlsx(session: Session = Depends(get_session)) -> Response:
             "titre": offre.titre if offre else "",
             "entreprise": offre.entreprise if offre else "",
             "pays": offre.pays if offre else "",
-            "score": offre.score if offre else None,
+            "score": _score(session, candidature),
             "url": offre.url if offre else "",
         })
 
@@ -93,6 +116,7 @@ def exporter_xlsx(session: Session = Depends(get_session)) -> Response:
 async def importer_xlsx(
     fichier: UploadFile = File(...),
     session: Session = Depends(get_session),
+    moi: Utilisateur = Depends(utilisateur_courant),
 ) -> dict:
     """Reprend le suivi depuis un export existant.
 
@@ -110,7 +134,7 @@ async def importer_xlsx(
     # Index des candidatures existantes, par URL puis par entreprise + poste.
     par_url: dict[str, Application] = {}
     par_libelle: dict[tuple[str, str], Application] = {}
-    for candidature in session.exec(select(Application)).all():
+    for candidature in session.exec(_les_miennes(moi.id)).all():
         offre = session.get(Offer, candidature.offer_id)
         if offre is None:
             continue
@@ -149,20 +173,23 @@ async def importer_xlsx(
 def creer(
     creation: CandidatureCreation,
     session: Session = Depends(get_session),
+    moi: Utilisateur = Depends(utilisateur_courant),
 ) -> CandidatureLecture:
     offre = session.get(Offer, creation.offer_id)
-    if offre is None:
+    # On ne postule qu'à une offre de son propre fil.
+    if offre is None or session.get(ScoreOffre, (moi.id, creation.offer_id)) is None:
         raise HTTPException(404, "Offre introuvable.")
 
     # Cliquer deux fois sur « Postuler » ne doit pas créer de doublon : on
     # renvoie la candidature existante plutôt qu'une erreur.
     existante = session.exec(
-        select(Application).where(Application.offer_id == creation.offer_id)
+        _les_miennes(moi.id).where(Application.offer_id == creation.offer_id)
     ).first()
     if existante is not None:
-        return _en_lecture(existante, offre)
+        return _en_lecture(existante, offre, _score(session, existante))
 
     candidature = Application(
+        utilisateur_id=moi.id,
         offer_id=creation.offer_id,
         statut=creation.statut or StatutCandidature.ENVOYEE.value,
         notes=creation.notes,
@@ -172,7 +199,7 @@ def creer(
     session.add(candidature)
     session.commit()
     session.refresh(candidature)
-    return _en_lecture(candidature, offre)
+    return _en_lecture(candidature, offre, _score(session, candidature))
 
 
 @router.patch("/{candidature_id}", response_model=CandidatureLecture)
@@ -180,10 +207,9 @@ def modifier(
     candidature_id: int,
     maj: CandidatureMaj,
     session: Session = Depends(get_session),
+    moi: Utilisateur = Depends(utilisateur_courant),
 ) -> CandidatureLecture:
-    candidature = session.get(Application, candidature_id)
-    if candidature is None:
-        raise HTTPException(404, "Candidature introuvable.")
+    candidature = _la_mienne(session, candidature_id, moi.id)
 
     for champ, valeur in maj.model_dump(exclude_unset=True).items():
         if valeur is not None:
@@ -192,13 +218,13 @@ def modifier(
     session.add(candidature)
     session.commit()
     session.refresh(candidature)
-    return _en_lecture(candidature, session.get(Offer, candidature.offer_id))
+    return _en_lecture(candidature, session.get(Offer, candidature.offer_id),
+                       _score(session, candidature))
 
 
 @router.delete("/{candidature_id}", status_code=204)
-def supprimer(candidature_id: int, session: Session = Depends(get_session)) -> None:
-    candidature = session.get(Application, candidature_id)
-    if candidature is None:
-        raise HTTPException(404, "Candidature introuvable.")
+def supprimer(candidature_id: int, session: Session = Depends(get_session),
+              moi: Utilisateur = Depends(utilisateur_courant)) -> None:
+    candidature = _la_mienne(session, candidature_id, moi.id)
     session.delete(candidature)
     session.commit()

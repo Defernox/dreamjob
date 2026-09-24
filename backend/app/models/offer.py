@@ -18,7 +18,6 @@ class Offer(SQLModel, table=True):
         UniqueConstraint("source", "source_id", name="uq_offer_source"),
         #  - hash : la même annonce republiée sur un autre site est reconnue
         Index("ix_offer_hash", "hash", unique=True),
-        Index("ix_offer_score", "score"),
         Index("ix_offer_date_publication", "date_publication"),
     )
 
@@ -41,25 +40,17 @@ class Offer(SQLModel, table=True):
 
     hash: str = ""
 
-    # --- Scoring ---
-    score: float | None = None
-    # {"competences": 82.0, "secteur": 60.0, "pays": 100.0, "langue": 100.0, "contrat": 100.0}
-    score_detail: dict = Field(default_factory=dict, sa_column=colonne_json())
-    score_explication: str = ""
-    scored_at: datetime | None = None
-    poids_version: int | None = None             # version des poids ayant produit ce score
+    # Le score et « déjà vue » dépendent de l'utilisateur : ils vivent dans
+    # `ScoreOffre`. Ici ne reste que ce qui ne dépend que de l'annonce.
 
-    # --- Extraction LLM, mise en cache : jamais rejouee pour un meme hash ---
-    # {"competences": [...], "secteur": "...", "langue": "fr", "contrat_detecte": "CDI"}
+    # --- Signaux de l'offre (langue, vocabulaire, secteur), en pur code ---
+    # {"version": 3, "langue": "fr", "vocabulaire": [...], ...}
     extraction: dict = Field(default_factory=dict, sa_column=colonne_json())
     extraction_modele: str = ""
     extraction_at: datetime | None = None
 
     # Charge utile d'origine, archivee telle quelle (l'annonce peut disparaitre)
     raw: dict = Field(default_factory=dict, sa_column=colonne_json())
-
-    # Badge « X nouvelles offres »
-    vue: bool = Field(default=False, index=True)
 
     # Dernière fois qu'un scan a revu cette annonce chez sa source. Une offre
     # retirée du site cesse d'être revue : c'est ce qui permet de repérer celles

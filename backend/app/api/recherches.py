@@ -7,17 +7,27 @@ from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session, select
 
 from ..db import get_session
-from ..models import Recherche
+from ..models import Recherche, Utilisateur
 from ..models.base import maintenant
 from ..schemas.recherche import RechercheEcriture, RechercheLecture, RechercheMaj
+from .acces import utilisateur_courant
 
 router = APIRouter(prefix="/api/recherches", tags=["recherches"])
 
 
+def _la_mienne(session: Session, recherche_id: int, utilisateur_id: int) -> Recherche:
+    recherche = session.get(Recherche, recherche_id)
+    if recherche is None or recherche.utilisateur_id != utilisateur_id:
+        raise HTTPException(404, "Recherche introuvable.")
+    return recherche
+
+
 @router.get("", response_model=list[RechercheLecture])
-def lister(session: Session = Depends(get_session)) -> list[Recherche]:
+def lister(session: Session = Depends(get_session),
+           moi: Utilisateur = Depends(utilisateur_courant)) -> list[Recherche]:
     return list(session.exec(
-        select(Recherche).order_by(Recherche.ordre, Recherche.id)
+        select(Recherche).where(Recherche.utilisateur_id == moi.id)
+        .order_by(Recherche.ordre, Recherche.id)
     ).all())
 
 
@@ -25,8 +35,9 @@ def lister(session: Session = Depends(get_session)) -> list[Recherche]:
 def creer(
     ecriture: RechercheEcriture,
     session: Session = Depends(get_session),
+    moi: Utilisateur = Depends(utilisateur_courant),
 ) -> Recherche:
-    recherche = Recherche(**ecriture.model_dump())
+    recherche = Recherche(**ecriture.model_dump(), utilisateur_id=moi.id)
     session.add(recherche)
     try:
         session.commit()
@@ -44,10 +55,9 @@ def modifier(
     recherche_id: int,
     maj: RechercheMaj,
     session: Session = Depends(get_session),
+    moi: Utilisateur = Depends(utilisateur_courant),
 ) -> Recherche:
-    recherche = session.get(Recherche, recherche_id)
-    if recherche is None:
-        raise HTTPException(404, "Recherche introuvable.")
+    recherche = _la_mienne(session, recherche_id, moi.id)
 
     for champ, valeur in maj.model_dump(exclude_unset=True).items():
         if valeur is not None:
@@ -64,9 +74,8 @@ def modifier(
 
 
 @router.delete("/{recherche_id}", status_code=204)
-def supprimer(recherche_id: int, session: Session = Depends(get_session)) -> None:
-    recherche = session.get(Recherche, recherche_id)
-    if recherche is None:
-        raise HTTPException(404, "Recherche introuvable.")
+def supprimer(recherche_id: int, session: Session = Depends(get_session),
+              moi: Utilisateur = Depends(utilisateur_courant)) -> None:
+    recherche = _la_mienne(session, recherche_id, moi.id)
     session.delete(recherche)
     session.commit()

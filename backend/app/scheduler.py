@@ -24,13 +24,15 @@ from datetime import datetime, timedelta, timezone
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.date import DateTrigger
-from sqlmodel import Session
+from sqlalchemy import func
+from sqlmodel import Session, select
 
 from .config import reglages as lire_reglages
 from .db import engine
+from .models import ScoreOffre
 from .models.base import maintenant
-from .services.scan import dernier_scan_abouti, lancer_scan, requetes_actives
-from .services.scoring import ProfilVide, scorer_toutes
+from .services.scan import demandes_de_tous, dernier_scan_abouti, lancer_scan
+from .services.scoring import scorer_tous_les_comptes
 from .services.notification import notifier
 
 log = logging.getLogger("dreamjob.planificateur")
@@ -49,24 +51,25 @@ def executer_scan(declenche_par: str = "planifie") -> None:
     tournerait sinon en erreur silencieuse jusqu'au prochain redémarrage."""
     try:
         with Session(engine) as session:
-            # Toutes les recherches enregistrées, pas seulement config.yaml :
-            # le scan automatique doit couvrir exactement ce que l'utilisateur
-            # cherche, sinon il travaille plus étroit que lui.
-            requetes = requetes_actives(session, lire_reglages())
-            scan = lancer_scan(session, requetes, declenche_par=declenche_par)
+            # Les recherches enregistrées de CHAQUE compte, pas seulement
+            # config.yaml : le scan automatique doit couvrir exactement ce que
+            # chacun cherche. Un seul scan pour tous — une annonce demandée par
+            # deux comptes n'est téléchargée qu'une fois.
+            demandes = demandes_de_tous(session, lire_reglages())
+            if not demandes:
+                log.info("Scan %s : aucune recherche à jouer.", declenche_par)
+                return
+            scan = lancer_scan(session, demandes, declenche_par=declenche_par)
             log.info("Scan %s : %d nouvelles offres (statut %s, %d recherche(s))",
-                     declenche_par, scan.nb_nouvelles, scan.statut, len(requetes))
-            try:
-                # Sans condition sur les nouveautés : un changement de poids ou
-                # de profil laisse des offres à rescorer même sans arrivée.
-                # `scorer_toutes` ne traite de toute façon que ce qui le nécessite.
-                resultat = scorer_toutes(session)
-                if resultat["scorees"]:
-                    log.info("Scoring : %d offres", resultat["scorees"])
-            except ProfilVide as e:
-                log.warning("Offres non scorées — %s", e)
-            # Après le scoring : on ne signale que ce qui est noté. Sans
-            # NTFY_SUJET dans .env, rien ne part.
+                     declenche_par, scan.nb_nouvelles, scan.statut, len(demandes))
+            # Sans condition sur les nouveautés : un changement de poids ou
+            # de profil laisse des offres à rescorer même sans arrivée.
+            # `scorer_toutes` ne traite de toute façon que ce qui le nécessite.
+            scorees = scorer_tous_les_comptes(session)
+            if scorees:
+                log.info("Scoring : %d offres", scorees)
+            # Après le scoring : on ne signale que ce qui est noté. Un compte
+            # sans sujet ntfy ne reçoit rien.
             notifier(session, depuis=scan.started_at)
     except Exception:  # noqa: BLE001
         log.exception("Le scan %s a échoué", declenche_par)
@@ -167,8 +170,13 @@ def arreter() -> None:
         log.warning("Un scan etait encore en cours : arret sans l'attendre davantage.")
 
 
-def etat() -> dict:
-    """Ce que l'interface affiche : actif, prochaine exécution, dernier scan."""
+def etat(utilisateur_id: int | None = None) -> dict:
+    """Ce que l'interface affiche : actif, prochaine exécution, dernier scan.
+
+    Le dernier scan est celui qui concerne le compte — le planifié ou l'un des
+    siens : le scan manuel d'un autre ne lui apprend rien, et son nombre de
+    nouveautés est celui de l'autre.
+    """
     r = lire_reglages().planification
     heure, minute = r.heure_minute()
 
@@ -181,13 +189,21 @@ def etat() -> dict:
             prochaine = tache.next_run_time.astimezone(timezone.utc).replace(tzinfo=None)
 
     with Session(engine) as session:
-        dernier = dernier_scan_abouti(session)
+        dernier = dernier_scan_abouti(session, utilisateur_id)
+        nouvelles = dernier.nb_nouvelles if dernier else None
+        if dernier is not None and utilisateur_id is not None:
+            # Ce qui est entré dans SON fil : le scan planifié compte les
+            # nouveautés de tous les comptes réunis.
+            nouvelles = session.exec(
+                select(func.count()).select_from(ScoreOffre)
+                .where(ScoreOffre.utilisateur_id == utilisateur_id,
+                       ScoreOffre.ajoutee_le >= dernier.started_at)).one()
 
     return {
         "actif": r.scan_quotidien_actif and _planificateur is not None,
         "heure": f"{heure:02d}:{minute:02d}",
         "prochaine_execution": prochaine,
         "dernier_scan": dernier.started_at if dernier else None,
-        "dernier_scan_nouvelles": dernier.nb_nouvelles if dernier else None,
+        "dernier_scan_nouvelles": nouvelles,
         "rattrapage_apres_heures": r.rattrapage_apres_heures,
     }

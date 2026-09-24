@@ -194,9 +194,11 @@ def test_le_dossier_complet_est_produit(profil, offre, tmp_path):
 
 def test_l_offre_est_archivee_telle_quelle(profil, offre, tmp_path):
     """L'annonce disparaîtra du site : il faut en garder une copie."""
-    offre.score = 82.4
+    from app.models import ScoreOffre
+
+    note = ScoreOffre(utilisateur_id=1, offer_id=1, score=82.4)
     resultat = generer(profil, offre, tmp_path, MODELE,
-                       redacteur=_redacteur_honnete, ouvrir_apres=False)
+                       redacteur=_redacteur_honnete, ouvrir_apres=False, note=note)
     archive = json.loads((resultat.dossier / "offre.json").read_text(encoding="utf-8"))
     assert archive["titre"] == offre.titre
     assert archive["description_brute"] == offre.description_brute

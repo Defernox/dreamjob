@@ -91,7 +91,7 @@ def test_import_remplit_le_profil_sans_ecraser_les_preferences(client, monkeypat
     # d'origine : l'import par nom fige la référence.
     monkeypatch.setattr(
         api_profil, "importer_cv",
-        lambda chemin, session, forcer=False: (faux_profil, False, "modele-test", 404),
+        lambda chemin, session, forcer=False, client=None: (faux_profil, False, "modele-test", 404),
     )
 
     r = client.post(

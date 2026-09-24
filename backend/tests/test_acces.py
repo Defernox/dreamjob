@@ -58,7 +58,8 @@ def test_sur_le_serveur_tout_est_ferme_sans_session(client, serveur):
 def test_de_quoi_se_connecter_reste_ouvert(client, serveur):
     assert client.get("/api/sante").status_code == 200
     etat = client.get("/api/acces/etat").json()
-    assert etat == {"connexion_requise": True, "connecte": False, "email": None}
+    assert etat == {"connexion_requise": True, "connecte": False, "email": None,
+                    "proprietaire": False}
 
 
 def test_une_fois_connecte_l_api_repond(client, serveur, compte):
@@ -142,6 +143,12 @@ def test_un_chemin_ne_peut_pas_sortir_du_dossier_de_l_interface(tmp_path, monkey
 
     if not principal.FRONT.is_dir():
         pytest.skip("interface non compilée (frontend/dist absent)")
+    # Le démarrage neutralisé, comme dans la fixture `client` : sans cela, ce
+    # test créait les nouvelles tables dans la VRAIE base et y cherchait le
+    # dernier scan.
+    for nom in ("creer_tables", "sauvegarder", "demarrer_planificateur",
+                "arreter_planificateur", "checkpoint"):
+        monkeypatch.setattr(principal, nom, lambda *a, **kw: None)
     with TestClient(principal.app) as c:
         reponse = c.get("/..%2F..%2F.env")
         assert "ANTHROPIC" not in reponse.text

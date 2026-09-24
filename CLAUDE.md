@@ -3,8 +3,9 @@
 Application **locale** de recherche d'emploi : agréger les offres → les scorer →
 générer CV et lettre → postuler → tracer les candidatures pour France Travail.
 
-Mono-utilisateur. Tourne en local, ou hébergé sur un VPS joignable uniquement
-par Tailscale (`deploiement/GUIDE.md`). Rien ne sort sauf les appels à l'API
+Un compte par personne : le propriétaire et deux ou trois amis. Tourne en local
+(un seul compte, sans connexion), ou hébergé sur un VPS joignable uniquement par
+Tailscale (`deploiement/GUIDE.md`). Rien ne sort sauf les appels à l'API
 Anthropic, aux sources d'offres et, hébergé, la notification du matin.
 
 ---
@@ -40,9 +41,13 @@ logs, et les fermer arrête l'application. Le Bureau est résolu par
 `[Environment]::GetFolderPath` : `$env:USERPROFILE\Desktop` se trompe quand il
 est redirigé vers OneDrive.
 
-**`dev.ps1` fait trois choses qu'un double-clic exige** et qu'une ligne de
+**`dev.ps1` fait quatre choses qu'un double-clic exige** et qu'une ligne de
 commande pardonnait :
 
+- **Il applique les migrations avant l'API**, comme l'image Docker. Il ne le
+  faisait pas : `create_all` crée les tables manquantes mais n'ajoute jamais une
+  colonne, et la première mise à jour qui en apportait une aurait fait planter
+  l'API à sa première requête.
 - **Il relève Ollama.** Le moteur des lettres démarre avec la session, mais il
   lui arrive de tomber : l'application se lançait alors en mode dégradé sans
   que rien ne le signale, jusqu'à ce qu'une lettre échoue.
@@ -92,7 +97,7 @@ DreamJob/
 │     ├─ models/        tables SQLModel
 │     ├─ api/           routeurs HTTP
 │     ├─ connectors/    base · http (débit, cache) · registry · une source = un fichier
-│     ├─ services/      dedup (hash) · scan (orchestration)
+│     ├─ services/      dedup · scan · scoring · acces (comptes) · budget · notification
 │     ├─ scoring/       extraction + score + couverture — pur code, jamais de LLM
 │     ├─ documents/     docx_outils · intitule · cv_render · ciblage · correspondance · lettre · controles · exemples · pdf · dossier
 │     ├─ importers/     CV .docx/.pdf → profil structuré
@@ -763,8 +768,12 @@ nommé. D'où la détection en pur code, et ce réglage désactivé par défaut.
 d'un coup le fait décrocher : au quatrième essai, il rendait la structure du
 prompt (« Informations, Formations, Expériences ») au lieu d'une lettre.
 
-**Le few-shot vient des vraies lettres du candidat** (`documents/exemples.py`),
-volontairement court pour la même raison. Les noms d'entreprises tierces y sont
+**Le few-shot vient des vraies lettres du candidat**, volontairement court pour
+la même raison. Les extraits vivent dans le profil (`Profile.exemples_style`,
+saisis dans l'écran Profil) ; `documents/exemples.py` n'en garde que le cadre.
+Ils ont d'abord été écrits en dur dans le code : avec plusieurs comptes, les
+phrases, les chiffres et les employeurs du propriétaire seraient partis dans le
+prompt des lettres de tous. Un profil sans extraits n'a pas de bloc d'exemples. Les noms d'entreprises tierces y sont
 remplacés par des marqueurs : cités en clair, le modèle les recopiait, et
 l'anti-invention les rejetait aussitôt — génération en boucle, sans résultat.
 
@@ -869,7 +878,11 @@ souvent la même annonce, et la compter une fois par recherche gonflerait le
 nombre de rejets sans rien signifier.
 
 Sans aucune recherche définie, on retombe sur le profil — l'application reste
-utilisable avant qu'on en ait créé une.
+utilisable avant qu'on en ait créé une. Les mots-clés de `config.yaml` sont ceux
+du propriétaire : un autre compte se rabat sur son titre visé, et sans titre il
+n'a rien à chercher (409) — jamais sur la recherche d'un autre.
+
+Chaque recherche appartient à un compte ; son nom est unique **par compte**.
 
 ---
 
@@ -964,6 +977,11 @@ Trois réglages non négociables, chacun corrigeant une panne silencieuse :
   à l'utilisateur — sortir sur le réseau avant qu'il ait vu l'écran Profil
   serait une initiative qu'il n'a pas demandée.
 
+Le scan planifié joue les recherches **de tous les comptes**, en un seul
+`ScanRun` sans propriétaire (`utilisateur_id` vide). Une requête identique
+demandée par deux comptes n'est jouée qu'une fois. Le scoring et le résumé du
+matin suivent, compte par compte.
+
 Le scan automatique prend ses **pays et contrats dans le profil**, pas dans
 `config.yaml` : ce que l'utilisateur a coché l'emporte sur un repli, sinon un
 scan nocturne filtrerait sur « France » pendant que le profil accepte quatre
@@ -1027,13 +1045,16 @@ sans elle, LibreOffice substitue une autre police, les lignes changent de
 longueur, et la mesure « une page » n'est plus celle de Windows.
 
 **Les fichiers exécutés sur le serveur sont en LF** (`.gitattributes`). Un
-script bash en CRLF échoue sur `bash` ; et le `sed -i` de Git Bash réécrit
+script bash en CRLF échoue sur `bash
+` ; et le `sed -i` de Git Bash réécrit
 en mode texte Windows — il remet les CRLF qu'on croyait retirer.
 
 **Le résumé du matin** (`services/notification.py`) part après le scan
 planifié, vers ntfy, seulement s'il y a des offres vertes jamais ouvertes : une
-alerte quotidienne « rien de nouveau » apprend à ignorer les autres. Le sujet
-ntfy (`NTFY_SUJET`) tient lieu de mot de passe ; ne transitent que des
+alerte quotidienne « rien de nouveau » apprend à ignorer les autres. Chaque
+compte a son sujet, saisi dans son profil ; `NTFY_SUJET` ne vaut que pour le
+propriétaire — un ami sans sujet ne reçoit rien, surtout pas sur le téléphone
+d'un autre. Le sujet tient lieu de mot de passe ; ne transitent que des
 intitulés, des employeurs et des scores.
 
 **Les tests n'agissent plus sur la vraie base.** Le client de test démarrait
@@ -1042,6 +1063,69 @@ dans la base réelle — l'autogénération Alembic est alors sortie **vide** �
 chaque test sauvegardait cette base et démarrait le planificateur. Le démarrage
 est désormais neutralisé dans `conftest.py`, et la migration des comptes crée
 ses tables seulement si elles manquent, pour passer sur les deux bases.
+
+---
+
+## Comptes
+
+**Une offre est commune, sa note ne l'est pas.** Le score dépend du profil, et
+« déjà vue » de celui qui regarde : les deux vivent dans `ScoreOffre`
+(utilisateur, offre), avec la date d'entrée dans le fil. **Une ligne y est
+aussi l'appartenance au fil** : une offre n'apparaît chez quelqu'un que si
+l'une de SES recherches l'a ramenée. Toutes les requêtes partent d'une jointure
+interne sur ce fil ; une offre d'un autre fil répond 404, même demandée par son
+identifiant. L'ami qui cherche en marketing ne parcourt pas deux mille offres
+de finance, et ne voit pas ce que cherchent les autres.
+
+**Le compte vient du verrou, jamais du client.** `verrou` établit l'utilisateur
+à partir du cookie et le pose dans `request.state` ; la dépendance
+`utilisateur_courant` le relit. Toute route qui touche une donnée personnelle
+en dépend. Une ressource d'un autre compte répond **404, pas 403** : on ne
+confirme même pas qu'elle existe. En local, sans connexion, c'est le
+propriétaire qu'on sert.
+
+**Le propriétaire** est le premier compte. La migration rattache les données
+d'avant les comptes à un compte « local » sans mot de passe (qui ne vérifie
+jamais) ; le premier `python -m app.compte creer` le reprend, avec tout ce
+qu'il porte. Lui seul reçoit les sources `personnel: true` — DogFinance, dont
+les CGU ne tolèrent qu'un usage personnel : les recherches des amis n'y sont
+jamais envoyées, même demandées explicitement. Lui seul n'a pas de budget.
+
+**Le budget d'un ami** (`comptes.budget_mensuel_usd`, 2 $ par mois, soit
+environ vingt-cinq dossiers) : c'est la clé du propriétaire qui paie. Chaque
+appel payant est chiffré et imputé (`DepenseLlm`) — y compris d'une génération
+qui échoue en route, les jetons étant facturés quand même — et l'import de CV
+compte comme un dossier. Au-delà : 429, jusqu'au 1er du mois.
+`python -m app.compte budget` le change, `lister` montre qui dépense quoi.
+
+**Les dossiers d'un ami vivent à part** : `candidatures/comptes/<id>/`. Le
+propriétaire garde la racine — ses dossiers existants ne bougent pas — et la
+recherche d'un dossier par `*/offre.json` ne descend pas jusqu'à ceux des autres.
+
+**La migration ne reconstruit aucune table.** La base active les clés
+étrangères : le mode « batch » d'Alembic — copier `offer`, supprimer l'ancienne
+— échouerait, d'autres tables la référençant. Tout passe par `ADD COLUMN`
+(une clé étrangère s'ajoute tant que la valeur par défaut est NULL), `DROP
+COLUMN` après suppression des index, et des index. Vérifiée sur une copie de la
+vraie base : 4 486 offres, autant de notes, somme des scores et offres déjà
+ouvertes identiques ; `alembic check` ne voit aucun écart, ni sur la copie ni
+sur une base neuve.
+
+**L'isolation est prouvée, et la preuve est vérifiée.** `test_comptes.py`
+passe par l'API, connecté tour à tour comme chaque compte. Retirer le filtre
+par compte des offres et des candidatures fait échouer trois de ses tests :
+ils attrapent bien la fuite qu'ils décrivent.
+
+**Deux tests lisaient encore la vraie base.** L'un démarrait l'application
+complète sans la neutralisation de `conftest.py` : il a créé les deux nouvelles
+tables dans la base de l'utilisateur (vides, et la migration les accepte déjà
+présentes). L'autre, `etat()` du planificateur, y cherchait le dernier scan. Les
+deux sont corrigés ; ils passaient jusque-là parce que la vraie base était à jour.
+
+**Ce que le propriétaire voyait chez l'ami, avant correction** : le bandeau
+« dernière recherche — 1 415 nouvelles offres » était le sien. `etat()` compte
+désormais les entrées dans le fil du compte, et tous les scans d'avant les
+comptes, planifiés compris, sont rattachés au propriétaire.
 
 ---
 
@@ -1071,3 +1155,4 @@ Sans LibreOffice, les documents sont générés en Word uniquement — même pri
 - [x] **12.** Ce que voit le recruteur — intitulé nettoyé (45 % des offres portaient « (H/F) »), élision de l'objet, fichiers et métadonnées au nom du candidat, expériences et formations dans l'ordre des dates, accord saisi et jamais déduit
 - [x] **13.** Rédaction payante — lettre par Opus 5.5, CV ciblé par Sonnet 5 sous contrôles puce par puce, coût de chaque dossier dans `generation.json`, panneau « Ce que verra le recruteur »
 - [x] **14.** Hébergement prêt — comptes et verrou, téléchargement des documents, interface servie par l'API, image Docker (Carlito), résumé du matin par ntfy, scripts d'installation et de déploiement. Déploiement réel : à faire
+- [x] **15.** Un compte par personne — profil, recherches, notes, candidatures, documents et notifications séparés ; offres partagées mais fil propre à chacun ; DogFinance réservé au propriétaire ; budget mensuel des amis ; migration vérifiée sur la vraie base

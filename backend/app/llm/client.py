@@ -44,6 +44,9 @@ class ClientLlm:
     def __init__(self, session: Session | None = None) -> None:
         self.session = session
         self._client: anthropic.Anthropic | None = None
+        # Ce qu'a coûté chaque appel réellement fait (pas les succès de cache) :
+        # c'est ce qui s'impute au budget du compte qui l'a déclenché.
+        self.consommation: list[dict] = []
 
     @property
     def disponible(self) -> bool:
@@ -189,6 +192,10 @@ class ClientLlm:
         log.info("%d tokens entrée (%d lus en cache), %d sortie",
                  u.input_tokens, getattr(u, "cache_read_input_tokens", 0) or 0,
                  u.output_tokens)
+        from .redaction import cout_usd      # redaction importe ce module
+
+        self.consommation.append({"modele": modele,
+                                  "usd": cout_usd(modele, u, reglages().llm.tarifs)})
         return resultat
 
     def extraire(

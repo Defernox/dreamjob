@@ -376,6 +376,37 @@ export default function Profil() {
         )}
       </Section>
 
+      <Section
+        titre="Lettre et notifications"
+        aide="Facultatif. Ce qui est propre à votre compte, et à lui seul."
+      >
+        <div className="space-y-3">
+          <ZoneTexte
+            libelle="Extraits de vos lettres (exemples de style)"
+            valeur={profil.exemples_style}
+            onChange={(v) => maj('exemples_style', v)}
+            lignes={6}
+            placeholder={'✓ « une phrase de vos lettres que vous aimez »\n   → pourquoi elle marche\n✗ « une formule à éviter »'}
+          />
+          <p className="-mt-2 text-xs text-encre-500">
+            Montrés au modèle pour qu'il écrive comme vous. Vos propres phrases
+            seulement : un chiffre ou un employeur absent de votre profil y ferait
+            refuser la lettre.
+          </p>
+          <Champ
+            libelle="Sujet ntfy du résumé du matin"
+            valeur={profil.ntfy_sujet}
+            onChange={(v) => maj('ntfy_sujet', v)}
+            placeholder="une-suite-longue-et-imprevisible-de-mots"
+          />
+          <p className="-mt-2 text-xs text-encre-500">
+            Installez l'application ntfy et abonnez-vous à ce sujet : les nouvelles
+            offres vertes vous y arrivent chaque matin. Le sujet tient lieu de mot
+            de passe, choisissez-le long.
+          </p>
+        </div>
+      </Section>
+
       {profil.cv_importe_le && (
         <p className="text-xs text-encre-400">
           Dernier import de CV : {dateHeureFr(profil.cv_importe_le)} — {profil.cv_source_path}

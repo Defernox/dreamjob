@@ -3,17 +3,16 @@
 import pytest
 from sqlmodel import Session
 
-from app.models import Offer
+from .conftest import ajouter_offre
 
 
 @pytest.fixture
 def offre(engine):
     with Session(engine) as s:
-        o = Offer(source="france_travail", source_id="1", hash="h1",
-                  titre="Analyste risques de crédit", entreprise="Banque A",
-                  pays="France", type_contrat="CDI", score=88.0,
-                  url="https://exemple.test/offre/1")
-        s.add(o)
+        o = ajouter_offre(s, source="france_travail", source_id="1", hash="h1",
+                          titre="Analyste risques de crédit", entreprise="Banque A",
+                          pays="France", type_contrat="CDI", score=88.0,
+                          url="https://exemple.test/offre/1")
         s.commit()
         s.refresh(o)
         return o.id

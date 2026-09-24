@@ -170,7 +170,9 @@ def test_les_nouvelles_offres_sont_marquees_non_vues(session, sources):
     """Alimente le badge « X nouvelles offres » de l'étape 9."""
     sources["a"] = _source("a", [_offre()])
     lancer_scan(session, SearchQuery(), sources=["a"])
-    assert session.exec(select(Offer)).first().vue is False
+    from app.models import ScoreOffre
+
+    assert session.exec(select(ScoreOffre)).first().vue is False
 
 
 # --- Plusieurs recherches en un seul scan -----------------------------------

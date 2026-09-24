@@ -139,6 +139,11 @@ class ProfilMaj(ProfilStructure):
         default="", description="Accord grammatical des documents, vide si non renseigné")
     pays_acceptes: list[str] = Field(default_factory=list)
     contrats_acceptes: list[str] = Field(default_factory=list)
+    exemples_style: str = Field(
+        default="", max_length=4000,
+        description="Extraits annotés des lettres du candidat, exemples de style")
+    ntfy_sujet: str = Field(default="", max_length=200,
+                            description="Sujet ntfy du résumé du matin, vide = aucun")
 
     @field_validator("contrats_acceptes")
     @classmethod

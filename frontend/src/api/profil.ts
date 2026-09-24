@@ -46,6 +46,10 @@ export type Profil = {
   formations: Formation[]
   pays_acceptes: string[]
   contrats_acceptes: string[]
+  /** Extraits annotés de vos propres lettres, montrés au modèle comme exemples de style. */
+  exemples_style: string
+  /** Sujet ntfy du résumé du matin. Vide : pas de notification. */
+  ntfy_sujet: string
   cv_source_path: string
   cv_importe_le: string | null
   updated_at: string | null

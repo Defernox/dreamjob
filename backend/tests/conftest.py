@@ -12,6 +12,27 @@ from app import models  # noqa: F401  (peuple SQLModel.metadata)
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
+# Ce qui, d'une offre, appartient à celui qui la regarde : la note et « vue ».
+CHAMPS_DE_NOTE = ("score", "score_detail", "score_explication", "scored_at",
+                  "poids_version", "version_signaux", "vue", "ajoutee_le")
+
+
+def ajouter_offre(session, utilisateur_id: int | None = None, **champs):
+    """Crée une offre et la range dans le fil d'un compte — le propriétaire par
+    défaut, comme en local. Les champs de note (`score`, `vue`…) vont à ce
+    compte, le reste à l'offre. Ne valide pas la transaction."""
+    from app.models import Offer, ScoreOffre
+    from app.services.acces import proprietaire
+
+    if utilisateur_id is None:
+        utilisateur_id = proprietaire(session).id
+    note = {k: champs.pop(k) for k in CHAMPS_DE_NOTE if k in champs}
+    offre = Offer(**champs)
+    session.add(offre)
+    session.flush()
+    session.add(ScoreOffre(utilisateur_id=utilisateur_id, offer_id=offre.id, **note))
+    return offre
+
 # Identifiants que la suite ne doit JAMAIS utiliser : un test qui passe parce
 # qu'une clé traîne dans .env est un test qui mentira sur une autre machine —
 # et qui consomme du quota au passage.

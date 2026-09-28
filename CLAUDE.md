@@ -684,6 +684,57 @@ et le pays en code ISO. Le plan du site publié s'arrête à cent offres : la
 liste est la seule voie complète. Le total n'est renvoyé qu'avec la première
 page.
 
+**Un logiciel par fichier**, chacun documenté en tête avec ce qui a été
+vérifié : Workday (29 employeurs), Talentsoft (10 : flux RSS officiel pour la
+veille, liste en deux gabarits pour le scan), SuccessFactors (11 : son
+robots.txt interdit `/services/`, donc le RSS — on lit la recherche triée par
+date), Oracle (8, deux cents offres par page), Greenhouse (6, API publique
+officielle), Eightfold (Morgan Stanley, HSBC), Jibe (AXA), Beesite (Deutsche
+Bank), le groupe BPCE, et **le plan du site + JobPosting** (`plan_du_site.py`) :
+le format que Google exige pour Google for Jobs, lisible quel que soit le
+logiciel — Société Générale, BlackRock, Moody's, ING, KPMG, RBC, Fed Finance…
+Les microdonnées schema.org en sont le repli. L'intitulé se lit dans le
+dernier segment de l'adresse qui porte des lettres : Radancy le range avant
+deux numéros (`/job/new-york/risk-analyst/45831/99354208`).
+
+**robots.txt se lit selon la RFC 9309, pas avec `urllib.robotparser`.** Le module
+standard applique la première règle rencontrée ; la norme veut la plus précise
+(le motif le plus long), l'autorisation l'emportant à égalité. Sur Eightfold
+(`Disallow: /` puis `Allow: /api/pcsx`), le module standard interdisait ce que
+le site autorise en toutes lettres — et l'erreur inverse laisserait passer une
+interdiction. Le groupe retenu est celui qui nomme notre robot **exactement**
+(« autre » ne vise pas « AutreRobot »), sinon `*`. `Crawl-delay`, hors norme
+mais répandu, est respecté : AXA demande cinq secondes, le client HTTP les
+applique à cet hôte (`ClientHttp.ralentir`).
+
+**Pièges rencontrés, un par site :**
+
+- **HSBC** (Eightfold, ancienne interface) choisit, sans lieu précisé, celui de
+  l'appelant d'après son adresse IP : un serveur en Allemagne n'y verrait pas
+  les offres parisiennes. Il est interrogé pays par pays, en anglais.
+- **BPCE** : robots.txt interdit la recherche et les listes ; l'interface qui
+  les alimente n'est jamais appelée. Le site publie le plan de ses offres sous
+  `/job/`, autorisé : chaque offre est lue comme sa page la lit. L'entité exacte
+  (« Caisse d'Epargne Ile de France ») devient l'employeur affiché
+  (`Annonce.entreprise`). Le site Oracle vers lequel pointe « Postuler » est
+  abandonné (dernière offre en avril).
+- **Deutsche Bank** nomme les pays en allemand même dans son interface anglaise,
+  et « Unbefristet » (un CDI) était lu CDD : le motif `befristet` prend une
+  limite de mot.
+- **Un pays hors du vocabulaire doit être nommé pour être écarté.** Inconnu, il
+  passait le filtre comme un lieu non précisé : un poste de SCOR à Bucarest
+  arrivait dans une recherche limitée à la France. `pays.py` connaît donc aussi
+  la Roumanie, les Philippines, Jersey…
+- **Une adresse d'offre peut disparaître du site avant son plan** (ING) : la
+  fiche en 404 est ignorée et consignée, rien d'autre.
+
+**Refusés, motif daté dans `employeurs.yaml`** : BNP Paribas (liste protégée,
+recherche Avature désactivée), Goldman Sachs (robots.txt n'autorise que les
+fiches, sans plan du site), Bpifrance et Tikehau (403 à notre User-Agent,
+robots.txt compris). Mesuré sur les 79 premiers actifs et les 4 recherches du
+propriétaire : 368 offres en 3 min 15, 90 en France ; une passe de veille en
+25 s.
+
 ---
 
 ## Génération des documents
@@ -1333,3 +1384,4 @@ Sans LibreOffice, les documents sont générés en Word uniquement — même pri
 - [x] **15.** Un compte par personne — profil, recherches, notes, candidatures, documents et notifications séparés ; offres partagées mais fil propre à chacun ; DogFinance réservé au propriétaire ; budget mensuel des amis ; migration vérifiée sur la vraie base
 - [x] **16.** Score refait et mesuré — tout le CV lu, métier reconnu dans les deux sens, contenu étalonné, niveau / diplôme / certifications / statut lus dans l'annonce, pertinence × accessibilité × conditions, points rédhibitoires, explication en lignes, recalcul automatique ; 182 offres étiquetées, top 20 : 6 → 20 offres pertinentes
 - [x] **17.** Veille — les offres du jour toutes les demi-heures en journée, recherches enregistrées et intitulés du CV, une alerte ntfy par offre verte (clic vers la fiche), plafond quotidien, une offre signalée une seule fois ; Adzuna et DogFinance tenus à l'écart
+- [x] **18.** Sites des employeurs — 228 employeurs repérés, 82 actifs par onze connecteurs (un par logiciel, plus le plan du site + JobPosting), robots.txt selon la RFC 9309 et Crawl-delay, refus motivés ; branchés sur la veille

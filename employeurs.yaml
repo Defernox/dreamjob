@@ -89,9 +89,10 @@ employeurs:
       adresse: "https://www.labanquepostale.com/candidats/offres-d-emploi/nos-offres-d-emploi.html"
       priorite: 2
     - nom: "HSBC Continental Europe"
-      statut: "à_étudier"
-      adresse: "https://www.about.hsbc.fr/fr-fr"
+      statut: "inclus"
       priorite: 1
+      motif: >
+        Ses offres paraissent sur portal.careers.hsbc.com : suivies avec HSBC.
     - nom: "Oddo BHF"
       statut: "à_étudier"
       adresse: "https://www.oddo-bhf.com/fr/carrieres/"
@@ -115,8 +116,11 @@ employeurs:
       motif: >
         Recrute sur recrutement.bpce.fr : suivi avec Groupe BPCE.
     - nom: "Bpifrance"
-      statut: "à_étudier"
+      statut: "refusé"
       priorite: 1
+      motif: >
+        Site et robots.txt refusés à notre User-Agent (403) : protection contre les
+        robots, jamais contournée. Vérifié le 2026-09-28.
 
   # --- banques internationales ---
   banques_internationales:
@@ -134,7 +138,10 @@ employeurs:
       statut: "à_étudier"
       priorite: 1
     - nom: "Morgan Stanley"
-      statut: "à_étudier"
+      logiciel: "eightfold"
+      adresse: "https://morganstanley.eightfold.ai/careers"
+      statut: "actif"
+      domaine: "morganstanley.com"
       priorite: 1
     - nom: "Citi"
       logiciel: "workday"
@@ -156,7 +163,11 @@ employeurs:
       statut: "à_venir"
       priorite: 1
     - nom: "HSBC"
-      statut: "à_étudier"
+      logiciel: "eightfold"
+      adresse: "https://portal.careers.hsbc.com/careers"
+      statut: "actif"
+      domaine: "hsbc.com"
+      par_pays: True
       priorite: 1
     - nom: "Nomura"
       logiciel: "successfactors"
@@ -450,8 +461,11 @@ employeurs:
       adresse: "https://www.eurazeo.com/fr/talents"
       priorite: 1
     - nom: "Tikehau Capital"
-      statut: "à_étudier"
+      statut: "refusé"
       priorite: 1
+      motif: >
+        Site et robots.txt refusés à notre User-Agent (403) : protection contre les
+        robots, jamais contournée. Vérifié le 2026-09-28.
     - nom: "PAI Partners"
       logiciel: "recruitee"
       adresse: "https://careers.paipartners.com"

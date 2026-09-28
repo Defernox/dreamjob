@@ -152,6 +152,27 @@ def depuis_nom(nom: str | None) -> str:
     return _NOMS.get(_nu(nom or "").strip(" ."), "")
 
 
+_ANGLAIS = {
+    "Allemagne": "Germany", "Autriche": "Austria", "Belgique": "Belgium", "Chypre": "Cyprus",
+    "Danemark": "Denmark", "Espagne": "Spain", "France": "France", "Irlande": "Ireland",
+    "Italie": "Italy", "Liechtenstein": "Liechtenstein", "Luxembourg": "Luxembourg", "Malte": "Malta",
+    "Monaco": "Monaco", "Norvège": "Norway", "Pays-Bas": "Netherlands", "Pologne": "Poland",
+    "Portugal": "Portugal", "Royaume-Uni": "United Kingdom", "Suède": "Sweden", "Suisse": "Switzerland",
+    "Tchéquie": "Czech Republic", "Brésil": "Brazil", "Canada": "Canada", "États-Unis": "United States",
+    "Mexique": "Mexico", "Australie": "Australia", "Chine": "China", "Hong Kong": "Hong Kong",
+    "Inde": "India", "Japon": "Japan", "Nouvelle-Zélande": "New Zealand", "Singapour": "Singapore",
+    "Afrique du Sud": "South Africa", "Algérie": "Algeria", "Côte d'Ivoire": "Ivory Coast",
+    "Émirats arabes unis": "United Arab Emirates", "Israël": "Israel", "Île Maurice": "Mauritius",
+    "Maroc": "Morocco", "Qatar": "Qatar", "Sénégal": "Senegal", "Tunisie": "Tunisia",
+}
+
+
+def en_anglais(pays: str) -> str:
+    """Le nom anglais d'un pays du vocabulaire, pour les sites qui filtrent
+    par nom de pays (Eightfold chez HSBC)."""
+    return _ANGLAIS.get(pays, pays)
+
+
 def pays_possibles(lieu: str | None) -> list[str]:
     """Tous les pays d'un lieu qui en cite plusieurs : « New York, London,
     Singapore » → États-Unis, Royaume-Uni, Singapour. Le premier voulu gagne."""

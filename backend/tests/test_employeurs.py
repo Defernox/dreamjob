@@ -682,6 +682,51 @@ def test_bpce_le_plan_publie_et_la_page_de_l_offre_jamais_la_recherche(registre)
     assert o.description_brute == "Suivi des risques."
 
 
+# --- Eightfold ----------------------------------------------------------------------------------
+
+
+class SiteEightfold:
+    ROBOTS = "User-agent: *\nDisallow: /\nAllow: /careers\nAllow: /api/apply\nAllow: /api/pcsx\n"
+
+    def __init__(self, offres):
+        self.offres, self.appels = sorted(offres, key=lambda o: o["jours"]), []
+
+    def get(self, url, **kw):
+        self.appels.append(("GET", url, None))
+        if url.endswith("/robots.txt"):
+            return Reponse(200, None, self.ROBOTS, {})
+        epoch = lambda o: int((maintenant() - timedelta(days=o["jours"])).timestamp())  # noqa: E731
+        if "/api/pcsx/search" in url or "/api/apply/v2/jobs?" in url:
+            debut = int(url.split("start=")[1].split("&")[0])
+            lieu = url.split("location=")[1].split("&")[0] if "location=" in url else ""
+            retenues = [o for o in self.offres if not lieu or lieu.replace("%20", " ") in o["lieu"]]
+            cle = "postedTs" if "pcsx" in url else "t_create"
+            positions = [{"id": o["id"], "name": o["titre"], "locations": [o["lieu"]], cle: epoch(o)}
+                         for o in retenues[debut:debut + 10]]
+            return Reponse(200, {"data": {"positions": positions}} if "pcsx" in url else {"positions": positions}, "", {})
+        return Reponse(200, {"data": {"jobDescription": "<p>Risques.</p>"}} if "pcsx" in url
+                       else {"job_description": "<p>Risques.</p>", "type": "Internship"}, "", {})
+
+
+def test_eightfold_pcsx_et_v2_pays_par_pays(registre):
+    offres = [{"id": 1, "titre": "Risk Analyst", "lieu": "Paris, France", "jours": 0},
+              {"id": 2, "titre": "Risk Analyst", "lieu": "Mumbai, India", "jours": 0}]
+    site = SiteEightfold(offres)
+    c = EmployeursConnector(Sites(ms=site), registre(
+        {"nom": "MS", "logiciel": "eightfold", "adresse": "https://ms.eightfold.ai/careers", "domaine": "ms.com"}))
+    assert [(o.source_id, o.pays) for o in c.fetch(_requete())] == [("ms:1", "France")]
+
+    site = SiteEightfold(offres)
+    c = EmployeursConnector(Sites(hsbc=site), registre(
+        {"nom": "HSBC", "logiciel": "eightfold", "adresse": "https://hsbc.eightfold.ai/careers",
+         "domaine": "hsbc.com", "par_pays": True}))
+    [o] = c.fetch(_requete(pays=("France", "Royaume-Uni")))
+    assert (o.pays, o.type_contrat, o.description_brute) == ("France", "Stage", "Risques.")
+    # Un pays à la fois, nommé en anglais : sans lieu, l'API choisirait celui de l'appelant.
+    lieux = [u.split("location=")[1].split("&")[0] for _, u, _ in site.appels if "v2/jobs?" in u]
+    assert lieux == ["France", "United%20Kingdom"]
+
+
 # --- La politesse, les pannes ---------------------------------------------------------------
 
 
@@ -692,6 +737,42 @@ def test_robots_txt_qui_interdit_n_est_pas_franchi(registre):
         c.fetch(_requete())
     assert [m for m, *_ in site.appels] == ["GET"], "seul robots.txt a été lu"
     assert "robots.txt" in c.pannes["Banque"]
+
+
+@pytest.mark.parametrize("url, attendu", [
+    # Eightfold : tout est interdit sauf ce qui est nommé. `urllib.robotparser`
+    # appliquait la première règle et interdisait ce que le site autorise.
+    ("https://ms.eightfold.ai/api/pcsx/search?domain=x", True),
+    ("https://ms.eightfold.ai/careers", True),
+    ("https://ms.eightfold.ai/admin", False),
+    ("https://ms.eightfold.ai/", True),                 # Allow: /$
+    ("https://ms.eightfold.ai/x/", False),
+    # La règle la plus précise l'emporte, même interdite après une autorisation.
+    ("https://ms.eightfold.ai/careers/secret/1", False),
+    # Joker et ancre de fin.
+    ("https://ms.eightfold.ai/careers?page=1", False),
+    ("https://ms.eightfold.ai/careers?page=12", True),
+    # À précision égale, l'autorisation l'emporte.
+    ("https://ms.eightfold.ai/egal", True),
+])
+def test_robots_txt_selon_la_rfc_9309(url, attendu):
+    from app.connectors.employeurs.robots import Regles
+    texte = ("User-agent: Googlebot\nDisallow: /careers\n\n"
+             "User-agent: *\nDisallow: /\nAllow: /$\nAllow: /careers\nAllow: /api/pcsx\n"
+             "Disallow: /careers/secret\nDisallow: /*?page=1$\nDisallow: /egal\nAllow: /egal\n"
+             "Sitemap: https://ms.eightfold.ai/plan.xml\n")
+    regles = Regles(texte, "DreamJob")
+    assert regles.autorise(url) is attendu
+    assert regles.site_maps() == ["https://ms.eightfold.ai/plan.xml"]
+
+
+def test_le_groupe_qui_nomme_notre_robot_passe_avant_l_etoile():
+    from app.connectors.employeurs.robots import Regles
+    texte = "User-agent: *\nDisallow: /\n\nUser-agent: DreamJob\nUser-agent: autre\nDisallow: /prive\n"
+    assert Regles(texte, "DreamJob").autorise("https://x.fr/offres")
+    assert not Regles(texte, "DreamJob").autorise("https://x.fr/prive/1")
+    assert not Regles(texte, "AutreRobot").autorise("https://x.fr/offres")
+    assert Regles("User-agent: *\nDisallow:\n", "DreamJob").autorise("https://x.fr/tout")
 
 
 def test_un_robots_txt_refuse_a_tous_n_interdit_rien(registre):

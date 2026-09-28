@@ -38,6 +38,7 @@ from .logiciel import Logiciel
 from .registre import ACTIF, Employeur, charger
 from .robots import Robots
 from .bpce import Bpce
+from .eightfold import Eightfold
 from .greenhouse import Greenhouse
 from .oracle import Oracle
 from .plan_du_site import PlanDuSite
@@ -55,6 +56,7 @@ LOGICIELS: dict[str, type[Logiciel]] = {
     Greenhouse.cle: Greenhouse,
     PlanDuSite.cle: PlanDuSite,
     Bpce.cle: Bpce,
+    Eightfold.cle: Eightfold,
 }
 
 # Les contrats qu'une annonce d'employeur ne prend pas la peine d'écrire.

@@ -107,8 +107,8 @@ employeurs:
   banques_internationales:
     - nom: "J.P. Morgan"
       logiciel: "oracle"
-      adresse: "https://jpmc.fa.oraclecloud.com/hcmUI/CandidateExperience/en/sites/CX_1001/requisitions"
-      statut: "à_venir"
+      adresse: "https://jpmc.fa.oraclecloud.com/hcmUI/CandidateExperience/en/sites/CX_1001"
+      statut: "actif"
       priorite: 1
     - nom: "Bank of America"
       logiciel: "workday"
@@ -166,7 +166,7 @@ employeurs:
     - nom: "BNY"
       logiciel: "oracle"
       adresse: "https://eofe.fa.us2.oraclecloud.com/hcmUI/CandidateExperience/en/sites/BNY-Careers"
-      statut: "à_venir"
+      statut: "actif"
       priorite: 1
     - nom: "State Street"
       logiciel: "workday"
@@ -352,7 +352,7 @@ employeurs:
     - nom: "Schroders"
       logiciel: "oracle"
       adresse: "https://ekbq.fa.em2.oraclecloud.com/hcmUI/CandidateExperience/en/sites/CX_2"
-      statut: "à_venir"
+      statut: "actif"
       priorite: 2
     - nom: "PIMCO"
       logiciel: "workday"
@@ -622,7 +622,7 @@ employeurs:
     - nom: "Lazard"
       logiciel: "oracle"
       adresse: "https://icbpjb.fa.ocs.oraclecloud.com/hcmUI/CandidateExperience/en/sites/LazardProfessionalCareers"
-      statut: "à_venir"
+      statut: "actif"
       priorite: 2
     - nom: "Edmond de Rothschild"
       statut: "à_étudier"
@@ -735,7 +735,7 @@ employeurs:
     - nom: "SCOR"
       logiciel: "oracle"
       adresse: "https://fa-errt-saasfaprod1.fa.ocs.oraclecloud.com/hcmUI/CandidateExperience/en/sites/CX_2001"
-      statut: "à_venir"
+      statut: "actif"
       priorite: 1
     - nom: "Allianz France"
       statut: "à_étudier"
@@ -871,7 +871,7 @@ employeurs:
     - nom: "Citco"
       logiciel: "oracle"
       adresse: "https://fa-euxc-saasfaprod1.fa.ocs.oraclecloud.com/hcmUI/CandidateExperience/en/sites/CX_1"
-      statut: "à_venir"
+      statut: "actif"
       priorite: 3
     - nom: "CSC"
       statut: "à_étudier"

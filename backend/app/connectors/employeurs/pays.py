@@ -30,6 +30,38 @@ ISO: dict[str, str] = {
     "TN": "Tunisie",
 }
 
+# Des pays hors du vocabulaire des recherches, mais fréquents sur les sites des
+# groupes financiers. Les nommer, c'est pouvoir les écarter : inconnus, ils
+# passaient le filtre des pays comme un lieu non précisé — un poste de SCOR à
+# Bucarest arrivait ainsi dans une recherche limitée à la France.
+_AUTRES: dict[str, tuple[str, tuple[str, ...]]] = {
+    "RO": ("Roumanie", ("romania", "roumanie")), "HU": ("Hongrie", ("hungary", "hongrie")),
+    "GR": ("Grèce", ("greece", "grece")), "TR": ("Turquie", ("turkey", "turkiye", "turquie")),
+    "BG": ("Bulgarie", ("bulgaria", "bulgarie")), "HR": ("Croatie", ("croatia", "croatie")),
+    "RS": ("Serbie", ("serbia", "serbie")), "SK": ("Slovaquie", ("slovakia", "slovaquie")),
+    "SI": ("Slovénie", ("slovenia", "slovenie")), "FI": ("Finlande", ("finland", "finlande")),
+    "EE": ("Estonie", ("estonia", "estonie")), "LV": ("Lettonie", ("latvia", "lettonie")),
+    "LT": ("Lituanie", ("lithuania", "lituanie")), "IS": ("Islande", ("iceland", "islande")),
+    "UA": ("Ukraine", ("ukraine",)), "RU": ("Russie", ("russia", "russie")),
+    "JE": ("Jersey", ("jersey",)), "GG": ("Guernesey", ("guernsey", "guernesey")),
+    "IM": ("Île de Man", ("isle of man",)), "GI": ("Gibraltar", ("gibraltar",)),
+    "PH": ("Philippines", ("philippines",)), "TW": ("Taïwan", ("taiwan",)),
+    "KR": ("Corée du Sud", ("south korea", "korea", "republic of korea")),
+    "MY": ("Malaisie", ("malaysia", "malaisie")), "TH": ("Thaïlande", ("thailand", "thailande")),
+    "ID": ("Indonésie", ("indonesia", "indonesie")), "VN": ("Viêt Nam", ("vietnam", "viet nam")),
+    "PK": ("Pakistan", ("pakistan",)), "BD": ("Bangladesh", ("bangladesh",)),
+    "LK": ("Sri Lanka", ("sri lanka",)), "MO": ("Macao", ("macau", "macao")),
+    "SA": ("Arabie saoudite", ("saudi arabia", "arabie saoudite")),
+    "BH": ("Bahreïn", ("bahrain",)), "KW": ("Koweït", ("kuwait",)), "OM": ("Oman", ("oman",)),
+    "EG": ("Égypte", ("egypt", "egypte")), "NG": ("Nigeria", ("nigeria",)), "KE": ("Kenya", ("kenya",)),
+    "AR": ("Argentine", ("argentina", "argentine")), "CL": ("Chili", ("chile", "chili")),
+    "CO": ("Colombie", ("colombia", "colombie")), "PE": ("Pérou", ("peru", "perou")),
+    "UY": ("Uruguay", ("uruguay",)), "CR": ("Costa Rica", ("costa rica",)),
+    "PR": ("Porto Rico", ("puerto rico",)), "BM": ("Bermudes", ("bermuda", "bermudes")),
+    "KY": ("Îles Caïmans", ("cayman islands",)), "BS": ("Bahamas", ("bahamas",)),
+}
+ISO.update({code: nom for code, (nom, _) in _AUTRES.items()})
+
 # Noms rencontrés sur les sites, sans accents et en minuscules.
 _NOMS: dict[str, str] = {
     "germany": "Allemagne", "deutschland": "Allemagne", "allemagne": "Allemagne",
@@ -81,6 +113,7 @@ _NOMS: dict[str, str] = {
     "senegal": "Sénégal",
     "tunisia": "Tunisie", "tunisie": "Tunisie",
 }
+_NOMS.update({nom_local: nom for nom, noms in _AUTRES.values() for nom_local in noms})
 
 # Les grandes villes financières : quand le site ne donne qu'une ville
 # (« London », « Paris La Défense »), c'est elle qui dit le pays.

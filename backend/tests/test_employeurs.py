@@ -444,6 +444,68 @@ def test_successfactors_une_fiche_complete(registre):
     assert not [u for _, u, _ in site.appels if "/services/" in u], "robots.txt l'interdit"
 
 
+# --- Oracle -----------------------------------------------------------------------------------
+
+
+class SiteOracle:
+    """Oracle Recruiting Cloud : robots.txt en 403 pour tous, liste triée par
+    date avec lieux secondaires, fiches par identifiant."""
+
+    def __init__(self, offres):
+        self.offres = sorted(offres, key=lambda o: o["jours"])
+        self.appels = []
+
+    def get(self, url, **kw):
+        self.appels.append(("GET", url, None))
+        if url.endswith("/robots.txt"):
+            return Reponse(403, None, "W4S-402: Blocked by WAF4SaaS", {})
+        if "recruitingCEJobRequisitions?" in url:
+            debut = int(url.split("offset=")[1].split(",")[0])
+            return Reponse(200, {"items": [{"requisitionList": [{
+                "Id": o["id"], "Title": o["titre"], "PrimaryLocation": o["lieu"],
+                "PostedDate": (maintenant() - timedelta(days=o["jours"])).date().isoformat(),
+                "PrimaryLocationCountry": o["iso"],
+                "secondaryLocations": [{"CountryCode": c} for c in o.get("autres", [])],
+            } for o in self.offres[debut:debut + 200]]}]}, "", {})
+        o = next(o for o in self.offres if f"%22{o['id']}%22" in url)
+        return Reponse(200, {"items": [{
+            "ExternalDescriptionStr": "<p>Suivi des <b>risques</b>.</p>",
+            "ExternalQualificationsStr": "<ul><li>Master</li></ul>",
+            "ExternalPostedStartDate": "2026-09-28T09:33:10+00:00",
+            "PrimaryLocation": o["lieu"], "PrimaryLocationCountry": o["iso"],
+        }]}, "", {})
+
+
+def _employeur_oracle(hote):
+    return {"nom": hote.title(), "logiciel": "oracle",
+            "adresse": f"https://{hote}.fa.oraclecloud.com/hcmUI/CandidateExperience/en/sites/CX_1001"}
+
+
+def test_oracle_un_poste_a_new_york_et_a_paris_est_retenu_pour_paris(registre):
+    site = SiteOracle([
+        {"id": "1", "titre": "Risk Analyst", "jours": 0, "iso": "US", "lieu": "New York", "autres": ["FR"]},
+        {"id": "2", "titre": "Risk Analyst", "jours": 0, "iso": "RO", "lieu": "Bucuresti, Romania"},
+    ])
+    c = EmployeursConnector(Sites(banque=site), registre(_employeur_oracle("banque")))
+    trouvees = c.fetch(_requete(pays=("France",)))
+    assert [(o.source_id, o.pays) for o in trouvees] == [("banque:1", "France")]
+
+
+def test_oracle_une_fiche_complete(registre):
+    site = SiteOracle([{"id": "7", "titre": "Stage - Risk Analyst", "jours": 0, "iso": "GB", "lieu": "London"}])
+    c = EmployeursConnector(Sites(banque=site), registre(_employeur_oracle("banque")))
+    o = c.fetch(_requete())[0]
+    assert o.description_brute == "Suivi des risques.\n\n- Master"
+    assert o.url == "https://banque.fa.oraclecloud.com/hcmUI/CandidateExperience/en/sites/CX_1001/job/7"
+    assert (o.pays, o.type_contrat) == ("Royaume-Uni", "Stage")
+
+
+def test_un_pays_hors_du_vocabulaire_est_ecarte_et_non_ignore():
+    assert depuis_iso("RO") == "Roumanie"
+    assert depuis_nom("Philippines") == "Philippines"
+    assert depuis_lieu("Jersey City, NJ, United States") == "États-Unis"
+
+
 # --- La politesse, les pannes ---------------------------------------------------------------
 
 

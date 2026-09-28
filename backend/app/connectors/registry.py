@@ -14,6 +14,7 @@ from .base import BaseConnector
 from .adzuna import AdzunaConnector
 from .civiweb import CiviwebConnector
 from .dogfinance import DogFinanceConnector
+from .employeurs import EmployeursConnector
 from .france_travail import FranceTravailConnector
 from .http import ClientHttp
 
@@ -24,6 +25,7 @@ CONNECTEURS: dict[str, type[BaseConnector]] = {
     CiviwebConnector.cle: CiviwebConnector,
     AdzunaConnector.cle: AdzunaConnector,
     DogFinanceConnector.cle: DogFinanceConnector,
+    EmployeursConnector.cle: EmployeursConnector,
 }
 
 

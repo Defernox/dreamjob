@@ -81,6 +81,7 @@ n'avait jamais été compilée pour la production.
 ```
 DreamJob/
 ├─ config.yaml          réglages : poids du scoring, sources actives, chemins
+├─ employeurs.yaml      les sites carrières suivis, leur logiciel, leur statut
 ├─ .env                 secrets uniquement (jamais versionné)
 ├─ setup.cmd / dev.cmd  installation / lancement (appellent les .ps1)
 ├─ creer-raccourci.cmd  pose le raccourci DreamJob sur le Bureau
@@ -97,7 +98,7 @@ DreamJob/
 │     ├─ db.py          moteur SQLite
 │     ├─ models/        tables SQLModel
 │     ├─ api/           routeurs HTTP
-│     ├─ connectors/    base · http (débit, cache) · registry · une source = un fichier
+│     ├─ connectors/    base · http (débit, cache) · registry · une source = un fichier · employeurs/ (un logiciel = un fichier)
 │     ├─ services/      dedup · scan · veille · scoring · acces (comptes) · budget · notification
 │     ├─ scoring/       lexique · exigences · extraction · cible · corpus · score · explain — pur code
 │     ├─ documents/     docx_outils · intitule · cv_render · ciblage · correspondance · lettre · controles · exemples · pdf · dossier
@@ -574,6 +575,7 @@ la trace qui justifie chaque décision.
 | Civiweb (V.I.E) | actif | `robots.txt` n'interdit que `/refresh`, aucune clause CGU sur l'extraction ; endpoint JSON du site, clé publiée dans sa configuration front |
 | Adzuna | actif | API publique documentée, validée en réel. 19 pays, un appel par pays. **Descriptions tronquées à 500 caractères par l'API** : le critère compétences y est structurellement plus faible que sur les autres sources |
 | DogFinance | actif | Site spécialisé finance, ~11 000 offres. `robots.txt` autorise `/` et publie trois sitemaps d'offres ; il n'interdit que `/offres?*`, la recherche filtrée — jamais utilisée. Aucune clause CGU sur l'extraction. **Prélèvement plafonné**, voir ci-dessous |
+| Sites des employeurs | actif | Les sites carrières de `employeurs.yaml`, par leur logiciel de recrutement — voir « Sites des employeurs » |
 | Talent.com | **refusé** | `robots.txt` interdit `/services/api-new/search` et `/search-jobs/*` |
 | HelloWork | **refusé** | `robots.txt` interdit `/fr-fr/emploi/recherche.html` et `Disallow: /*?` |
 | Welcome to the Jungle | **refusé** | `robots.txt` interdit `*/jobs?query=*` ; API réservée aux partenaires |
@@ -624,6 +626,63 @@ distingue trois cas, et l'interface doit les traiter différemment :
 **Un filtre trop large vaut mieux qu'un filtre trop étroit.** Exemple :
 `publieeDepuis` chez France Travail n'accepte que 1/3/7/14/31 jours — on arrondit
 vers le **haut**, sinon des offres disparaissent en silence.
+
+---
+
+## Sites des employeurs
+
+**Les offres à la source.** Une banque publie d'abord sur son site ; les
+agrégateurs reprennent l'annonce des jours plus tard, parfois jamais, et Adzuna
+la coupe à 500 caractères. Avant cette source, la base comptait 12 offres de
+BNP Paribas et 10 de Société Générale, qui en ont des centaines d'ouvertes.
+
+**Un connecteur par logiciel, pas par employeur** (`connectors/employeurs/`).
+228 employeurs ont été repérés le 2026-09-28 (banques, gestion d'actifs, fonds,
+trading, banque privée, assurance, institutions, notation, conseil, cabinets de
+recrutement) : leurs sites reposent sur une vingtaine de logiciels, Workday en
+tête (32), puis SuccessFactors, Talentsoft, Oracle, Greenhouse. Ajouter un
+employeur, c'est une entrée dans `employeurs.yaml` — son statut (`actif`,
+`à_venir`, `à_étudier`, `refusé`) et, pour un refus, le motif daté.
+
+**On ne demande pas aux sites de chercher** : un site anglophone ne trouve rien
+à « analyste risques ». Chaque employeur est listé une fois par scan, filtré sur
+les pays des recherches, du plus récent au plus ancien jusqu'à la fenêtre
+(`employeurs.fenetre_jours`, 31 jours pour une recherche sans limite, 1 jour en
+veille) ; les intitulés sont comparés ici, avec le vocabulaire du score —
+« Risk Analyst » et « analyste risques » donnent les mêmes mots. Au-delà de
+deux mots, un peut manquer : « Analyste risques de crédit » trouve « Credit Risk
+Officer ».
+
+**Une fiche n'est ouverte que pour une offre nouvelle qui répond.** Le scan
+confie au connecteur les identifiants déjà en base (`veut_les_connus`) : une
+offre retrouvée est seulement dite « toujours en ligne ». Mesuré sur 29 sites
+Workday et les 4 recherches du propriétaire : premier scan 271 offres en
+2 min 40, passe de veille en 10 s.
+
+**Le contrat que l'annonce n'écrit pas est un CDI ou un CDD.** Laisser passer un
+contrat inconnu versait tous les postes « finance » — 79 conseillers d'agence
+de Bank of America — dans la recherche V.I.E. Une recherche réservée aux
+contrats particuliers exige qu'ils soient écrits dans l'intitulé. Et le pays de
+la fiche a le dernier mot : « 3 Locations » en liste cachait des postes en Inde.
+
+**Mêmes règles que partout, vérifiées à chaque scan.** robots.txt relu selon la
+RFC 9309 (`robots.py`) : fichier présent, ses règles ; 4xx, rien n'est
+interdit — Oracle renvoie 403 à tout le monde, navigateurs compris ; 5xx ou
+injoignable, on s'abstient. `urllib.robotparser` traite 401/403 comme une
+interdiction totale : c'est l'ancienne convention, et elle aurait écarté
+J.P. Morgan à tort. Un site protégé contre les robots est refusé, **jamais
+contourné** : BNP Paribas bloque notre User-Agent (Akamai) sur sa liste, et sa
+recherche Avature est désactivée — refusé, motif consigné. Le client HTTP est
+devenu sûr entre fils (un verrou par hôte) : les employeurs sont interrogés en
+parallèle, jamais deux fois dans la seconde sur un même site.
+
+**Workday** (`workday.py`) : l'interface JSON que la page elle-même appelle,
+`POST /wday/cxs/<locataire>/<site>/jobs`. Sans mot-clé, la liste est triée du
+plus récent au plus ancien ; le filtre pays accepte plusieurs pays d'un coup ;
+la date n'y est que relative (« 30+ Days Ago »), la fiche donne la date exacte
+et le pays en code ISO. Le plan du site publié s'arrête à cent offres : la
+liste est la seule voie complète. Le total n'est renvoyé qu'avec la première
+page.
 
 ---
 

@@ -171,6 +171,18 @@ sources:
       (PLAFOND_PAGES). Ce plafond est juridique, pas technique. Limites :
       localisation absente une fois sur deux, et pas de lastmod dans les
       sitemaps (impossible de reperer les nouveautes sans ouvrir les pages).
+  employeurs:
+    actif: true
+    libelle: "Sites des employeurs"
+    remarque: >-
+      Les sites carrieres des banques, gestionnaires, fonds et assureurs listes
+      dans employeurs.yaml, par leur logiciel de recrutement (Workday...). On y
+      lit l'interface JSON que la page elle-meme interroge. robots.txt relu a
+      chaque scan (RFC 9309), une requete par seconde et par site, notre
+      User-Agent : un site protege contre les robots est refuse, jamais
+      contourne, et le motif est consigne dans employeurs.yaml. Chaque
+      employeur est liste une fois par scan ; une fiche n'est ouverte que pour
+      une offre nouvelle qui repond a une recherche.
   talent:
     actif: false
     libelle: "Talent.com"
@@ -207,7 +219,9 @@ veille:
   heure_fin: 22
   # Adzuna (quota de 2 500 appels par mois, deja aux trois cinquiemes) et
   # DogFinance (40 pages par jour, limite juridique) restent au scan du matin.
-  sources: [france_travail, civiweb]
+  # Les sites des employeurs n'ont pas de quota : la veille n'y lit que la
+  # premiere page de chacun, triee du plus recent au plus ancien.
+  sources: [france_travail, civiweb, employeurs]
   # Aux recherches enregistrees s'ajoutent les intitules tires du CV : quand
   # on ne fait que reperer les nouveautes, on ratisse large, le score trie.
   elargir_depuis_le_cv: true
@@ -216,6 +230,16 @@ veille:
   seuil_alerte:         # vide = le seuil vert de l'ecran (scoring.seuils.bon)
   alertes_par_jour_max: 15
   conserver_jours: 7
+
+employeurs:
+  # La liste des employeurs suivis, et leur statut (actif, a venir, refuse).
+  fichier: employeurs.yaml
+  # Une recherche sans limite de date remonte jusque-la sur les sites carrieres.
+  fenetre_jours: 31
+  # Pages de liste lues au plus par employeur et par scan (20 offres chacune).
+  pages_max: 15
+  # Employeurs interroges en meme temps, chacun sur son propre site.
+  en_parallele: 8
 
 planification:
   # DreamJob n'est pas un serveur : il ne tourne que quand vous l'ouvrez. Le

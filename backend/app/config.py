@@ -237,6 +237,22 @@ class Planification(BaseModel):
         return 7, 30
 
 
+class Employeurs(BaseModel):
+    """Les sites carrières des employeurs (`connectors/employeurs`)."""
+
+    # La liste des employeurs suivis, relative à la racine du projet.
+    fichier: str = "employeurs.yaml"
+    # Une recherche sans limite de date remonte jusque-là : au-delà, une offre
+    # d'un site carrières est souvent pourvue.
+    fenetre_jours: int = Field(default=31, ge=1, le=120)
+    # Pages de liste lues au plus par employeur et par scan (20 offres chacune
+    # chez Workday) : borne le coût d'un scan, même sur un site immense.
+    pages_max: int = Field(default=15, ge=1, le=100)
+    # Employeurs interrogés en même temps — chacun sur son propre site, et
+    # toujours une requête par seconde au plus sur un même site.
+    en_parallele: int = Field(default=8, ge=1, le=32)
+
+
 class Veille(BaseModel):
     """La veille : repérer une offre dans l'heure où elle paraît, et alerter.
 
@@ -288,6 +304,7 @@ class Reglages(BaseModel):
     sources: dict[str, Source] = Field(default_factory=dict)
     planification: Planification = Field(default_factory=Planification)
     veille: Veille = Field(default_factory=Veille)
+    employeurs: Employeurs = Field(default_factory=Employeurs)
 
     # --- Secrets, lus dans l'environnement, jamais écrits sur disque ---
     @property

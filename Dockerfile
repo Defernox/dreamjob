@@ -32,7 +32,7 @@ COPY backend/requirements.txt backend/requirements.txt
 RUN pip install --no-cache-dir -r backend/requirements.txt
 
 COPY backend/ backend/
-COPY config.yaml ./
+COPY config.yaml employeurs.yaml ./
 COPY --from=interface /src/frontend/dist frontend/dist
 RUN mkdir -p data templates /home/dreamjob/Jobscout/candidatures \
  && chown -R dreamjob:dreamjob /app/data /home/dreamjob

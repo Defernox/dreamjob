@@ -15,6 +15,7 @@ import hashlib
 import json
 import logging
 import random
+import threading
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -61,14 +62,20 @@ class ClientHttp:
         self.dossier_cache = dossier_cache
         self.cache_ttl = cache_ttl_heures * 3600
         self._dernier_appel: dict[str, float] = {}
+        # Les sites des employeurs sont interrogés en parallèle, un fil par
+        # site : le tour de parole se prend donc sous verrou, un par hôte, pour
+        # que deux fils ne tombent jamais sur le même serveur dans la seconde.
+        self._verrou = threading.Lock()
+        self._verrous_hotes: dict[str, threading.Lock] = {}
         # Créé à la première requête : monter un contexte SSL coûte ~1 s, inutile
         # pour un scan dont toutes les réponses sortent du cache.
         self._client: httpx.Client | None = None
 
     def _session(self) -> httpx.Client:
-        if self._client is None:
-            self._client = httpx.Client(timeout=self.timeout, follow_redirects=True)
-        return self._client
+        with self._verrou:
+            if self._client is None:
+                self._client = httpx.Client(timeout=self.timeout, follow_redirects=True)
+            return self._client
 
     def fermer(self) -> None:
         if self._client is not None:
@@ -85,12 +92,15 @@ class ClientHttp:
 
     def _attendre_son_tour(self, url: str) -> None:
         hote = urlparse(url).netloc
-        precedent = self._dernier_appel.get(hote)
-        if precedent is not None:
-            reste = self.intervalle - (time.monotonic() - precedent)
-            if reste > 0:
-                time.sleep(reste)
-        self._dernier_appel[hote] = time.monotonic()
+        with self._verrou:
+            verrou = self._verrous_hotes.setdefault(hote, threading.Lock())
+        with verrou:
+            precedent = self._dernier_appel.get(hote)
+            if precedent is not None:
+                reste = self.intervalle - (time.monotonic() - precedent)
+                if reste > 0:
+                    time.sleep(reste)
+            self._dernier_appel[hote] = time.monotonic()
 
     # ----------------------------------------------------------------- cache
 

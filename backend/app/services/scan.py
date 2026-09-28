@@ -235,6 +235,11 @@ def lancer_scan(
             interrogees.append(cle)
             try:
                 connecteur = construire(cle, http, reglages)
+                if getattr(connecteur, "veut_les_connus", False):
+                    # Une offre déjà en base n'a pas à voir sa fiche rouverte :
+                    # la retrouver dans la liste suffit à la dire en ligne.
+                    connecteur.connus = set(session.exec(
+                        select(Offer.source_id).where(Offer.source == cle)).all())
                 nombre = 0
                 for requete, comptes in _regrouper(pour_elle):
                     for brute in connecteur.fetch(requete):

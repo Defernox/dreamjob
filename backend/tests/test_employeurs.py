@@ -616,6 +616,23 @@ def test_le_titre_se_lit_dans_l_adresse():
     from app.connectors.employeurs.plan_du_site import titre_de_l_adresse
     assert titre_de_l_adresse("https://x.fr/offres-d-emploi/analyste-support-trading-2600032A-fr",
                               r"-([0-9A-Z]{8})-(?:fr|en)$") == "analyste support trading"
+    # Radancy range l'intitulé avant deux numéros, SuccessFactors avant un.
+    assert titre_de_l_adresse("https://careers.x.com/job/new-york/risk-analyst/45831/99354208",
+                              r"/(\d+)/?$") == "risk analyst"
+    assert titre_de_l_adresse("https://jobs.x.com/job/Warsaw-Securities-Specialist/1439302733/",
+                              r"/(\d+)/?$") == "Warsaw Securities Specialist"
+
+
+def test_le_jobposting_en_guillemets_simples_ou_en_microdonnees():
+    from app.connectors.employeurs.plan_du_site import jobposting, microdonnees
+    assert jobposting("<script type='application/ld+json'>{\"@type\": \"JobPosting\", \"title\": \"A\"}</script>")["title"] == "A"
+    page = ('<div itemscope itemtype="http://schema.org/JobPosting"><h1><span itemprop="title">Risk Analyst</span></h1>'
+            '<meta itemprop="addressCountry" content="CH"><meta itemprop="datePosted" content="Sat Sep 26 02:00:00 UTC 2026">'
+            '<span itemprop="description"><p>Bâle III.</p></span><div class="applylink">Postuler</div></div>')
+    e = microdonnees(page)
+    assert (e["title"], e["jobLocation"]["address"]["addressCountry"]) == ("Risk Analyst", "CH")
+    assert "Bâle III." in e["description"] and "applylink" not in e["description"]
+    assert microdonnees("<p>rien</p>") is None
 
 
 # --- La politesse, les pannes ---------------------------------------------------------------

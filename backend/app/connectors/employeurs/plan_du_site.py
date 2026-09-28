@@ -37,7 +37,8 @@ from .pays import depuis_iso, depuis_lieu, depuis_nom
 from .registre import Employeur
 
 _LOC = re.compile(r"<(sitemap|url)>\s*<loc>\s*([^<\s]+)\s*</loc>(?:\s*<lastmod>\s*([^<\s]+)\s*</lastmod>)?", re.S)
-_JSONLD = re.compile(r'<script[^>]*type="application/ld\+json"[^>]*>(.*?)</script>', re.S | re.I)
+# Guillemets simples, doubles ou absents : chaque site écrit la balise à sa façon.
+_JSONLD = re.compile(r"""<script[^>]*type=["']?application/ld\+json["']?[^>]*>(.*?)</script>""", re.S | re.I)
 _CONTRATS = {"INTERN": "Stage", "INTERNSHIP": "Stage", "TEMPORARY": "CDD", "CONTRACTOR": "Freelance",
              "APPRENTICESHIP": "Alternance"}
 PLANS_MAX = 20
@@ -50,9 +51,14 @@ def _date(valeur: str | None) -> datetime | None:
     try:
         instant = datetime.fromisoformat(valeur)
     except ValueError:
-        try:
-            instant = datetime.strptime(valeur[:10], "%Y-%m-%d")
-        except ValueError:
+        # Microdonnées SuccessFactors : « Sat Sep 26 02:00:00 UTC 2026 ».
+        for format_ in ("%Y-%m-%d", "%a %b %d %H:%M:%S %Z %Y"):
+            try:
+                instant = datetime.strptime(valeur if "%Z" in format_ else valeur[:10], format_)
+                break
+            except ValueError:
+                continue
+        else:
             return None
     if instant.tzinfo is not None:
         instant = instant.astimezone(timezone.utc).replace(tzinfo=None)
@@ -79,11 +85,53 @@ def jobposting(html: str) -> dict | None:
     return None
 
 
+_FINS_DESCRIPTION = ("applylink", 'class="jobFooter', 'id="similar-jobs', "<footer", 'class="social')
+
+
+def _itemprop(html: str, nom: str) -> str:
+    """La valeur d'une propriété : attribut `content`, sinon texte de l'élément."""
+    for motif in (rf'itemprop="{nom}"[^>]*content="([^"]*)"', rf'content="([^"]*)"[^>]*itemprop="{nom}"',
+                  rf'itemprop="{nom}"[^>]*>(.*?)</'):
+        if m := re.search(motif, html, re.S):
+            return " ".join(unescape(re.sub(r"<[^>]+>", " ", m.group(1))).split())
+    return ""
+
+
+def microdonnees(html: str) -> dict | None:
+    """Le JobPosting d'une page balisée en microdonnées plutôt qu'en JSON-LD —
+    la même norme schema.org, sous une autre forme (SuccessFactors, notamment)."""
+    if not re.search(r"schema\.org/JobPosting", html):
+        return None
+    debut = html.find('itemprop="description"')
+    description = ""
+    if debut >= 0:
+        # La marque de fin est dans une balise : on coupe au début de celle-ci.
+        fins = [html.rfind("<", debut, i) for i in (html.find(f, debut) for f in _FINS_DESCRIPTION) if i > 0]
+        fins = [i for i in fins if i > debut]
+        bloc = html[debut:min(fins) if fins else debut + 30000]
+        description = bloc[bloc.find(">") + 1:]
+    return {
+        "title": _itemprop(html, "title"),
+        "description": description,
+        "datePosted": _itemprop(html, "datePosted"),
+        "jobLocation": {"address": {"addressLocality": _itemprop(html, "addressLocality"),
+                                    "addressCountry": _itemprop(html, "addressCountry")}},
+        "employmentType": _itemprop(html, "employmentType"),
+    }
+
+
 def titre_de_l_adresse(url: str, identifiant: str | None) -> str:
-    """« …/analyste-support-trading-2600032A-fr » → « analyste support trading »."""
-    dernier = unquote(urlparse(url).path.rstrip("/").rsplit("/", 1)[-1])
-    if identifiant and (m := re.search(identifiant, dernier)):
-        dernier = dernier[:m.start()] + dernier[m.end():]
+    """« …/analyste-support-trading-2600032A-fr » → « analyste support trading ».
+
+    Le dernier segment qui porte des lettres : Radancy range l'intitulé avant
+    deux numéros (`/job/new-york/risk-analyst/45831/99354208`), SuccessFactors
+    avant un (`/job/Zurich-Payment-Specialist/1422930133/`).
+    """
+    chemin = unquote(urlparse(url).path)
+    if identifiant and (m := re.search(identifiant, chemin)):
+        chemin = chemin[:m.start()] + chemin[m.end():]
+    segments = [s for s in chemin.split("/") if re.search(r"[^\W\d_]{2}", s)]
+    dernier = segments[-1] if segments else ""
     dernier = re.sub(r"\.(?:html?|aspx?|php)$", "", dernier)
     return " ".join(re.sub(r"[-_+]+", " ", dernier).split())
 
@@ -155,13 +203,18 @@ class PlanDuSite(Logiciel):
 
     def completer(self, employeur: Employeur, annonce: Annonce) -> Annonce:
         self.verifier(annonce.url)
-        e = jobposting(self.http.get(annonce.url).texte)
+        html = self.http.get(annonce.url).texte
+        e = jobposting(html) or microdonnees(html)
         if e is None:
             return annonce
         # « Retail &amp; Online » : le titre JSON-LD est parfois échappé en HTML.
         annonce.titre = " ".join(unescape(str(e.get("title") or annonce.titre)).split())
         annonce.description = texte(str(e.get("description") or ""))
         annonce.lieu, annonce.pays = _lieu(e)
+        # « Warsaw Financial Securities Specialist » : sans lieu balisé, la ville
+        # de l'intitulé ou de l'adresse dit le pays.
+        annonce.pays = (annonce.pays or depuis_lieu(annonce.titre)
+                        or depuis_lieu(titre_de_l_adresse(annonce.url, None)))
         annonce.publiee_le = _date(e.get("datePosted")) or annonce.publiee_le
         types = e.get("employmentType") or []
         types = [types] if isinstance(types, str) else types

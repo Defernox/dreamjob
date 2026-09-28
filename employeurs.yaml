@@ -91,9 +91,11 @@ employeurs:
       adresse: "https://www.oddo-bhf.com/fr/carrieres/"
       priorite: 2
     - nom: "Kepler Cheuvreux"
-      logiciel: "teamtailor"
+      logiciel: "plan_du_site"
       adresse: "https://keplercheuvreux.teamtailor.com"
-      statut: "à_venir"
+      statut: "actif"
+      offres: "/jobs/\\d+-"
+      identifiant: "/jobs/(\\d+)-"
       priorite: 2
     - nom: "BoursoBank"
       statut: "inclus"
@@ -185,9 +187,11 @@ employeurs:
       statut: "actif"
       priorite: 2
     - nom: "ING"
-      logiciel: "radancy"
-      adresse: "https://careers.ing.com/en/search-jobs"
-      statut: "à_venir"
+      logiciel: "plan_du_site"
+      adresse: "https://careers.ing.com"
+      statut: "actif"
+      offres: "/en/job/[^/]+/[^/]+/\\d+/\\d+"
+      identifiant: "/(\\d+)/?$"
       priorite: 2
     - nom: "Standard Chartered"
       statut: "à_étudier"
@@ -211,9 +215,11 @@ employeurs:
       adresse: "https://www.macquarie.com/fr/en/careers.html"
       priorite: 2
     - nom: "RBC"
-      logiciel: "phenom"
-      adresse: "https://jobs.rbc.com/ca/en"
-      statut: "à_venir"
+      logiciel: "plan_du_site"
+      adresse: "https://jobs.rbc.com"
+      statut: "actif"
+      offres: "/ca/en/job/"
+      identifiant: "/job/([A-Z]+\\d+R\\d+)"
       priorite: 2
     - nom: "TD Securities"
       logiciel: "workday"
@@ -254,8 +260,10 @@ employeurs:
       statut: "à_venir"
       priorite: 3
     - nom: "Bank of Ireland"
-      statut: "à_étudier"
-      adresse: "https://careers.bankofireland.com/home"
+      logiciel: "plan_du_site"
+      adresse: "https://careers.bankofireland.com"
+      statut: "actif"
+      offres: "/jobs/[^/]+/?$"
       priorite: 3
     - nom: "Spuerkeess"
       logiciel: "cornerstone"
@@ -340,9 +348,11 @@ employeurs:
       statut: "actif"
       priorite: 2
     - nom: "BlackRock"
-      logiciel: "radancy"
+      logiciel: "plan_du_site"
       adresse: "https://careers.blackrock.com"
-      statut: "à_venir"
+      statut: "actif"
+      offres: "/job/[^/]+/[^/]+/\\d+/\\d+"
+      identifiant: "/(\\d+)/?$"
       priorite: 1
     - nom: "Fidelity International"
       logiciel: "workday"
@@ -386,8 +396,11 @@ employeurs:
       statut: "actif"
       priorite: 3
     - nom: "Legal & General"
-      statut: "à_étudier"
-      adresse: "https://careers.legalandgeneral.com/job/research-analyst-in-london-jid-9184"
+      logiciel: "plan_du_site"
+      adresse: "https://careers.legalandgeneral.com"
+      statut: "actif"
+      offres: "/job/[^/]+-jid-\\d+"
+      identifiant: "jid-(\\d+)"
       priorite: 3
     - nom: "Vanguard"
       statut: "à_étudier"
@@ -573,9 +586,11 @@ employeurs:
       adresse: "https://www.mwam.com/join-us/"
       priorite: 3
     - nom: "Brevan Howard"
-      logiciel: "phenom"
-      adresse: "https://careers.brevanhoward.com/gb/en"
-      statut: "à_venir"
+      logiciel: "plan_du_site"
+      adresse: "https://careers.brevanhoward.com"
+      statut: "actif"
+      offres: "/gb/en/job/"
+      identifiant: "/job/([A-Z0-9]+?)EXTERNAL"
       priorite: 3
     - nom: "Hudson River Trading"
       statut: "à_étudier"
@@ -775,9 +790,11 @@ employeurs:
       statut: "à_étudier"
       priorite: 3
     - nom: "Munich Re"
-      logiciel: "radancy"
-      adresse: "https://careers.munichre.com/en/munichre"
-      statut: "à_venir"
+      logiciel: "plan_du_site"
+      adresse: "https://careers.munichre.com"
+      statut: "actif"
+      offres: "/en/job/[^/]+/[^/]+/\\d+/\\d+"
+      identifiant: "/(\\d+)/?$"
       priorite: 3
     - nom: "Aviva"
       statut: "à_étudier"
@@ -803,9 +820,11 @@ employeurs:
       adresse: "https://www.deutsche-boerse.com/dbg-de/group-careers"
       priorite: 2
     - nom: "SIX"
-      logiciel: "successfactors"
-      adresse: "https://career5.successfactors.eu/career"
-      statut: "à_venir"
+      logiciel: "plan_du_site"
+      adresse: "https://jobs.six-group.com"
+      statut: "actif"
+      offres: "/job/[^/]+/\\d+/?$"
+      identifiant: "/(\\d+)/?$"
       priorite: 3
     - nom: "ICE"
       logiciel: "icims"
@@ -865,9 +884,11 @@ employeurs:
   # --- administration de fonds ---
   administration_de_fonds:
     - nom: "Alter Domus"
-      logiciel: "radancy"
-      adresse: "https://careers.alterdomus.com/en"
-      statut: "à_venir"
+      logiciel: "plan_du_site"
+      adresse: "https://careers.alterdomus.com"
+      statut: "actif"
+      offres: "/en/job/[^/]+/[^/]+/\\d+/\\d+"
+      identifiant: "/(\\d+)/?$"
       priorite: 2
     - nom: "Apex Group"
       statut: "à_étudier"
@@ -895,8 +916,11 @@ employeurs:
   # --- données, notation et logiciels financiers ---
   donnees_notation_logiciels:
     - nom: "Moody's"
-      statut: "à_étudier"
-      adresse: "https://careers.moodys.com/en"
+      logiciel: "plan_du_site"
+      adresse: "https://careers.moodys.com"
+      statut: "actif"
+      offres: "/en/job/[^/]+/[^/]+/\\d+/\\d+"
+      identifiant: "/(\\d+)/?$"
       priorite: 1
     - nom: "S&P Global"
       logiciel: "workday"
@@ -961,9 +985,11 @@ employeurs:
       statut: "actif"
       priorite: 2
     - nom: "KPMG"
-      logiciel: "radancy"
-      adresse: "https://emplois.kpmg.fr/"
-      statut: "à_venir"
+      logiciel: "plan_du_site"
+      adresse: "https://emplois.kpmg.fr"
+      statut: "actif"
+      offres: "/emploi/[^/]+/[^/]+/\\d+/\\d+"
+      identifiant: "/(\\d+)/?$"
       priorite: 2
     - nom: "Forvis Mazars"
       statut: "à_étudier"
@@ -983,8 +1009,10 @@ employeurs:
   # --- cabinets de recrutement ---
   cabinets_de_recrutement:
     - nom: "Fed Finance"
-      statut: "à_étudier"
-      adresse: "https://www.fed-group.fr/fed-finance/offres/comptable-jo-0219438"
+      logiciel: "plan_du_site"
+      adresse: "https://www.fed-group.fr"
+      statut: "actif"
+      offres: "/fed-(?:finance|business)/offres/[^/]+/?$"
       priorite: 1
     - nom: "Michael Page"
       statut: "à_étudier"

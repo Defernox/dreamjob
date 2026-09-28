@@ -121,7 +121,12 @@ def microdonnees(html: str) -> dict | None:
 
 
 _OG_TITRE = re.compile(r'<meta[^>]*property="og:title"[^>]*content="([^"]*)"', re.I)
-_LIEU_ETIQUETTE = re.compile(r">\s*(?:Location|Locations|Lieu|City|Office)\s*:?\s*</[^>]+>(?:\s*<[^>]+>)*\s*([^<]{2,80})<", re.I)
+# La valeur est souvent noyée d'espaces et de sauts de ligne : on les laisse
+# hors de la capture, sans quoi elle dépassait la longueur permise.
+_ETIQUETTE = r">\s*(?:{})\s*:?\s*</[^>]+>(?:\s*<[^>]+>)*\s*([^<]{{2,80}}?)\s*<"
+_LIEU_ETIQUETTE = re.compile(_ETIQUETTE.format(
+    "Location|Locations|Lieu|City|Office|Standort|Arbeitsort|Ort|Sede|Città"), re.I)
+_PAYS_ETIQUETTE = re.compile(_ETIQUETTE.format("Country|Land|Pays|Paese"), re.I)
 
 
 def bloc(html: str, options: dict) -> dict | None:
@@ -139,9 +144,11 @@ def bloc(html: str, options: dict) -> dict | None:
     fin_balise = corps.rfind("<")
     titre = _OG_TITRE.search(html)
     lieu = _LIEU_ETIQUETTE.search(corps)
+    pays = _PAYS_ETIQUETTE.search(corps)
     return {"title": unescape(titre.group(1)) if titre else "",
             "description": corps[:fin_balise] if fin_balise > 0 else corps,
-            "jobLocation": {"address": {"addressLocality": unescape(lieu.group(1)).strip() if lieu else ""}}}
+            "jobLocation": {"address": {"addressLocality": unescape(lieu.group(1)).strip() if lieu else "",
+                                        "addressCountry": unescape(pays.group(1)).strip() if pays else ""}}}
 
 
 def titre_de_l_adresse(url: str, identifiant: str | None) -> str:
@@ -232,7 +239,15 @@ class PlanDuSite(Logiciel):
     def completer(self, employeur: Employeur, annonce: Annonce) -> Annonce:
         self.verifier(annonce.url)
         html = self.http.get(annonce.url).texte
-        e = jobposting(html) or microdonnees(html) or bloc(html, employeur.options)
+        e = jobposting(html) or microdonnees(html)
+        secours = bloc(html, employeur.options)
+        if e is None:
+            e = secours
+        elif secours and len(texte(str(e.get("description") or ""))) < 200:
+            # UniCredit balise l'intitulé et la date, pas la description : elle
+            # vient alors du bloc déclaré, le reste du balisage est gardé.
+            e = {**e, "description": secours["description"],
+                 "jobLocation": e.get("jobLocation") or secours["jobLocation"]}
         if e is None:
             return annonce
         # « Retail &amp; Online » : le titre JSON-LD est parfois échappé en HTML.

@@ -639,11 +639,13 @@ def test_une_fiche_sans_balisage_se_lit_entre_deux_reperes():
     """Avature (BCE, Bloomberg) : ni JSON-LD ni microdonnées."""
     from app.connectors.employeurs.plan_du_site import bloc
     page = ('<meta property="og:title" content="Risk Analyst &amp; Trader" /><div class="article__content">'
-            '<span>Location</span><span>Tokyo</span><p>Analyse du risque.</p></div><footer>Mentions</footer>')
+            '<span>Location</span><span>Tokyo</span><div>Land</div>\n   <div class="v">\n'
+            + " " * 90 + 'Japan\n' + " " * 90 + '</div><p>Analyse du risque.</p></div><footer>Mentions</footer>')
     e = bloc(page, {"bloc": 'class="article__content', "fin_bloc": "tpt_socialShare|<footer"})
     assert e["title"] == "Risk Analyst & Trader"
     assert "Analyse du risque." in e["description"] and "Mentions" not in e["description"]
-    assert e["jobLocation"]["address"]["addressLocality"] == "Tokyo"
+    # La valeur noyée d'espaces (UniCredit) est bien lue.
+    assert e["jobLocation"]["address"] == {"addressLocality": "Tokyo", "addressCountry": "Japan"}
     assert bloc(page, {}) is None
 
 

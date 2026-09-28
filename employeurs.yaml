@@ -280,7 +280,14 @@ employeurs:
       adresse: "https://www.dzbank.com/content/dzbank/en/home/we-are-dz-bank/careers.html"
       priorite: 3
     - nom: "UniCredit"
-      statut: "à_étudier"
+      logiciel: "plan_du_site"
+      adresse: "https://careers.unicredit.eu"
+      statut: "actif"
+      plan: "https://careers.unicredit.eu/jobsuche/sitemap_index.xml"
+      offres: "/JobDetail/[^/]+/\\d+"
+      identifiant: "/(\\d+)/?$"
+      bloc: "class=\"article__content__view__field__value"
+      fin_bloc: "<footer"
       priorite: 2
     - nom: "Intesa Sanpaolo"
       logiciel: "successfactors"
@@ -301,10 +308,11 @@ employeurs:
       statut: "actif"
       priorite: 3
     - nom: "AIB"
-      logiciel: "successfactors"
-      adresse: "https://career2.successfactors.eu/career"
-      statut: "à_venir"
+      statut: "refusé"
       priorite: 3
+      motif: >
+        Site SuccessFactors hébergé par SAP (career*.successfactors.eu) : robots.txt
+        interdit tout (Disallow: /) sauf la connexion. Vérifié le 2026-09-29.
     - nom: "Bank of Ireland"
       logiciel: "plan_du_site"
       adresse: "https://careers.bankofireland.com"
@@ -609,14 +617,24 @@ employeurs:
       statut: "actif"
       priorite: 2
     - nom: "Millennium"
-      statut: "à_étudier"
+      logiciel: "eightfold"
+      adresse: "https://mlp.eightfold.ai/careers"
+      statut: "actif"
+      domaine: "mlp.com"
+      par_pays: True
       priorite: 2
     - nom: "Citadel"
-      statut: "à_étudier"
+      statut: "refusé"
       priorite: 2
+      motif: >
+        Pages refusées à notre User-Agent (403) : protection contre les robots, jamais
+        contournée. Vérifié le 2026-09-29.
     - nom: "Citadel Securities"
-      statut: "à_étudier"
+      statut: "refusé"
       priorite: 2
+      motif: >
+        Site et robots.txt refusés à notre User-Agent (403) : protection contre les
+        robots, jamais contournée. Vérifié le 2026-09-29.
     - nom: "Jane Street"
       logiciel: "greenhouse"
       adresse: "https://boards.greenhouse.io/janestreet"
@@ -727,18 +745,22 @@ employeurs:
       statut: "à_étudier"
       priorite: 2
     - nom: "Pictet"
-      logiciel: "successfactors"
-      adresse: "https://career012.successfactors.eu/career"
-      statut: "à_venir"
+      statut: "refusé"
       priorite: 2
+      motif: >
+        Site SuccessFactors hébergé par SAP (career*.successfactors.eu) : robots.txt
+        interdit tout (Disallow: /) sauf la connexion. Vérifié le 2026-09-29.
     - nom: "Lombard Odier"
       logiciel: "workday"
       adresse: "https://lombardodier.wd3.myworkdayjobs.com/Lombard_Odier_Careers"
       statut: "actif"
       priorite: 2
     - nom: "Julius Baer"
-      statut: "à_étudier"
+      statut: "refusé"
       priorite: 2
+      motif: >
+        Pages refusées à notre User-Agent (403) : protection contre les robots, jamais
+        contournée. Vérifié le 2026-09-29.
     - nom: "Vontobel"
       logiciel: "workday"
       adresse: "https://vontobel.wd3.myworkdayjobs.com/Vontobel_External_Career"
@@ -768,8 +790,11 @@ employeurs:
       statut: "à_étudier"
       priorite: 3
     - nom: "Primonial"
-      statut: "à_étudier"
+      statut: "refusé"
       priorite: 2
+      motif: >
+        Site et robots.txt refusés à notre User-Agent (403) : protection contre les
+        robots, jamais contournée. Vérifié le 2026-09-29.
     - nom: "UFF"
       statut: "à_étudier"
       priorite: 3
@@ -897,9 +922,11 @@ employeurs:
       statut: "actif"
       priorite: 2
     - nom: "Deutsche Börse (dont Clearstream)"
-      statut: "à_étudier"
-      adresse: "https://www.deutsche-boerse.com/dbg-de/group-careers"
+      statut: "refusé"
       priorite: 2
+      motif: >
+        Site SuccessFactors hébergé par SAP (career*.successfactors.eu) : robots.txt
+        interdit tout (Disallow: /) sauf la connexion. Vérifié le 2026-09-29.
     - nom: "SIX"
       logiciel: "plan_du_site"
       adresse: "https://jobs.six-group.com"
@@ -1074,8 +1101,11 @@ employeurs:
       adresse: "https://www.deloitte.com/global/en/careers/job-search.html"
       priorite: 2
     - nom: "PwC"
-      statut: "à_étudier"
+      statut: "refusé"
       priorite: 2
+      motif: >
+        Site et robots.txt refusés à notre User-Agent (403) : protection contre les
+        robots, jamais contournée. Vérifié le 2026-09-29.
     - nom: "EY"
       logiciel: "successfactors"
       adresse: "https://careers.ey.com"
@@ -1116,9 +1146,11 @@ employeurs:
       adresse: "https://www.michaelpage.fr/job-search"
       priorite: 1
     - nom: "Robert Walters"
-      statut: "à_étudier"
-      adresse: "https://www.robertwalters.fr/confiez-nous-vos-recrutements.html"
+      statut: "refusé"
       priorite: 2
+      motif: >
+        Pages refusées à notre User-Agent (403) : protection contre les robots, jamais
+        contournée. Vérifié le 2026-09-29.
     - nom: "Hays"
       statut: "à_étudier"
       adresse: "https://fr.hays-careers.com/"

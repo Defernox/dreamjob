@@ -16,7 +16,7 @@ profil ni les documents.
 from __future__ import annotations
 
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 
 import httpx
 from sqlmodel import Session, select
@@ -136,13 +136,16 @@ def alerter(session: Session, depuis: datetime) -> int:
     """
     r = reglages()
     seuil = r.veille.seuil_alerte if r.veille.seuil_alerte is not None else r.scoring.seuils.bon
+    fraiche = maintenant() - timedelta(days=r.veille.fraicheur_alerte_jours)
     envoyees = 0
     for utilisateur in session.exec(select(Utilisateur)).all():
         sujet = sujet_de(session, utilisateur)
         if not sujet:
             continue
         reste = r.veille.alertes_par_jour_max - alertes_du_jour(session, utilisateur.id)
-        for offre, note in offres_a_signaler(session, utilisateur.id, depuis, seuil)[:max(0, reste)]:
+        fraiches = [(o, n) for o, n in offres_a_signaler(session, utilisateur.id, depuis, seuil)
+                    if o.date_publication is None or o.date_publication >= fraiche]
+        for offre, note in fraiches[:max(0, reste)]:
             if _publier(sujet, *message_alerte(offre, note), offre_id=offre.id,
                         urgente=note.score >= URGENTE):
                 _marquer(session, [(offre, note)])

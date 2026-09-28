@@ -282,6 +282,10 @@ class Veille(BaseModel):
     max_offres_par_requete: int = Field(default=50, ge=10, le=150)
     # None : le seuil vert de l'écran (`scoring.seuils.bon`).
     seuil_alerte: int | None = Field(default=None, ge=0, le=100)
+    # L'alerte dit « vient de paraître ». Une offre plus ancienne découverte
+    # tard — un employeur ajouté à la liste, une annonce republiée — ne sonne
+    # pas : le résumé du matin la reprend. Sans date connue, elle sonne.
+    fraicheur_alerte_jours: int = Field(default=3, ge=1, le=60)
     # Au-delà, les nouveautés du jour attendent le résumé du lendemain : une
     # sonnerie toutes les dix minutes apprend à les ignorer toutes.
     alertes_par_jour_max: int = Field(default=15, ge=1, le=100)

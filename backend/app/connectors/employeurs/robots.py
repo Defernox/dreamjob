@@ -17,6 +17,8 @@ import threading
 from urllib.parse import urlparse
 from urllib.robotparser import RobotFileParser
 
+import httpx
+
 from ..http import ClientHttp, ErreurHttp
 
 log = logging.getLogger("dreamjob.employeurs")
@@ -47,6 +49,10 @@ class Robots:
                 regles.parse(r.texte.splitlines() if r.statut == 200 else [])
         except ErreurHttp as e:
             log.warning("robots.txt de %s injoignable : on s'abstient (%s)", origine, e)
+            regles = None
+        except (httpx.InvalidURL, httpx.HTTPError, ValueError) as e:
+            # Une adresse malformée dans employeurs.yaml : on s'abstient.
+            log.warning("robots.txt de %s illisible : on s'abstient (%s)", origine, e)
             regles = None
         with self._verrou:
             self._regles[origine] = regles

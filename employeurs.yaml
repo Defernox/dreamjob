@@ -432,7 +432,7 @@ employeurs:
       priorite: 1
     - nom: "PAI Partners"
       logiciel: "recruitee"
-      adresse: "https://careers-analytics.recruitee.com&quot;,&quot;appEnv&quot;:&quot;production&quot;,&quot;atsHost&quot;:&quot;recruitee.com&quot;,&quot;captcha&quot;:{&quot;apiHost"
+      adresse: "https://careers.paipartners.com"
       statut: "à_venir"
       priorite: 2
     - nom: "Wendel"

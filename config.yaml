@@ -229,6 +229,9 @@ veille:
   max_offres_par_requete: 50
   seuil_alerte:         # vide = le seuil vert de l'ecran (scoring.seuils.bon)
   alertes_par_jour_max: 15
+  # Une offre publiee il y a plus longtemps ne sonne pas (le resume du matin
+  # la reprend) : l'alerte dit « vient de paraitre ».
+  fraicheur_alerte_jours: 3
   conserver_jours: 7
 
 employeurs:

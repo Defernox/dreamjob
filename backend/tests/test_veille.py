@@ -184,6 +184,19 @@ def test_les_alertes_du_jour_sont_plafonnees(session, moi, sources, envois, monk
     assert envois[0]["entetes"]["Title"].decode("utf-8") == "1 nouvelle offre verte"
 
 
+def test_une_offre_ancienne_decouverte_tard_ne_sonne_pas(session, moi, sources, envois):
+    """Un employeur ajouté à la liste fait découvrir des offres de plusieurs
+    semaines : l'alerte dit « vient de paraître », le résumé du matin les
+    reprend."""
+    _, stock = sources
+    ancienne = _brute("france_travail", "1")
+    ancienne.date_publication = maintenant() - timedelta(days=12)
+    stock["france_travail"] = [ancienne]
+    veiller(session, reglages())
+    assert envois == []
+    assert notification.notifier(session, maintenant() - timedelta(days=1)) == 1
+
+
 def test_le_resume_du_matin_ne_repete_pas_une_alerte(session, moi, sources, envois):
     _, stock = sources
     stock["france_travail"] = [_brute("france_travail", "1")]

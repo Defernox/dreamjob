@@ -295,9 +295,11 @@ employeurs:
       titre_en_fiche: True
       priorite: 2
     - nom: "DZ Bank"
-      statut: "à_étudier"
-      adresse: "https://www.dzbank.com/content/dzbank/en/home/we-are-dz-bank/careers.html"
+      statut: "refusé"
       priorite: 3
+      motif: >
+        Site SuccessFactors hébergé par SAP (career5.successfactors.eu) : robots.txt
+        interdit tout (Disallow: /) sauf la connexion. Vérifié le 2026-09-29.
     - nom: "UniCredit"
       logiciel: "plan_du_site"
       adresse: "https://careers.unicredit.eu"
@@ -590,8 +592,9 @@ employeurs:
       statut: "actif"
       priorite: 3
     - nom: "KKR"
-      statut: "à_étudier"
-      adresse: "https://www.kkr.com/careers/career-opportunities"
+      logiciel: "greenhouse"
+      adresse: "https://boards.greenhouse.io/stage"
+      statut: "actif"
       priorite: 3
     - nom: "Blackstone"
       statut: "à_étudier"
@@ -856,8 +859,9 @@ employeurs:
       statut: "à_étudier"
       priorite: 3
     - nom: "Alantra"
-      statut: "à_étudier"
-      adresse: "https://www.alantra.com/careers/"
+      logiciel: "workday"
+      adresse: "https://alantra.wd3.myworkdayjobs.com/Alantra"
+      statut: "actif"
       priorite: 3
 
   # --- assurance ---
@@ -891,9 +895,9 @@ employeurs:
       statut: "actif"
       priorite: 2
     - nom: "Covéa"
-      logiciel: "smartrecruiters"
-      adresse: "https://jobs.smartrecruiters.com/my-applications/COVEA1"
-      statut: "à_venir"
+      logiciel: "talentsoft"
+      adresse: "https://coveafinance-recrute.talent-soft.com"
+      statut: "actif"
       priorite: 3
     - nom: "AG2R La Mondiale"
       logiciel: "workday"
@@ -1147,9 +1151,9 @@ employeurs:
       statut: "actif"
       priorite: 2
     - nom: "Wavestone"
-      logiciel: "softgarden"
-      adresse: "https://matomo.softgarden.io"
-      statut: "à_venir"
+      logiciel: "smartrecruiters"
+      adresse: "https://careers.smartrecruiters.com/Wavestone1"
+      statut: "actif"
       priorite: 3
 
   # --- cabinets de recrutement ---

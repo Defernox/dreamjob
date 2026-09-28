@@ -506,6 +506,60 @@ def test_un_pays_hors_du_vocabulaire_est_ecarte_et_non_ignore():
     assert depuis_lieu("Jersey City, NJ, United States") == "États-Unis"
 
 
+# --- Greenhouse -------------------------------------------------------------------------------
+
+
+class SiteGreenhouse:
+    def __init__(self, offres):
+        self.offres, self.appels = offres, []
+
+    def get(self, url, **kw):
+        self.appels.append(("GET", url, None))
+        if url.endswith("/robots.txt"):
+            return Reponse(200, None, "User-agent: *\nDisallow: /embed/\n", {})
+        if url.endswith("/jobs"):
+            return Reponse(200, {"jobs": [{
+                "id": o["id"], "title": o["titre"], "location": {"name": o["lieu"]},
+                "absolute_url": f"https://job-boards.greenhouse.io/banque/jobs/{o['id']}",
+                "first_published": (maintenant() - timedelta(days=o["jours"])).isoformat() + "-04:00",
+            } for o in self.offres]}, "", {})
+        return Reponse(200, {"content": "&lt;p&gt;Trade &lt;b&gt;support&lt;/b&gt;.&lt;/p&gt;",
+                             "metadata": [{"name": "Time Type", "value": "Internship"}]}, "", {})
+
+
+def _employeur_gh():
+    return {"nom": "Fonds", "logiciel": "greenhouse", "adresse": "https://job-boards.eu.greenhouse.io/fonds"}
+
+
+class _Api:
+    """L'API Greenhouse est sur un hôte commun à tous les tableaux."""
+
+    def __init__(self, site):
+        self.site = site
+
+    def get(self, url, **kw):
+        assert url.startswith("https://boards-api.greenhouse.io/"), url
+        return self.site.get(url, **kw)
+
+
+def test_greenhouse_un_lieu_a_plusieurs_villes(registre):
+    site = SiteGreenhouse([
+        {"id": 1, "titre": "Risk Analyst", "lieu": "New York, London, Singapore", "jours": 1},
+        {"id": 2, "titre": "Risk Analyst", "lieu": "Amsterdam", "jours": 1},
+        {"id": 3, "titre": "Risk Analyst", "lieu": "London", "jours": 60},
+    ])
+    c = EmployeursConnector(_Api(site), registre(_employeur_gh()))
+    trouvees = c.fetch(_requete())
+    assert [(o.source_id, o.pays) for o in trouvees] == [("fonds:1", "Royaume-Uni")]
+
+
+def test_greenhouse_une_fiche_complete(registre):
+    site = SiteGreenhouse([{"id": 9, "titre": "Risk Analyst", "lieu": "Paris", "jours": 0}])
+    c = EmployeursConnector(_Api(site), registre(_employeur_gh()))
+    o = c.fetch(_requete())[0]
+    assert (o.description_brute, o.type_contrat, o.pays) == ("Trade support.", "Stage", "France")
+
+
 # --- La politesse, les pannes ---------------------------------------------------------------
 
 

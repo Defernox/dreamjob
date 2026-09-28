@@ -37,6 +37,7 @@ from .commun import cles as cles_de
 from .logiciel import Logiciel
 from .registre import ACTIF, Employeur, charger
 from .robots import Robots
+from .greenhouse import Greenhouse
 from .oracle import Oracle
 from .successfactors import SuccessFactors
 from .talentsoft import Talentsoft
@@ -49,6 +50,7 @@ LOGICIELS: dict[str, type[Logiciel]] = {
     Talentsoft.cle: Talentsoft,
     SuccessFactors.cle: SuccessFactors,
     Oracle.cle: Oracle,
+    Greenhouse.cle: Greenhouse,
 }
 
 # Les contrats qu'une annonce d'employeur ne prend pas la peine d'écrire.

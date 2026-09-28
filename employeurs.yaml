@@ -475,8 +475,8 @@ employeurs:
       priorite: 3
     - nom: "EQT"
       logiciel: "greenhouse"
-      adresse: "https://job-boards.eu.greenhouse.io/eqtpartners/jobs/4936187101"
-      statut: "à_venir"
+      adresse: "https://job-boards.eu.greenhouse.io/eqtpartners"
+      statut: "actif"
       priorite: 3
     - nom: "Apollo"
       logiciel: "workday"
@@ -484,9 +484,8 @@ employeurs:
       statut: "actif"
       priorite: 3
     - nom: "KKR"
-      logiciel: "greenhouse"
-      adresse: "https://boards.greenhouse.io/embed/job_board/js"
-      statut: "à_venir"
+      adresse: "https://www.kkr.com/careers/career-opportunities"
+      statut: "à_étudier"
       priorite: 3
     - nom: "Blackstone"
       statut: "à_étudier"
@@ -543,23 +542,23 @@ employeurs:
       priorite: 2
     - nom: "IMC"
       logiciel: "greenhouse"
-      adresse: "https://job-boards.eu.greenhouse.io/imc/jobs/4907368101"
-      statut: "à_venir"
+      adresse: "https://job-boards.eu.greenhouse.io/imc"
+      statut: "actif"
       priorite: 3
     - nom: "Flow Traders"
       logiciel: "greenhouse"
-      adresse: "https://boards-api.greenhouse.io/v1/boards/flowtraders/jobs"
-      statut: "à_venir"
+      adresse: "https://boards.greenhouse.io/flowtraders"
+      statut: "actif"
       priorite: 3
     - nom: "Point72"
       logiciel: "greenhouse"
-      adresse: "https://boards.greenhouse.io/point72/jobs/8831450002"
-      statut: "à_venir"
+      adresse: "https://boards.greenhouse.io/point72"
+      statut: "actif"
       priorite: 3
     - nom: "Man Group"
       logiciel: "greenhouse"
       adresse: "https://job-boards.eu.greenhouse.io/mangroup"
-      statut: "à_venir"
+      statut: "actif"
       priorite: 3
     - nom: "Marshall Wace"
       adresse: "https://www.mwam.com/join-us/"
@@ -580,8 +579,8 @@ employeurs:
       priorite: 3
     - nom: "Jump Trading"
       logiciel: "greenhouse"
-      adresse: "https://job-boards.greenhouse.io/talent_community/jobs/7138319"
-      statut: "à_venir"
+      adresse: "https://boards.greenhouse.io/jumptrading"
+      statut: "actif"
       priorite: 3
     - nom: "DRW"
       statut: "à_étudier"

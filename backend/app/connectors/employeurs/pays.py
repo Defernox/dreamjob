@@ -152,6 +152,19 @@ def depuis_nom(nom: str | None) -> str:
     return _NOMS.get(_nu(nom or "").strip(" ."), "")
 
 
+def pays_possibles(lieu: str | None) -> list[str]:
+    """Tous les pays d'un lieu qui en cite plusieurs : « New York, London,
+    Singapore » → États-Unis, Royaume-Uni, Singapour. Le premier voulu gagne."""
+    trouves: list[str] = []
+    for segment in re.split(r"[,;|/()]| [-–] ", lieu or ""):
+        nu = _nu(segment).strip(" .")
+        pays = depuis_nom(segment) or next(
+            (p for ville, p in _VILLES.items() if re.search(rf"\b{re.escape(ville)}\b", nu)), "")
+        if pays and pays not in trouves:
+            trouves.append(pays)
+    return trouves
+
+
 def depuis_lieu(lieu: str | None) -> str:
     """Le pays d'un lieu libre (« Paris, France », « London, England »,
     « 3 Locations »). Le dernier segment d'abord, puis les villes connues."""

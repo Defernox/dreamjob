@@ -781,6 +781,42 @@ def test_le_client_respecte_le_delai_demande(monkeypatch):
     assert attentes == [5, 1], "5 s pour le site qui l'a demandé, 1 s pour les autres"
 
 
+# --- Beesite (Deutsche Bank) ------------------------------------------------------------------
+
+
+class SiteBeesite:
+    def __init__(self, offres):
+        self.offres, self.appels = sorted(offres, key=lambda o: o["jours"]), []
+
+    def get(self, url, **kw):
+        from urllib.parse import unquote
+        self.appels.append(("GET", url, None))
+        if url.endswith("/robots.txt"):
+            return Reponse(404, None, "", {})
+        if "/jobhtml/" in url:
+            return Reponse(200, {"html": "<div><h1>Poste</h1><p>Risque de crédit.</p></div>"}, "", {})
+        donnees = json.loads(unquote(url.split("data=")[1]))
+        debut = donnees["SearchParameters"]["FirstItem"] - 1
+        return Reponse(200, {"SearchResult": {"SearchResultItems": [{"MatchedObjectDescriptor": {
+            "PositionID": o["id"], "PositionTitle": o["titre"], "PositionURI": f"/index.php?id={o['id']}",
+            "PositionLocation": [{"CityName": "Paris", "CountryName": o["pays"]}],
+            "PositionOfferingType": [{"Name": "Unbefristet"}],
+            "PublicationStartDate": (maintenant() - timedelta(days=o["jours"])).date().isoformat(),
+        }} for o in self.offres[debut:debut + 100]]}}, "", {})
+
+
+def test_beesite_pays_et_contrat_en_allemand(registre):
+    site = SiteBeesite([{"id": "1", "titre": "Credit Risk Analyst", "pays": "Frankreich", "jours": 0},
+                        {"id": "2", "titre": "Credit Risk Analyst", "pays": "Rumänien", "jours": 0}])
+    c = EmployeursConnector(Sites(apidb=site), registre(
+        {"nom": "DB", "logiciel": "beesite", "adresse": "https://apidb.beesite.de",
+         "fiche": "https://careers.db.com/job/{id}"}))
+    [o] = c.fetch(_requete(pays=("France",)))
+    # « Unbefristet » est un CDI : le motif « befristet » le lisait CDD.
+    assert (o.pays, o.type_contrat, o.url, o.description_brute) == (
+        "France", "CDI", "https://careers.db.com/job/1", "Poste\nRisque de crédit.")
+
+
 # --- La politesse, les pannes ---------------------------------------------------------------
 
 

@@ -73,7 +73,8 @@ _CONTRATS = [
     ("Alternance", re.compile(r"\b(?:alternan\w*|apprenti\w*|apprentice\w*|work[- ]study|dual[- ]study)\b", re.I)),
     ("Stage", re.compile(r"\b(?:stage|stagiaire|intern|internship|praktikum|praktikant\w*|tirocinio)\b", re.I)),
     ("V.I.E", re.compile(r"\bV\.?I\.?E\b|volontariat international")),
-    ("CDD", re.compile(r"\bCDD\b|fixed[- ]term|\bFTC\b|temporary contract|befristet", re.I)),
+    # « \bbefristet » : sans la limite de mot, « Unbefristet » (un CDI) était lu CDD.
+    ("CDD", re.compile(r"\bCDD\b|fixed[- ]term|\bFTC\b|temporary contract|\bbefristet", re.I)),
     ("CDI", re.compile(r"\bCDI\b|\bpermanent\b|unbefristet", re.I)),
 ]
 

@@ -135,8 +135,12 @@ employeurs:
       statut: "actif"
       priorite: 1
     - nom: "Goldman Sachs"
-      statut: "à_étudier"
+      statut: "refusé"
       priorite: 1
+      motif: >
+        robots.txt de higher.gs.com n'autorise que les fiches (/roles/) et interdit tout
+        le reste, recherche comprise, sans publier de plan du site : aucune liste
+        accessible sans enfreindre la règle. Vérifié le 2026-09-28.
     - nom: "Morgan Stanley"
       logiciel: "eightfold"
       adresse: "https://morganstanley.eightfold.ai/careers"
@@ -154,8 +158,10 @@ employeurs:
       statut: "actif"
       priorite: 1
     - nom: "Deutsche Bank"
-      statut: "à_étudier"
-      adresse: "https://careers.db.com/index"
+      logiciel: "beesite"
+      adresse: "https://api-deutschebank.beesite.de"
+      statut: "actif"
+      fiche: "https://careers.db.com/professionals/search-roles/#/professional/job/{id}"
       priorite: 1
     - nom: "UBS"
       logiciel: "brassring"

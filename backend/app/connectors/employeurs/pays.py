@@ -114,6 +114,19 @@ _NOMS: dict[str, str] = {
     "tunisia": "Tunisie", "tunisie": "Tunisie",
 }
 _NOMS.update({nom_local: nom for nom, noms in _AUTRES.values() for nom_local in noms})
+# Deutsche Bank nomme les pays en allemand, même dans son interface anglaise.
+_NOMS.update({
+    "frankreich": "France", "vereinigtes konigreich": "Royaume-Uni", "grossbritannien": "Royaume-Uni",
+    "vereinigte staaten von amerika": "États-Unis", "vereinigte staaten": "États-Unis",
+    "italien": "Italie", "spanien": "Espagne", "irland": "Irlande", "niederlande": "Pays-Bas",
+    "polen": "Pologne", "tschechien": "Tchéquie", "kanada": "Canada", "brasilien": "Brésil",
+    "mexiko": "Mexique", "australien": "Australie", "indien": "Inde", "singapur": "Singapour",
+    "hongkong": "Hong Kong", "sudafrika": "Afrique du Sud", "rumanien": "Roumanie",
+    "philippinen": "Philippines", "vereinigte arabische emirate": "Émirats arabes unis",
+    "saudi-arabien": "Arabie saoudite", "turkei": "Turquie", "ungarn": "Hongrie",
+    "danemark": "Danemark", "schweden": "Suède", "norwegen": "Norvège", "katar": "Qatar",
+    "marokko": "Maroc", "tunesien": "Tunisie", "algerien": "Algérie", "neuseeland": "Nouvelle-Zélande",
+})
 
 # Les grandes villes financières : quand le site ne donne qu'une ville
 # (« London », « Paris La Défense »), c'est elle qui dit le pays.

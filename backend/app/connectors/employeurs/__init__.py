@@ -37,6 +37,7 @@ from .commun import cles as cles_de
 from .logiciel import Logiciel
 from .registre import ACTIF, Employeur, charger
 from .robots import Robots
+from .beesite import Beesite
 from .bpce import Bpce
 from .eightfold import Eightfold
 from .greenhouse import Greenhouse
@@ -59,6 +60,7 @@ LOGICIELS: dict[str, type[Logiciel]] = {
     Bpce.cle: Bpce,
     Eightfold.cle: Eightfold,
     Jibe.cle: Jibe,
+    Beesite.cle: Beesite,
 }
 
 # Les contrats qu'une annonce d'employeur ne prend pas la peine d'écrire.

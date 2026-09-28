@@ -269,6 +269,94 @@ def test_le_plafond_garde_les_plus_recentes(registre):
     assert sorted(o.titre for o in c.fetch(_requete(max_offres=2))) == ["Risk Analyst 0", "Risk Analyst 1"]
 
 
+# --- Talentsoft ----------------------------------------------------------------------------
+
+
+class SiteTalentsoft:
+    """Un site Talentsoft : flux RSS (les plus récentes, datées), liste HTML
+    paginée (cartes ou liste, sans date), fiches en champs `fld…`."""
+
+    def __init__(self, offres, gabarit="card", par_page=2, hote="banque"):
+        self.offres, self.gabarit, self.par_page, self.hote = offres, gabarit, par_page, hote
+        self.appels = []
+
+    def get(self, url, **kw):
+        self.appels.append(("GET", url, None))
+        if url.endswith("/robots.txt"):
+            return Reponse(200, None, "", {})
+        if "offerRss.ashx" in url:
+            items = "".join(
+                f"<item><link>https://{self.hote}.talent-soft.com/Pages/Offre/detailoffre.aspx?idOffre={o['id']}&amp;LCID=1036</link>"
+                f"<category>Métiers</category><category>{o['contrat']}</category><category>{o['ville']}</category>"
+                f"<title>2026-{o['id']} - {o['titre']}</title>"
+                f"<pubDate>{(maintenant() - timedelta(days=o['jours'])).strftime('%a, %d %b %Y %H:%M:%S')} Z</pubDate></item>"
+                for o in self.offres[:20])
+            return Reponse(200, None, f'<?xml version="1.0" encoding="utf-8"?><rss><channel>{items}</channel></rss>', {})
+        if "liste-offres.aspx" in url:
+            page = int(url.split("page=")[1].split("&")[0])
+            tranche = self.offres[(page - 1) * self.par_page: page * self.par_page]
+            lien = "ts-offer-card__title-link" if self.gabarit == "card" else "ts-offer-list-item__title-link"
+            liste = "ts-offer-card-content__list" if self.gabarit == "card" else "ts-offer-list-item__description"
+            html = "".join(
+                f'<h3><a class="{lien} " href="/offre-de-emploi/emploi-x_{o["id"]}.aspx" title="2026-{o["id"]}">'
+                f' {o["titre"]} </a></h3><ul class="{liste} "><li>{o["contrat"]}</li>'
+                + (f"<li>{o['pays']}</li>" if o.get("pays") else "") + f'<li class="noBorder">{o["ville"]}</li></ul>'
+                for o in tranche)
+            return Reponse(200, None, f"<html>{html}</html>", {})
+        o = next(o for o in self.offres if f"_{o['id']}.aspx" in url or f"idOffre={o['id']}" in url)
+        zones = f"Europe, {o['pays']}, Ile-de-France" if o.get("pays") else ""
+        return Reponse(200, None, (
+            '<div id="contenu-ficheoffre"><h2 class="JobDescription">Description du poste</h2>'
+            f'<p id="fldjobdescription_jobtitle">{o["titre"]}</p>'
+            f'<p id="fldjobdescription_contract">{o["contrat"]}</p>'
+            '<div id="fldjobdescription_description1"><p>Analyse du <strong>risque de crédit</strong>.</p></div>'
+            f'<p id="fldlocation_location_geographicalareacollection">{zones}</p>'
+            f'<p id="fldlocation_joblocation">{o["ville"]}</p></div><a>Postuler</a>'), {})
+
+
+def _ts(ident, titre, jours_=0, contrat_="CDI", pays="France", ville="Montrouge"):
+    return {"id": ident, "titre": titre, "jours": jours_, "contrat": contrat_, "pays": pays, "ville": ville}
+
+
+def _employeur_ts(hote, **kw):
+    return {"nom": hote.title(), "logiciel": "talentsoft", "adresse": f"https://{hote}.talent-soft.com", **kw}
+
+
+def test_talentsoft_la_veille_ne_lit_que_le_flux(registre):
+    site = SiteTalentsoft([_ts(2, "Analyste risques de crédit H/F"), _ts(1, "Analyste risques ALM", jours_=5)])
+    c = EmployeursConnector(Sites(banque=site), registre(_employeur_ts("banque")))
+    trouvees = c.fetch(_requete(publiee_depuis_jours=1))
+    assert [o.titre for o in trouvees] == ["Analyste risques de crédit H/F"]
+    assert not [url for _, url, _ in site.appels if "liste-offres" in url], "le flux suffisait"
+
+
+@pytest.mark.parametrize("gabarit", ["card", "list-item"])
+def test_talentsoft_le_scan_parcourt_la_liste(registre, gabarit):
+    offres = [_ts(i, f"Analyste risques {i}", jours_=i) for i in range(5, 0, -1)]
+    site = SiteTalentsoft(offres, gabarit=gabarit)
+    c = EmployeursConnector(Sites(banque=site), registre(_employeur_ts("banque")))
+    trouvees = c.fetch(_requete())
+    assert sorted(o.titre for o in trouvees) == [f"Analyste risques {i}" for i in range(1, 6)]
+    pages = [url for _, url, _ in site.appels if "liste-offres" in url]
+    assert len(pages) == 4, "trois pages pleines, puis une vide qui arrête"
+
+
+def test_talentsoft_une_fiche_complete(registre):
+    site = SiteTalentsoft([_ts(7, "Stage - Analyste risques", contrat_="Stage", jours_=2)])
+    c = EmployeursConnector(Sites(banque=site), registre(_employeur_ts("banque")))
+    o = c.fetch(_requete())[0]
+    assert (o.source_id, o.pays, o.type_contrat, o.lieu) == ("banque:7", "France", "Stage", "Montrouge")
+    assert "Analyse du risque de crédit." in o.description_brute
+    assert o.date_publication.date() == (maintenant() - timedelta(days=2)).date()
+
+
+def test_un_pays_par_defaut_quand_la_fiche_ne_dit_que_la_ville(registre):
+    """Arkéa ne donne que « Brest »."""
+    site = SiteTalentsoft([_ts(3, "Analyste risques", pays="", ville="Brest")])
+    c = EmployeursConnector(Sites(banque=site), registre(_employeur_ts("banque", pays_par_defaut="France")))
+    assert [o.pays for o in c.fetch(_requete())] == ["France"]
+
+
 # --- La politesse, les pannes ---------------------------------------------------------------
 
 

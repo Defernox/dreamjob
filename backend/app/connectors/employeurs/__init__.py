@@ -37,12 +37,14 @@ from .commun import cles as cles_de
 from .logiciel import Logiciel
 from .registre import ACTIF, Employeur, charger
 from .robots import Robots
+from .talentsoft import Talentsoft
 from .workday import Workday
 
 log = logging.getLogger("dreamjob.employeurs")
 
 LOGICIELS: dict[str, type[Logiciel]] = {
     Workday.cle: Workday,
+    Talentsoft.cle: Talentsoft,
 }
 
 # Les contrats qu'une annonce d'employeur ne prend pas la peine d'écrire.
@@ -87,9 +89,12 @@ class EmployeursConnector(BaseConnector):
             except Interdit as ex:
                 self.pannes[e.nom] = str(ex)
                 log.warning("%s : %s", e.nom, ex)
-            except (ErreurHttp, ValueError, KeyError, TypeError) as ex:
+            except ErreurHttp as ex:
                 self.pannes[e.nom] = f"{type(ex).__name__}: {ex}"
                 log.warning("%s : liste illisible — %s", e.nom, ex)
+            except Exception as ex:  # noqa: BLE001 — un site qui change de format n'arrête pas les autres
+                self.pannes[e.nom] = f"{type(ex).__name__}: {ex}"
+                log.exception("%s : liste illisible", e.nom)
             return []
 
         with ThreadPoolExecutor(max_workers=self.reglages.employeurs.en_parallele) as pool:
@@ -105,9 +110,15 @@ class EmployeursConnector(BaseConnector):
         def un(paire: tuple[Employeur, Annonce]) -> None:
             e, a = paire
             try:
-                self._fiches[self._id(e, a)] = self._logiciels[e.logiciel].completer(e, a)
-            except (Interdit, ErreurHttp, ValueError, KeyError, TypeError) as ex:
+                fiche = self._logiciels[e.logiciel].completer(e, a)
+                # Arkéa ne donne que la ville (« Brest ») : pour un employeur dont
+                # tous les postes sont dans un pays, employeurs.yaml le dit.
+                fiche.pays = fiche.pays or e.options.get("pays_par_defaut", "")
+                self._fiches[self._id(e, a)] = fiche
+            except (Interdit, ErreurHttp) as ex:
                 log.warning("%s : fiche illisible (%s) — %s", e.nom, a.url, ex)
+            except Exception:  # noqa: BLE001 — une fiche au format imprévu n'arrête pas les autres
+                log.exception("%s : fiche illisible (%s)", e.nom, a.url)
 
         with ThreadPoolExecutor(max_workers=self.reglages.employeurs.en_parallele) as pool:
             list(pool.map(un, a_ouvrir))

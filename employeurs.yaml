@@ -32,23 +32,23 @@ employeurs:
       priorite: 1
     - nom: "Crédit Agricole CIB"
       logiciel: "talentsoft"
-      adresse: "https://jobs.ca-cib.com/homepage.aspx"
-      statut: "à_venir"
+      adresse: "https://jobs.ca-cib.com"
+      statut: "actif"
       priorite: 1
     - nom: "CACEIS"
       logiciel: "talentsoft"
-      adresse: "https://jobs.caceis.com/accueil.aspx"
-      statut: "à_venir"
+      adresse: "https://jobs.caceis.com"
+      statut: "actif"
       priorite: 1
     - nom: "Indosuez Wealth Management"
       logiciel: "talentsoft"
-      adresse: "https://jobs.ca-indosuez.com/accueil.aspx"
-      statut: "à_venir"
+      adresse: "https://jobs.ca-indosuez.com"
+      statut: "actif"
       priorite: 2
     - nom: "LCL"
       logiciel: "talentsoft"
-      adresse: "https://offres-emploi.lcl.com/accueil.aspx"
-      statut: "à_venir"
+      adresse: "https://offres-emploi.lcl.com"
+      statut: "actif"
       priorite: 2
     - nom: "Natixis"
       adresse: "https://recrutement.natixis.com/"
@@ -69,7 +69,10 @@ employeurs:
       statut: "à_étudier"
       priorite: 2
     - nom: "Crédit Mutuel Arkéa"
-      statut: "à_étudier"
+      logiciel: "talentsoft"
+      adresse: "https://www.recrutement.arkea.com"
+      statut: "actif"
+      pays_par_defaut: "France"
       priorite: 2
     - nom: "La Banque Postale"
       adresse: "https://www.labanquepostale.com/candidats/offres-d-emploi/nos-offres-d-emploi.html"
@@ -259,8 +262,8 @@ employeurs:
       priorite: 3
     - nom: "Banque de Luxembourg"
       logiciel: "talentsoft"
-      adresse: "https://jobs.banquedeluxembourg.com/accueil.aspx"
-      statut: "à_venir"
+      adresse: "https://jobs.banquedeluxembourg.com"
+      statut: "actif"
       priorite: 3
     - nom: "Jefferies"
       adresse: "https://www.jefferies.com/careers/"
@@ -271,8 +274,8 @@ employeurs:
   gestion_d_actifs:
     - nom: "Amundi"
       logiciel: "talentsoft"
-      adresse: "https://jobs.amundi.com/accueil.aspx"
-      statut: "à_venir"
+      adresse: "https://jobs.amundi.com"
+      statut: "actif"
       priorite: 1
     - nom: "AXA Investment Managers"
       adresse: "https://www.bnpparibas-am.com/en/why-join-us/"
@@ -287,8 +290,8 @@ employeurs:
       priorite: 1
     - nom: "Candriam"
       logiciel: "talentsoft"
-      adresse: "https://jobs.candriam.com/accueil.aspx"
-      statut: "à_venir"
+      adresse: "https://jobs.candriam.com"
+      statut: "actif"
       priorite: 2
     - nom: "Carmignac"
       statut: "à_étudier"
@@ -726,8 +729,8 @@ employeurs:
       priorite: 1
     - nom: "CNP Assurances"
       logiciel: "talentsoft"
-      adresse: "https://cnp-recrute.talent-soft.com/accueil.aspx"
-      statut: "à_venir"
+      adresse: "https://cnp-recrute.talent-soft.com"
+      statut: "actif"
       priorite: 2
     - nom: "SCOR"
       logiciel: "oracle"
@@ -812,8 +815,8 @@ employeurs:
       priorite: 1
     - nom: "AMF"
       logiciel: "talentsoft"
-      adresse: "https://amf-career.talent-soft.com/offre-de-emploi/liste-toutes-offres.aspx"
-      statut: "à_venir"
+      adresse: "https://amf-career.talent-soft.com"
+      statut: "actif"
       priorite: 1
     - nom: "BCE"
       adresse: "https://www.ecb.europa.eu/pub/economic-research/programmes/html/index.en.html"

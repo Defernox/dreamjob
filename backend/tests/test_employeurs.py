@@ -617,6 +617,24 @@ def test_plan_du_site_une_offre_en_deux_langues_n_est_lue_qu_une_fois(registre):
     assert o.date_publication == datetime(2026, 9, 27)
 
 
+def test_un_index_aux_plans_anonymes_est_suivi_en_entier(registre):
+    """Allianz nomme ses plans sitemap1.xml… sitemap4.xml : aucun ne dit
+    « job », tous sont lus."""
+    class Site(SitePlan):
+        def get(self, url, **kw):
+            if url.endswith("/index.xml"):
+                self.appels.append(("GET", url, None))
+                return Reponse(200, None, "<sitemapindex><sitemap><loc>https://banque.fr/plan-offres.xml</loc>"
+                                          "</sitemap></sitemapindex>".replace("plan-offres", "sitemap1"), {})
+            if url.endswith("/sitemap1.xml"):
+                url = url.replace("sitemap1", "plan-offres")
+            return super().get(url, **kw)
+
+    site = Site([{"id": "111111", "slug": "analyste-risques", "titre": "Analyste risques", "jours": 0}])
+    c = EmployeursConnector(Sites(banque=site), registre(_employeur_plan()))
+    assert [o.source_id for o in c.fetch(_requete())] == ["banque:111111"]
+
+
 def test_le_titre_se_lit_dans_l_adresse():
     from app.connectors.employeurs.plan_du_site import titre_de_l_adresse
     assert titre_de_l_adresse("https://x.fr/offres-d-emploi/analyste-support-trading-2600032A-fr",

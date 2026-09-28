@@ -178,12 +178,11 @@ class PlanDuSite(Logiciel):
             lus += 1
             self.verifier(plan)
             xml = self.http.get(plan, utiliser_cache=False).texte
+            sous_plans = []
             for balise, loc, modifie in _LOC.findall(xml):
                 loc = urljoin(plan, loc)
                 if balise == "sitemap":
-                    # Un index de plans : on ne suit que ceux qui parlent d'offres.
-                    if motif.search(loc) or "job" in loc.lower() or "offre" in loc.lower():
-                        a_lire.append(loc)
+                    sous_plans.append(loc)
                     continue
                 if not motif.search(loc):
                     continue
@@ -198,6 +197,11 @@ class PlanDuSite(Logiciel):
                     continue
                 vues[ident] = Annonce(ident=ident, titre=titre_de_l_adresse(loc, identifiant),
                                       url=loc, publiee_le=publiee)
+            # Un index de plans : ceux qui parlent d'offres d'abord ; s'il n'y
+            # en a aucun (Allianz : sitemap1.xml… sitemap4.xml), tous.
+            parlants = [s for s in sous_plans
+                        if motif.search(s) or re.search(r"job|offre|career|vacanc|position", s, re.I)]
+            a_lire.extend(parlants or sous_plans)
         annonces = sorted(vues.values(), key=lambda a: a.publiee_le or datetime.min, reverse=True)
         return annonces
 

@@ -386,10 +386,10 @@ employeurs:
       statut: "actif"
       priorite: 2
     - nom: "Allianz Global Investors"
-      logiciel: "phenom"
-      adresse: "https://careers.allianz.com/global/en"
-      statut: "à_venir"
+      statut: "inclus"
       priorite: 2
+      motif: >
+        Ses offres paraissent sur careers.allianz.com : suivies avec Groupe Allianz.
     - nom: "DWS"
       statut: "à_étudier"
       priorite: 2
@@ -409,9 +409,12 @@ employeurs:
       statut: "actif"
       priorite: 3
     - nom: "Franklin Templeton"
-      logiciel: "phenom"
-      adresse: "https://careers.franklintempleton.com/us/en"
-      statut: "à_venir"
+      logiciel: "plan_du_site"
+      adresse: "https://careers.franklintempleton.com"
+      statut: "actif"
+      plan: "https://careers.franklintempleton.com/us/en/sitemap.xml"
+      offres: "/us/en/job/"
+      identifiant: "/job/([A-Za-z0-9]+)/"
       priorite: 3
     - nom: "M&G"
       statut: "à_étudier"
@@ -792,8 +795,13 @@ employeurs:
       adresse: "https://fa-errt-saasfaprod1.fa.ocs.oraclecloud.com/hcmUI/CandidateExperience/en/sites/CX_2001"
       statut: "actif"
       priorite: 1
-    - nom: "Allianz France"
-      statut: "à_étudier"
+    - nom: "Groupe Allianz"
+      logiciel: "plan_du_site"
+      adresse: "https://careers.allianz.com"
+      statut: "actif"
+      plan: "https://careers.allianz.com/fr/fr/sitemap_index.xml"
+      offres: "/fr/fr/job/\\d+/"
+      identifiant: "/job/(\\d+)/"
       priorite: 2
     - nom: "Generali"
       logiciel: "successfactors"

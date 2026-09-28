@@ -685,17 +685,47 @@ liste est la seule voie complète. Le total n'est renvoyé qu'avec la première
 page.
 
 **Un logiciel par fichier**, chacun documenté en tête avec ce qui a été
-vérifié : Workday (29 employeurs), Talentsoft (10 : flux RSS officiel pour la
-veille, liste en deux gabarits pour le scan), SuccessFactors (11 : son
-robots.txt interdit `/services/`, donc le RSS — on lit la recherche triée par
-date), Oracle (8, deux cents offres par page), Greenhouse (6, API publique
-officielle), Eightfold (Morgan Stanley, HSBC), Jibe (AXA), Beesite (Deutsche
-Bank), le groupe BPCE, et **le plan du site + JobPosting** (`plan_du_site.py`) :
-le format que Google exige pour Google for Jobs, lisible quel que soit le
-logiciel — Société Générale, BlackRock, Moody's, ING, KPMG, RBC, Fed Finance…
-Les microdonnées schema.org en sont le repli. L'intitulé se lit dans le
-dernier segment de l'adresse qui porte des lettres : Radancy le range avant
-deux numéros (`/job/new-york/risk-analyst/45831/99354208`).
+vérifié : Workday, Talentsoft (flux RSS officiel pour la veille, liste en
+deux gabarits pour le scan), SuccessFactors (son robots.txt interdit
+`/services/`, donc le RSS — on lit la recherche triée par date), Oracle (deux
+cents offres par page), Greenhouse et Lever (API publiques officielles),
+Recruitee, Pinpoint, Eightfold, Jibe, Beesite, BrassRing (UBS : les cinquante
+offres embarquées dans la page), SmartRecruiters (la page carrières, jamais
+l'API, interdite aux robots), le groupe BPCE, et trois lectures génériques :
+
+- **le plan du site + JobPosting** (`plan_du_site.py`) : le format que Google
+  exige pour Google for Jobs, lisible quel que soit le logiciel — Société
+  Générale, BlackRock, Moody's, ING, KPMG, RBC, Allianz, Fed Finance… L'intitulé
+  se lit dans le dernier segment de l'adresse qui porte des lettres (Radancy le
+  range avant deux numéros). Un index de plans dont aucun ne dit « job »
+  (Allianz : `sitemap1.xml`…) est suivi en entier ;
+- **les microdonnées** schema.org, repli du JSON-LD (SuccessFactors) ;
+- **le texte entre deux repères** déclarés dans employeurs.yaml (`bloc`,
+  `fin_bloc`, plusieurs fins possibles ; `titre_h1`), pour les sites sans aucun
+  balisage — Avature (BCE, Bloomberg, Macquarie, UniCredit), La Banque Postale.
+  Lieu, pays et contrat s'y lisent à leur étiquette, en plusieurs langues
+  (« Standort », « Land », « Type de contrat », « Vertragsart »). Un JobPosting
+  sans description (UniCredit) garde son intitulé et prend la description du
+  bloc.
+
+**`page_liste.py`** lit une liste HTML paginée (La Banque Postale, Crédit
+Mutuel) : de deux liens vers la même offre, le plus long l'emporte sur
+« Détails de l'offre ».
+
+**L'intitulé connu fait foi.** Le scan transmet au connecteur l'intitulé des
+offres déjà en base, pas seulement leur identifiant : une offre connue est
+comparée aux recherches sur son vrai titre. Pour un site dont l'adresse ne dit
+rien (Commerzbank : `index.php?ac=jobad&id=60114`), `titre_en_fiche` fait
+ouvrir les offres nouvelles avant de les juger — plafonnées, les plus
+récentes d'abord — puis l'intitulé de la fiche doit répondre. Une offre fermée
+(« CLOSED: ») ou une candidature spontanée n'est jamais retenue.
+
+**Content-Signal est respecté.** Un robots.txt peut dire ce que le site permet
+de faire de son contenu (Cloudflare, 2025). DreamJob en fait deux usages :
+ranger les offres pour les chercher (`search`) et en donner la description à un
+modèle pour la lettre (`ai-input`). Un site qui refuse l'un des deux n'est pas
+collecté : Antin Infrastructure Partners (`search=no, ai-input=no`). Kepler
+Cheuvreux n'interdit que l'entraînement, que DreamJob ne fait pas.
 
 **robots.txt se lit selon la RFC 9309, pas avec `urllib.robotparser`.** Le module
 standard applique la première règle rencontrée ; la norme veut la plus précise
@@ -728,12 +758,27 @@ applique à cet hôte (`ClientHttp.ralentir`).
 - **Une adresse d'offre peut disparaître du site avant son plan** (ING) : la
   fiche en 404 est ignorée et consignée, rien d'autre.
 
-**Refusés, motif daté dans `employeurs.yaml`** : BNP Paribas (liste protégée,
-recherche Avature désactivée), Goldman Sachs (robots.txt n'autorise que les
-fiches, sans plan du site), Bpifrance et Tikehau (403 à notre User-Agent,
-robots.txt compris). Mesuré sur les 79 premiers actifs et les 4 recherches du
-propriétaire : 368 offres en 3 min 15, 90 en France ; une passe de veille en
-25 s.
+**Refusés, motif daté dans `employeurs.yaml`** : BNP Paribas et sa gestion
+d'actifs (liste protégée, recherche Avature désactivée), Goldman Sachs
+(robots.txt n'autorise que les fiches, sans plan du site), le groupe Crédit
+Agricole (son Talentsoft interdit tout ; ses filiales ouvertes restent
+suivies), Deutsche Börse, Pictet et AIB (SuccessFactors hébergé par SAP,
+robots.txt interdit tout), Antin (Content-Signal), et les sites qui refusent
+notre User-Agent : Bpifrance, Tikehau, la BEI, Julius Baer, Citadel, Citadel
+Securities, Primonial, PwC, Robert Walters. **Un 403 isolé ne suffit pas** :
+pendant le repérage, Millennium, Wendel et ION répondaient 403 sous la rafale,
+200 ensuite — un refus se vérifie sur robots.txt et la page d'accueil, à froid.
+
+**Des tableaux retrouvés ailleurs.** Plusieurs sociétés de trading dont le site
+ne dit rien ont un tableau Greenhouse public : QRT (199 offres), Jane Street,
+DRW, Tower, Squarepoint, Hudson River Trading. Un nom se vérifie en une requête
+à l'API.
+
+Mesuré sur les 79 premiers actifs et les 4 recherches du propriétaire : 368
+offres en 3 min 15, 90 en France ; une passe de veille en 25 s. Une passe de
+veille de bout en bout, sur une copie de la base (114 employeurs, notification
+interceptée) : 92 offres d'employeurs entrées, dont 4 vertes, en 2 min 50 —
+la première ; les suivantes n'ouvrent que les fiches nouvelles.
 
 ---
 
@@ -1384,4 +1429,4 @@ Sans LibreOffice, les documents sont générés en Word uniquement — même pri
 - [x] **15.** Un compte par personne — profil, recherches, notes, candidatures, documents et notifications séparés ; offres partagées mais fil propre à chacun ; DogFinance réservé au propriétaire ; budget mensuel des amis ; migration vérifiée sur la vraie base
 - [x] **16.** Score refait et mesuré — tout le CV lu, métier reconnu dans les deux sens, contenu étalonné, niveau / diplôme / certifications / statut lus dans l'annonce, pertinence × accessibilité × conditions, points rédhibitoires, explication en lignes, recalcul automatique ; 182 offres étiquetées, top 20 : 6 → 20 offres pertinentes
 - [x] **17.** Veille — les offres du jour toutes les demi-heures en journée, recherches enregistrées et intitulés du CV, une alerte ntfy par offre verte (clic vers la fiche), plafond quotidien, une offre signalée une seule fois ; Adzuna et DogFinance tenus à l'écart
-- [x] **18.** Sites des employeurs — 228 employeurs repérés, 82 actifs par onze connecteurs (un par logiciel, plus le plan du site + JobPosting), robots.txt selon la RFC 9309 et Crawl-delay, refus motivés ; branchés sur la veille
+- [x] **18.** Sites des employeurs — 228 employeurs repérés, 114 actifs par dix-huit connecteurs (un par logiciel, plus trois lectures génériques), robots.txt selon la RFC 9309, Crawl-delay et Content-Signal, refus motivés ; branchés sur la veille

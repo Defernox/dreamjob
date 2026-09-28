@@ -76,13 +76,23 @@ employeurs:
       motif: >
         Recrute sur recrutement.bpce.fr : suivi avec Groupe BPCE.
     - nom: "Crédit Mutuel Alliance Fédérale"
-      statut: "à_étudier"
-      adresse: "https://www.creditmutuel.com/fr/carrieres/rejoignez-nous.html"
+      logiciel: "page_liste"
+      adresse: "https://recrutement.creditmutuel.fr"
+      statut: "actif"
+      liste: "https://recrutement.creditmutuel.fr/fr/nos_offres.html"
+      offres: "/fr/offre\\.html\\?annonce=\\d+"
+      identifiant: "annonce=(\\d+)"
+      bloc: "<h1"
+      fin_bloc: "Postuler|<footer"
+      titre_h1: True
+      pays_par_defaut: "France"
       priorite: 2
     - nom: "CIC"
-      statut: "à_étudier"
-      adresse: "https://recrutement.cic.fr/fr/index.html"
+      statut: "inclus"
       priorite: 2
+      motif: >
+        Recrute sur recrutement.creditmutuel.fr : suivi avec Crédit Mutuel Alliance
+        Fédérale.
     - nom: "Crédit Mutuel Arkéa"
       logiciel: "talentsoft"
       adresse: "https://www.recrutement.arkea.com"
@@ -90,8 +100,17 @@ employeurs:
       pays_par_defaut: "France"
       priorite: 2
     - nom: "La Banque Postale"
-      statut: "à_étudier"
-      adresse: "https://www.labanquepostale.com/candidats/offres-d-emploi/nos-offres-d-emploi.html"
+      logiciel: "page_liste"
+      adresse: "https://www.labanquepostale.com"
+      statut: "actif"
+      liste: "https://www.labanquepostale.com/candidats/offres-d-emploi/nos-offres-d-emploi.p-{page}.html"
+      offres: "nos-offres-d-emploi\\.job-\\d+\\.html"
+      identifiant: "job-(\\d+)\\.html"
+      bloc: "<h1"
+      fin_bloc: "Partager|<footer"
+      titre_h1: True
+      titre_en_fiche: True
+      pays_par_defaut: "France"
       priorite: 2
     - nom: "HSBC Continental Europe"
       statut: "inclus"

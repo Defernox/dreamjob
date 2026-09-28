@@ -127,6 +127,8 @@ _ETIQUETTE = r">\s*(?:{})\s*:?\s*</[^>]+>(?:\s*<[^>]+>)*\s*([^<]{{2,80}}?)\s*<"
 _LIEU_ETIQUETTE = re.compile(_ETIQUETTE.format(
     "Location|Locations|Lieu|City|Office|Standort|Arbeitsort|Ort|Sede|Città"), re.I)
 _PAYS_ETIQUETTE = re.compile(_ETIQUETTE.format("Country|Land|Pays|Paese"), re.I)
+_CONTRAT_ETIQUETTE = re.compile(_ETIQUETTE.format(
+    "Type de contrat|Contrat|Contract type|Contract|Employment type|Vertragsart|Tipo di contratto"), re.I)
 
 
 def bloc(html: str, options: dict) -> dict | None:
@@ -142,10 +144,18 @@ def bloc(html: str, options: dict) -> dict | None:
     corps = html[debut:min(fins) if fins else debut + 30000]
     corps = corps[corps.find(">") + 1:]
     fin_balise = corps.rfind("<")
-    titre = _OG_TITRE.search(html)
+    og = _OG_TITRE.search(html)
+    titre = og.group(1) if og else ""
     lieu = _LIEU_ETIQUETTE.search(corps)
     pays = _PAYS_ETIQUETTE.search(corps)
-    return {"title": unescape(titre.group(1)) if titre else "",
+    # La Banque Postale met dans og:title le titre de la liste : l'intitulé
+    # est alors celui du <h1> (`titre_h1`).
+    h1 = re.search(r"<h1[^>]*>(.*?)</h1>", html, re.S)
+    if options.get("titre_h1") and h1:
+        titre = " ".join(re.sub(r"<[^>]+>", " ", h1.group(1)).split())
+    type_ = _CONTRAT_ETIQUETTE.search(corps)
+    return {"title": unescape(titre),
+            "employmentType": unescape(type_.group(1)).strip() if type_ else "",
             "description": corps[:fin_balise] if fin_balise > 0 else corps,
             "jobLocation": {"address": {"addressLocality": unescape(lieu.group(1)).strip() if lieu else "",
                                         "addressCountry": unescape(pays.group(1)).strip() if pays else ""}}}

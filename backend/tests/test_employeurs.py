@@ -1012,6 +1012,42 @@ def test_smartrecruiters_la_page_carrieres_jamais_l_api(registre):
     assert (o.source_id, o.titre, o.pays, o.type_contrat) == ("fonds:744", "Analyste risques (stage)", "France", "Stage")
 
 
+# --- Page de liste (La Banque Postale, Crédit Mutuel) -----------------------------------------------
+
+
+class SiteListe:
+    def __init__(self):
+        self.appels = []
+
+    def get(self, url, **kw):
+        self.appels.append(("GET", url, None))
+        if url.endswith("/robots.txt"):
+            return Reponse(200, None, "User-agent: *\nDisallow: /*_pid=\n", {})
+        if ".p-" in url:
+            page = int(url.split(".p-")[1].split(".")[0])
+            if page > 2:
+                return Reponse(200, None, "<p>Aucune offre</p>", {})
+            return Reponse(200, None, "".join(
+                f'<h3>Poste {page}{i}</h3><a href="/offres.job-{page}{i}.html/x.html">Détails de l\'offre</a>'
+                f'<a href="/offres.job-{page}{i}.html/x.html">Analyste risques {page}{i}</a>' for i in range(2)), {})
+        return Reponse(200, None, ('<h1>Analyste risques (F/H)</h1><div><span>Type de contrat :</span>'
+                                   '<span>CDD</span><p>Suivi des risques.</p></div>Partager'), {})
+
+
+def test_page_liste_intitule_du_lien_et_contrat_de_la_fiche(registre):
+    site = SiteListe()
+    c = EmployeursConnector(Sites(banque=site), registre({
+        "nom": "Banque", "logiciel": "page_liste", "adresse": "https://banque.fr",
+        "liste": "https://banque.fr/offres.p-{page}.html", "offres": r"\.job-\d+\.html",
+        "identifiant": r"job-(\d+)\.html", "bloc": "<h1", "fin_bloc": "Partager", "titre_h1": True,
+        "pays_par_defaut": "France"}))
+    trouvees = c.fetch(_requete())
+    assert sorted(o.source_id for o in trouvees) == ["banque:10", "banque:11", "banque:20", "banque:21"]
+    o = trouvees[0]
+    assert (o.titre, o.type_contrat, o.pays) == ("Analyste risques (F/H)", "CDD", "France")
+    assert len([u for _, u, _ in site.appels if ".p-" in u]) == 3, "deux pages pleines, une vide qui arrête"
+
+
 # --- La politesse, les pannes ---------------------------------------------------------------
 
 

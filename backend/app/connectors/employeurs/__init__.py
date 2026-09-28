@@ -44,6 +44,7 @@ from .eightfold import Eightfold
 from .greenhouse import Greenhouse
 from .jibe import Jibe
 from .oracle import Oracle
+from .page_liste import PageListe
 from .plan_du_site import PlanDuSite
 from .recruitee import Lever, Pinpoint, Recruitee
 from .smartrecruiters import SmartRecruiters
@@ -69,6 +70,7 @@ LOGICIELS: dict[str, type[Logiciel]] = {
     BrassRing.cle: BrassRing,
     SmartRecruiters.cle: SmartRecruiters,
     Lever.cle: Lever,
+    PageListe.cle: PageListe,
 }
 
 # Les contrats qu'une annonce d'employeur ne prend pas la peine d'écrire.

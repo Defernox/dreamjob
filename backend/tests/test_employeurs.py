@@ -635,6 +635,53 @@ def test_le_jobposting_en_guillemets_simples_ou_en_microdonnees():
     assert microdonnees("<p>rien</p>") is None
 
 
+# --- Groupe BPCE ------------------------------------------------------------------------------
+
+
+class SiteBpce:
+    """recrutement.bpce.fr : un plan des offres publié, une table des routes,
+    un contenu par offre. La recherche, interdite par robots.txt, n'existe pas
+    ici : un appel à elle ferait échouer le test."""
+
+    ROBOTS = "User-agent: *\nDisallow: /emploi/\nDisallow: /recherche-d'offres\n"
+
+    def __init__(self):
+        self.appels = []
+
+    def get(self, url, **kw):
+        self.appels.append(("GET", url, None))
+        assert "search" not in url, "la recherche n'est jamais utilisée"
+        if url.endswith("/robots.txt"):
+            return Reponse(200, None, self.ROBOTS, {})
+        if "job-sitemap1" in url:
+            return Reponse(200, None, "<urlset>" + "".join(
+                f"<url><loc>https://recrutement.bpce.fr/job/{slug}/</loc><lastmod>{maintenant().isoformat()}</lastmod></url>"
+                for slug in ("stage-analyste-risques-f-h", "conseiller-clientele-f-h")) + "</urlset>", {})
+        if "job-sitemap" in url:
+            return Reponse(404, None, "", {})
+        if "/routes/" in url:
+            return Reponse(200, [{"path": "/job/stage-analyste-risques-f-h", "_uid": "job-101-abc"},
+                                 {"path": "/job/conseiller-clientele-f-h", "_uid": "job-102-def"},
+                                 {"path": "/", "_uid": "page-1-x"}], "", {})
+        assert "_uid=job-101-abc" in url, url
+        return Reponse(200, {"content": {
+            "microdatas": {"@type": "JobPosting", "title": "Stage - Analyste risques (F/H)", "datePosted": "2026-09-27",
+                           "hiringOrganization": {"name": "Natixis CIB France"}},
+            "top": {"localisations": [{"city": "Paris", "country": "France"}]},
+            "main": {"text": "<p>Suivi des <b>risques</b>.</p>"}}}, "", {})
+
+
+def test_bpce_le_plan_publie_et_la_page_de_l_offre_jamais_la_recherche(registre):
+    site = SiteBpce()
+    c = EmployeursConnector(Sites(recrutement=site), registre(
+        {"nom": "Groupe BPCE", "logiciel": "bpce", "adresse": "https://recrutement.bpce.fr"}))
+    [o] = c.fetch(_requete())
+    assert (o.titre, o.entreprise, o.pays, o.lieu, o.type_contrat) == (
+        "Stage - Analyste risques (F/H)", "Natixis CIB France", "France", "Paris", "Stage")
+    assert o.source_id == "groupe-bpce:101"
+    assert o.description_brute == "Suivi des risques."
+
+
 # --- La politesse, les pannes ---------------------------------------------------------------
 
 

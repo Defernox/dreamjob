@@ -37,6 +37,7 @@ from .commun import cles as cles_de
 from .logiciel import Logiciel
 from .registre import ACTIF, Employeur, charger
 from .robots import Robots
+from .bpce import Bpce
 from .greenhouse import Greenhouse
 from .oracle import Oracle
 from .plan_du_site import PlanDuSite
@@ -53,6 +54,7 @@ LOGICIELS: dict[str, type[Logiciel]] = {
     Oracle.cle: Oracle,
     Greenhouse.cle: Greenhouse,
     PlanDuSite.cle: PlanDuSite,
+    Bpce.cle: Bpce,
 }
 
 # Les contrats qu'une annonce d'employeur ne prend pas la peine d'écrire.
@@ -189,7 +191,7 @@ class EmployeursConnector(BaseConnector):
             source_id=ident,
             titre=annonce.titre,
             url=annonce.url,
-            entreprise=employeur.nom,
+            entreprise=annonce.entreprise or employeur.nom,
             lieu=annonce.lieu,
             pays=annonce.pays,
             type_contrat=annonce.contrat,

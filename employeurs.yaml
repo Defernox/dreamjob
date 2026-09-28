@@ -55,15 +55,21 @@ employeurs:
       statut: "actif"
       priorite: 2
     - nom: "Natixis"
-      statut: "à_étudier"
-      adresse: "https://recrutement.natixis.com/"
+      statut: "inclus"
       priorite: 1
+      motif: >
+        Recrute sur recrutement.bpce.fr : suivi avec Groupe BPCE (l'entité exacte est
+        reprise de chaque offre).
     - nom: "Groupe BPCE"
-      statut: "à_étudier"
+      logiciel: "bpce"
+      adresse: "https://recrutement.bpce.fr"
+      statut: "actif"
       priorite: 1
     - nom: "BRED"
-      statut: "à_étudier"
+      statut: "inclus"
       priorite: 2
+      motif: >
+        Recrute sur recrutement.bpce.fr : suivi avec Groupe BPCE.
     - nom: "Crédit Mutuel Alliance Fédérale"
       statut: "à_étudier"
       adresse: "https://www.creditmutuel.com/fr/carrieres/rejoignez-nous.html"
@@ -104,9 +110,10 @@ employeurs:
         Ses offres paraissent sur careers.societegenerale.com : suivies avec Société
         Générale.
     - nom: "Banque Palatine"
-      statut: "à_étudier"
-      adresse: "https://www.palatine.fr/votre-banque/nos-engagements/nos-engagements-ressources-humaines/"
+      statut: "inclus"
       priorite: 3
+      motif: >
+        Recrute sur recrutement.bpce.fr : suivi avec Groupe BPCE.
     - nom: "Bpifrance"
       statut: "à_étudier"
       priorite: 1
@@ -302,8 +309,10 @@ employeurs:
       adresse: "https://www.bnpparibas-am.com/en/why-join-us/"
       priorite: 1
     - nom: "Natixis Investment Managers"
-      statut: "à_étudier"
+      statut: "inclus"
       priorite: 1
+      motif: >
+        Recrute sur recrutement.bpce.fr : suivi avec Groupe BPCE.
     - nom: "Candriam"
       logiciel: "talentsoft"
       adresse: "https://jobs.candriam.com"

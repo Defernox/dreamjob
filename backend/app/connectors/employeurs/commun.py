@@ -29,6 +29,9 @@ class Annonce:
     publiee_le: datetime | None = None
     contrat: str = ""
     description: str = ""
+    # L'entité qui recrute, quand un site de groupe la nomme (« Natixis CIB »
+    # sur le site du groupe BPCE) ; sinon, le nom de l'employeur suivi.
+    entreprise: str = ""
     brut: dict = field(default_factory=dict)
     complete: bool = False
 

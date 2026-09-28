@@ -925,6 +925,37 @@ def test_brassring_le_pays_vient_de_la_fiche(registre):
     assert o.description_brute.startswith("Key responsibilities\n")
 
 
+# --- SmartRecruiters -------------------------------------------------------------------------
+
+
+class SiteSmartRecruiters:
+    def __init__(self):
+        self.appels = []
+
+    def get(self, url, **kw):
+        self.appels.append(("GET", url, None))
+        assert "api.smartrecruiters.com" not in url, "l'API est interdite aux robots"
+        if url.endswith("/robots.txt"):
+            return Reponse(200, None, "<!DOCTYPE html><html>page d'accueil</html>", {})
+        if url.startswith("https://careers."):
+            return Reponse(200, None, (
+                '<ul><li class="opening-job job column"><a href="https://jobs.smartrecruiters.com/Fonds/744-analyste-risques" '
+                'class="link--block details js-job-ad-link"><h4 class="details-title job-title">Analyste risques</h4>'
+                '<p class="job-desc">Paris, France</p></a></li></ul>'), {})
+        return Reponse(200, None, '<script type="application/ld+json">' + json.dumps({
+            "@type": "JobPosting", "title": "Analyste risques (stage)", "datePosted": "2026-09-20",
+            "description": "<p>Risques.</p>", "employmentType": "INTERN",
+            "jobLocation": {"address": {"addressLocality": "Paris", "addressCountry": "FR"}}}) + "</script>", {})
+
+
+def test_smartrecruiters_la_page_carrieres_jamais_l_api(registre):
+    site = SiteSmartRecruiters()
+    c = EmployeursConnector(Sites(careers=site, jobs=site), registre(
+        {"nom": "Fonds", "logiciel": "smartrecruiters", "adresse": "https://careers.smartrecruiters.com/Fonds"}))
+    [o] = c.fetch(_requete())
+    assert (o.source_id, o.titre, o.pays, o.type_contrat) == ("fonds:744", "Analyste risques (stage)", "France", "Stage")
+
+
 # --- La politesse, les pannes ---------------------------------------------------------------
 
 

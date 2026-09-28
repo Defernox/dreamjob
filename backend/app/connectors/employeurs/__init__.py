@@ -46,6 +46,7 @@ from .jibe import Jibe
 from .oracle import Oracle
 from .plan_du_site import PlanDuSite
 from .recruitee import Pinpoint, Recruitee
+from .smartrecruiters import SmartRecruiters
 from .successfactors import SuccessFactors
 from .talentsoft import Talentsoft
 from .workday import Workday
@@ -66,6 +67,7 @@ LOGICIELS: dict[str, type[Logiciel]] = {
     Recruitee.cle: Recruitee,
     Pinpoint.cle: Pinpoint,
     BrassRing.cle: BrassRing,
+    SmartRecruiters.cle: SmartRecruiters,
 }
 
 # Les contrats qu'une annonce d'employeur ne prend pas la peine d'écrire.

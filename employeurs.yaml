@@ -358,7 +358,7 @@ employeurs:
     - nom: "Sycomore AM"
       logiciel: "smartrecruiters"
       adresse: "https://careers.smartrecruiters.com/SycomoreAssetManagement"
-      statut: "à_venir"
+      statut: "actif"
       priorite: 2
     - nom: "Groupama AM"
       statut: "à_étudier"
@@ -635,9 +635,9 @@ employeurs:
       statut: "à_étudier"
       priorite: 3
     - nom: "Susquehanna"
-      logiciel: "icims"
-      adresse: "https://cookie-policy-scripts.icims.com/sig/careers.sig.com/script.js"
-      statut: "à_venir"
+      logiciel: "jibe"
+      adresse: "https://careers.sig.com"
+      statut: "actif"
       priorite: 3
     - nom: "Jump Trading"
       logiciel: "greenhouse"
@@ -719,8 +719,8 @@ employeurs:
       priorite: 3
     - nom: "Mirabaud"
       logiciel: "smartrecruiters"
-      adresse: "https://jobs.smartrecruiters.com/MirabaudCieSA/744000151560639-trainee-wealth-management-12-months-"
-      statut: "à_venir"
+      adresse: "https://careers.smartrecruiters.com/MirabaudCieSA"
+      statut: "actif"
       priorite: 3
     - nom: "Quintet Private Bank"
       logiciel: "successfactors"
@@ -875,9 +875,9 @@ employeurs:
       identifiant: "/(\\d+)/?$"
       priorite: 3
     - nom: "ICE"
-      logiciel: "icims"
-      adresse: "https://www.icims.com/legal/privacy-notice-website"
-      statut: "à_venir"
+      logiciel: "jibe"
+      adresse: "https://careers.ice.com"
+      statut: "actif"
       priorite: 3
     - nom: "Swift"
       statut: "à_étudier"
@@ -1060,8 +1060,8 @@ employeurs:
       priorite: 2
     - nom: "Sia Partners"
       logiciel: "smartrecruiters"
-      adresse: "https://jobs.smartrecruiters.com/Sia/744000152221389-final-year-internship-operations-research-consultant-"
-      statut: "à_venir"
+      adresse: "https://careers.smartrecruiters.com/Sia"
+      statut: "actif"
       priorite: 2
     - nom: "Wavestone"
       logiciel: "softgarden"

@@ -223,7 +223,12 @@ employeurs:
       identifiant: "/(\\d+)/?$"
       priorite: 2
     - nom: "Standard Chartered"
-      statut: "à_étudier"
+      logiciel: "plan_du_site"
+      adresse: "https://jobs.standardchartered.com"
+      statut: "actif"
+      plan: "https://jobs.standardchartered.com/sitemap.xml"
+      offres: "/job/[^/]+/\\d+/?$"
+      identifiant: "/(\\d+)/?$"
       priorite: 2
     - nom: "Santander"
       logiciel: "workday"
@@ -262,7 +267,13 @@ employeurs:
       statut: "actif"
       priorite: 3
     - nom: "Commerzbank"
-      statut: "à_étudier"
+      logiciel: "plan_du_site"
+      adresse: "https://jobs.commerzbank.com"
+      statut: "actif"
+      plan: "https://jobs.commerzbank.com/sitemap.xml"
+      offres: "ac=jobad"
+      identifiant: "id=(\\d+)"
+      titre_en_fiche: True
       priorite: 2
     - nom: "DZ Bank"
       statut: "à_étudier"

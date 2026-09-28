@@ -647,6 +647,48 @@ def test_une_fiche_sans_balisage_se_lit_entre_deux_reperes():
     assert bloc(page, {}) is None
 
 
+class SiteSansTitre:
+    """Commerzbank : l'adresse de l'offre ne dit rien (`index.php?ac=jobad&id=…`)."""
+
+    TITRES = {"1": "Credit Risk Analyst", "2": "IT Architect", "3": "Market Risk Analyst"}
+
+    def __init__(self):
+        self.appels = []
+
+    def get(self, url, **kw):
+        self.appels.append(("GET", url, None))
+        if url.endswith("/robots.txt"):
+            return Reponse(200, None, "User-agent: *\nAllow: /\n", {})
+        if url.endswith("/plan.xml"):
+            return Reponse(200, None, "<urlset>" + "".join(
+                f"<url><loc>https://banque.de/index.php?ac=jobad&amp;id={i}</loc>"
+                f"<lastmod>{maintenant().isoformat()}</lastmod></url>" for i in self.TITRES) + "</urlset>", {})
+        ident = url.rsplit("=", 1)[-1]
+        return Reponse(200, None, '<script type="application/ld+json">' + json.dumps(
+            {"@type": "JobPosting", "title": self.TITRES[ident], "description": "<p>x</p>"}) + "</script>", {})
+
+
+def test_une_adresse_muette_fait_ouvrir_la_fiche_avant_de_juger(registre):
+    site = SiteSansTitre()
+    c = EmployeursConnector(Sites(banque=site), registre(
+        {"nom": "Banque", "logiciel": "plan_du_site", "adresse": "https://banque.de", "plan": "https://banque.de/plan.xml",
+         "offres": "ac=jobad", "identifiant": r"id=(\d+)", "titre_en_fiche": True}))
+    # Déjà en base : son intitulé connu suffit, la fiche n'est pas rouverte.
+    c.connus = {"banque:3": "Market Risk Analyst"}
+    trouvees = {o.source_id: o.titre for o in c.fetch(_requete())}
+    assert set(trouvees) == {"banque:1", "banque:3"}, "l'architecte IT ne répond pas"
+    fiches = [u for _, u, _ in site.appels if "jobad" in u and "plan" not in u]
+    assert sorted(u.rsplit("=", 1)[-1] for u in fiches) == ["1", "2"]
+
+
+def test_le_titre_connu_l_emporte_sur_celui_de_l_adresse(registre):
+    site = SiteWorkday([_offre("Poste 42")])
+    c = EmployeursConnector(Sites(banque=site), registre(_employeur("banque")))
+    ident = f"banque:{SiteWorkday._chemin(_offre('Poste 42')).rsplit('/', 1)[-1]}"
+    c.connus = {ident: "Risk Analyst"}
+    assert [o.source_id for o in c.fetch(_requete())] == [ident]
+
+
 def test_le_titre_se_lit_dans_l_adresse():
     from app.connectors.employeurs.plan_du_site import titre_de_l_adresse
     assert titre_de_l_adresse("https://x.fr/offres-d-emploi/analyste-support-trading-2600032A-fr",

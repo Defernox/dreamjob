@@ -54,7 +54,9 @@ class Beesite(Logiciel):
             r = self.http.get(url, entetes={"Accept": "application/json"}, utiliser_cache=False)
             resultat = (r.json_ or {}).get("SearchResult") or {} if isinstance(r.json_, dict) else {}
             items = resultat.get("SearchResultItems") or []
-            trop_vieille = False
+            # Le tri par date n'est pas garanti : chez Commerzbank, la première
+            # offre date de juin. Une offre ancienne est écartée, sans arrêter
+            # la lecture ; les pages restent bornées par `pages_max`.
             for item in items:
                 o = item.get("MatchedObjectDescriptor") or {}
                 try:
@@ -62,21 +64,22 @@ class Beesite(Logiciel):
                 except ValueError:
                     publiee = None
                 if publiee is not None and publiee < depuis.replace(hour=0, minute=0, second=0):
-                    trop_vieille = True
-                    break
+                    continue
                 ville = _premier(o.get("PositionLocation"), "CityName")
                 pays_ = depuis_nom(_premier(o.get("PositionLocation"), "CountryName")) or depuis_lieu(ville)
                 if pays and pays_ and pays_ not in pays:
                     continue
                 ident = str(o.get("PositionID") or "")
                 titre = str(o.get("PositionTitle") or "").strip()
+                uri = str(o.get("PositionURI") or "")
                 annonces.append(Annonce(
                     ident=ident, titre=titre,
-                    url=publique.format(id=ident) if publique else f"{api}{o.get('PositionURI') or ''}",
+                    url=(publique.format(id=ident) if publique
+                         else uri if uri.startswith("http") else f"{api}{uri}"),
                     lieu=ville, pays=pays_, publiee_le=publiee,
                     contrat=contrat(titre, _premier(o.get("PositionOfferingType"), "Name")),
                 ))
-            if trop_vieille or len(items) < PAR_PAGE:
+            if len(items) < PAR_PAGE:
                 break
         return [a for a in annonces if a.titre and a.ident]
 

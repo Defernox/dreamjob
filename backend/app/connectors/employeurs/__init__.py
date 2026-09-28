@@ -164,10 +164,23 @@ class EmployeursConnector(BaseConnector):
         if len(self.pannes) == len(employeurs):
             raise ErreurConnecteur(f"aucun site d'employeur n'a répondu ({len(employeurs)} essayés)")
 
+        # Le scan donne l'intitulé des offres déjà en base : c'est lui qu'on
+        # compare, pas celui tiré d'une adresse. (Un simple ensemble d'identifiants
+        # reste accepté.)
+        connus = self.connus if isinstance(self.connus, dict) else dict.fromkeys(self.connus, "")
+
+        def titre(e: Employeur, a: Annonce) -> str:
+            return connus.get(self._id(e, a)) or a.titre
+
+        def a_ouvrir_d_abord(e: Employeur, a: Annonce) -> bool:
+            # Commerzbank : l'adresse (`index.php?ac=jobad&id=60114`) ne dit rien
+            # de l'offre. Une offre nouvelle y est ouverte avant d'être jugée.
+            return bool(e.options.get("titre_en_fiche")) and self._id(e, a) not in connus
+
         retenues = [(e, a) for e, a in annonces
-                    if correspond(a.titre, recherches) and not pas_une_offre(a.titre)
-                    and self._acceptee(a, query)]
-        nouvelles = [(e, a) for e, a in retenues if self._id(e, a) not in self.connus]
+                    if (a_ouvrir_d_abord(e, a) or correspond(titre(e, a), recherches))
+                    and not pas_une_offre(titre(e, a)) and self._acceptee(a, query)]
+        nouvelles = [(e, a) for e, a in retenues if self._id(e, a) not in connus]
         # Au-delà du plafond, les plus récentes d'abord : ce sont elles qu'on
         # risque de voir partir.
         nouvelles.sort(key=lambda p: p[1].publiee_le or datetime.min, reverse=True)
@@ -178,13 +191,15 @@ class EmployeursConnector(BaseConnector):
         brutes = []
         for e, a in retenues:
             ident = self._id(e, a)
-            if ident in self.connus:
+            if ident in connus:
                 brutes.append(self._brute(e, a, ident))
             elif ident in gardees and ident in self._fiches:
                 fiche = self._fiches[ident]
                 # La fiche dit le vrai pays : « 3 Locations » en liste peut
-                # cacher un poste en Inde.
-                if self._acceptee(fiche, query):
+                # cacher un poste en Inde. Et le vrai intitulé, quand l'adresse
+                # n'en disait rien.
+                if self._acceptee(fiche, query) and correspond(fiche.titre, recherches) \
+                        and not pas_une_offre(fiche.titre):
                     brutes.append(self._brute(e, fiche, ident))
         return brutes
 

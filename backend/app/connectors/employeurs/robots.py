@@ -37,7 +37,10 @@ class Regles:
     def __init__(self, texte: str, agent: str) -> None:
         self.regles: list[tuple[bool, str]] = []
         self.plans: list[str] = []
+        # Hors norme, mais répandu : « Crawl-delay: 5 » (AXA). On le respecte.
+        self.delai: float | None = None
         groupes: list[tuple[list[str], list[tuple[bool, str]]]] = []
+        delais: dict[int, float] = {}
         agents: list[str] = []
         regles: list[tuple[bool, str]] = []
         dans_les_agents = False
@@ -60,12 +63,20 @@ class Regles:
                 if groupes and valeur:
                     regles.append((cle == "allow", valeur))
                 # « Disallow: » vide n'interdit rien : aucune règle à ajouter.
+            elif cle == "crawl-delay" and groupes:
+                dans_les_agents = False
+                try:
+                    delais[len(groupes) - 1] = float(valeur)
+                except ValueError:
+                    pass
         nom = agent.lower()
         # Le nom du robot, exactement : « autre » ne vise pas « AutreRobot ».
-        propres = [r for a, r in groupes if nom in a]
-        communes = [r for a, r in groupes if "*" in a]
+        propres = [i for i, (a, _) in enumerate(groupes) if nom in a]
+        communes = [i for i, (a, _) in enumerate(groupes) if "*" in a]
         choisis = propres or communes
-        self.regles = [regle for groupe in choisis for regle in groupe]
+        self.regles = [regle for i in choisis for regle in groupes[i][1]]
+        delais_choisis = [delais[i] for i in choisis if i in delais]
+        self.delai = max(delais_choisis) if delais_choisis else None
 
     @staticmethod
     def _motif(chemin: str) -> re.Pattern:
@@ -110,6 +121,8 @@ class Robots:
                 regles = None
             else:
                 regles = Regles(r.texte if r.statut == 200 else "", self.agent)
+                if regles.delai and hasattr(self.http, "ralentir"):
+                    self.http.ralentir(p.netloc, regles.delai)
         except ErreurHttp as e:
             log.warning("robots.txt de %s injoignable : on s'abstient (%s)", origine, e)
             regles = None

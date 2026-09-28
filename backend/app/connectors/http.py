@@ -67,6 +67,9 @@ class ClientHttp:
         # que deux fils ne tombent jamais sur le même serveur dans la seconde.
         self._verrou = threading.Lock()
         self._verrous_hotes: dict[str, threading.Lock] = {}
+        # Un site peut demander plus lent (`Crawl-delay` de robots.txt) : le
+        # délai par hôte l'emporte alors sur l'intervalle commun.
+        self._intervalles: dict[str, float] = {}
         # Créé à la première requête : monter un contexte SSL coûte ~1 s, inutile
         # pour un scan dont toutes les réponses sortent du cache.
         self._client: httpx.Client | None = None
@@ -91,16 +94,24 @@ class ClientHttp:
     # ------------------------------------------------------------ limitation
 
     def _attendre_son_tour(self, url: str) -> None:
-        hote = urlparse(url).netloc
+        hote = urlparse(url).netloc.lower()
         with self._verrou:
             verrou = self._verrous_hotes.setdefault(hote, threading.Lock())
         with verrou:
             precedent = self._dernier_appel.get(hote)
             if precedent is not None:
-                reste = self.intervalle - (time.monotonic() - precedent)
+                intervalle = max(self.intervalle, self._intervalles.get(hote, 0.0))
+                reste = intervalle - (time.monotonic() - precedent)
                 if reste > 0:
                     time.sleep(reste)
             self._dernier_appel[hote] = time.monotonic()
+
+    def ralentir(self, hote: str, secondes: float) -> None:
+        """Au moins `secondes` entre deux requêtes vers cet hôte — jamais moins
+        que l'intervalle commun. Plafonné à une minute : au-delà, c'est une
+        valeur aberrante, pas une demande de politesse."""
+        with self._verrou:
+            self._intervalles[hote.lower()] = min(max(secondes, 0.0), 60.0)
 
     # ----------------------------------------------------------------- cache
 

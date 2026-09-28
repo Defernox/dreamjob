@@ -670,7 +670,9 @@ employeurs:
       statut: "actif"
       priorite: 2
     - nom: "Edmond de Rothschild"
-      statut: "à_étudier"
+      logiciel: "oracle"
+      adresse: "https://evht.fa.ocs.oraclecloud.eu/hcmUI/CandidateExperience/fr/sites/CX_2001"
+      statut: "actif"
       priorite: 1
     - nom: "Neuflize OBC"
       statut: "à_étudier"
@@ -768,9 +770,9 @@ employeurs:
   # --- assurance ---
   assurance:
     - nom: "AXA"
-      logiciel: "icims"
-      adresse: "https://cookie-policy-scripts.icims.com/axa/careers.axa.com/script.js"
-      statut: "à_venir"
+      logiciel: "jibe"
+      adresse: "https://careers.axa.com/careers-home"
+      statut: "actif"
       priorite: 1
     - nom: "CNP Assurances"
       logiciel: "talentsoft"

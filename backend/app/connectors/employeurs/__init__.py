@@ -40,6 +40,7 @@ from .robots import Robots
 from .bpce import Bpce
 from .eightfold import Eightfold
 from .greenhouse import Greenhouse
+from .jibe import Jibe
 from .oracle import Oracle
 from .plan_du_site import PlanDuSite
 from .successfactors import SuccessFactors
@@ -57,6 +58,7 @@ LOGICIELS: dict[str, type[Logiciel]] = {
     PlanDuSite.cle: PlanDuSite,
     Bpce.cle: Bpce,
     Eightfold.cle: Eightfold,
+    Jibe.cle: Jibe,
 }
 
 # Les contrats qu'une annonce d'employeur ne prend pas la peine d'écrire.

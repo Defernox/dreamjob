@@ -98,6 +98,11 @@ class Sites:
     def post(self, url, **kw):
         return self._site(url).post(url, **kw)
 
+    def ralentir(self, hote, secondes):
+        site = self._site(f"https://{hote}/")
+        if hasattr(site, "ralentir"):
+            site.ralentir(hote, secondes)
+
 
 @pytest.fixture
 def registre(tmp_path):
@@ -725,6 +730,55 @@ def test_eightfold_pcsx_et_v2_pays_par_pays(registre):
     # Un pays à la fois, nommé en anglais : sans lieu, l'API choisirait celui de l'appelant.
     lieux = [u.split("location=")[1].split("&")[0] for _, u, _ in site.appels if "v2/jobs?" in u]
     assert lieux == ["France", "United%20Kingdom"]
+
+
+# --- Jibe (AXA) ---------------------------------------------------------------------------------
+
+
+class SiteJibe:
+    def __init__(self, offres):
+        self.offres, self.appels, self.ralentis = sorted(offres, key=lambda o: o["jours"]), [], {}
+
+    def ralentir(self, hote, secondes):
+        self.ralentis[hote] = secondes
+
+    def get(self, url, **kw):
+        self.appels.append(("GET", url, None))
+        if url.endswith("/robots.txt"):
+            return Reponse(200, None, "User-agent: *\nAllow: /\ncrawl-delay: 5\n", {})
+        page = int(url.split("page=")[1].split("&")[0])
+        tranche = self.offres[(page - 1) * 100: page * 100]
+        return Reponse(200, {"jobs": [{"data": {
+            "req_id": o["id"], "slug": o["id"], "title": o["titre"], "country_code": o["iso"],
+            "full_location": "PARIS, France", "employment_type": o.get("type", "FULL_TIME"), "language": "en-us",
+            "posted_date": (maintenant() - timedelta(days=o["jours"])).strftime("%Y-%m-%dT%H:%M:%S+0000"),
+            "description": "<p>Gestion des risques.</p>"}} for o in tranche]}, "", {})
+
+
+def test_jibe_tout_vient_de_la_liste_et_le_delai_est_respecte(registre):
+    site = SiteJibe([{"id": "1", "titre": "Risk Analyst", "iso": "FR", "jours": 0, "type": "INTERN"},
+                     {"id": "2", "titre": "Risk Analyst", "iso": "US", "jours": 0},
+                     {"id": "3", "titre": "Risk Analyst", "iso": "FR", "jours": 60}])
+    c = EmployeursConnector(Sites(careers=site), registre(
+        {"nom": "AXA", "logiciel": "jibe", "adresse": "https://careers.axa.com/careers-home"}))
+    [o] = c.fetch(_requete(pays=("France",)))
+    assert (o.source_id, o.pays, o.type_contrat, o.description_brute) == ("axa:1", "France", "Stage", "Gestion des risques.")
+    assert o.url == "https://careers.axa.com/careers-home/jobs/1?lang=en-us"
+    assert site.ralentis == {"careers.axa.com": 5.0}, "crawl-delay de robots.txt transmis au client"
+    assert [u for _, u, _ in site.appels if "/api/jobs" in u and "page=2" in u] == []
+
+
+def test_le_client_respecte_le_delai_demande(monkeypatch):
+    from app.connectors import http as module_http
+    from app.connectors.http import ClientHttp
+    attentes = []
+    monkeypatch.setattr(module_http.time, "sleep", lambda s: attentes.append(round(s)))
+    c = ClientHttp(user_agent="t", requetes_par_seconde=1.0)
+    c.ralentir("Lent.example", 5)
+    for _ in range(2):
+        c._attendre_son_tour("https://lent.example/x")
+        c._attendre_son_tour("https://rapide.example/x")
+    assert attentes == [5, 1], "5 s pour le site qui l'a demandé, 1 s pour les autres"
 
 
 # --- La politesse, les pannes ---------------------------------------------------------------

@@ -357,6 +357,93 @@ def test_un_pays_par_defaut_quand_la_fiche_ne_dit_que_la_ville(registre):
     assert [o.pays for o in c.fetch(_requete())] == ["France"]
 
 
+# --- SuccessFactors ----------------------------------------------------------------------------
+
+
+class SiteSuccessFactors:
+    """Un site SuccessFactors : recherche triée par date et paginée par
+    `startrow`, en tableau (avec date) ou en tuiles (sans), fiches en
+    microdonnées. `/services/` est interdit, comme sur les vrais sites."""
+
+    def __init__(self, offres, gabarit="tableau", par_page=2):
+        self.offres = sorted(offres, key=lambda o: o["jours"])
+        self.gabarit, self.par_page = gabarit, par_page
+        self.appels = []
+
+    def get(self, url, **kw):
+        self.appels.append(("GET", url, None))
+        if url.endswith("/robots.txt"):
+            return Reponse(200, None, "User-agent: *\nDisallow: /services/\n", {})
+        if "/search/" in url:
+            debut = int(url.split("startrow=")[1])
+            tranche = self.offres[debut:debut + self.par_page]
+            if self.gabarit == "tableau":
+                lignes = "".join(
+                    f'<tr class="data-row"><td><a href="/job/Paris-X/{o["id"]}/" class="jobTitle-link">{o["titre"]}</a>'
+                    f'<span class="jobLocation"> Paris, FR <small>+1 more</small></span>'
+                    f'<span class="jobDate">{(maintenant() - timedelta(days=o["jours"])).strftime("%d %b %Y")} </span></td></tr>'
+                    for o in tranche)
+            else:
+                lignes = "".join(
+                    f'<li class="job-tile"><a class="jobTitle-link" href="/job/Paris-X/{o["id"]}/">{o["titre"]}</a>'
+                    f'<div id="job-{o["id"]}-desktop-section-location-value">Paris, 75, FR</div></li>'
+                    for o in tranche)
+            return Reponse(200, None, f"<html>{lignes}</html>", {})
+        o = next(o for o in self.offres if f"/{o['id']}/" in url)
+        publiee = (maintenant() - timedelta(days=o["jours"])).strftime("%a %b %d 02:00:00 UTC %Y")
+        return Reponse(200, None, (
+            f'<meta itemprop="addressLocality" content="Paris"><meta itemprop="addressCountry" content="FR">'
+            f'<meta itemprop="datePosted" content="{publiee}">'
+            '<span itemprop="description"><span class="jobdescription"><p>Suivi du <b>risque</b> de marché.</p>'
+            '</span></span><div class="applylink">Postuler</div>'), {})
+
+
+def _sf(ident, titre, jours_=0):
+    return {"id": ident, "titre": titre, "jours": jours_}
+
+
+def _employeur_sf(hote):
+    return {"nom": hote.title(), "logiciel": "successfactors", "adresse": f"https://{hote}.example.com"}
+
+
+@pytest.mark.parametrize("affichee, attendue", [
+    ("28 Sept 2026", (2026, 9, 28)), ("Sep 28, 2026", (2026, 9, 28)), ("28 sept. 2026", (2026, 9, 28)),
+    ("28/09/2026", (2026, 9, 28)), ("28.09.2026", (2026, 9, 28)), ("12 Mär 2026", (2026, 3, 12)),
+    # « mardi » commence comme « mars ».
+    ("mardi 29 sept. 2026", (2026, 9, 29)),
+])
+def test_les_dates_affichees_par_successfactors(affichee, attendue):
+    from app.connectors.employeurs.successfactors import date_affichee
+    assert date_affichee(affichee).timetuple()[:3] == attendue
+
+
+def test_successfactors_la_liste_s_arrete_a_la_premiere_offre_trop_ancienne(registre):
+    site = SiteSuccessFactors([_sf(i, f"Risk Analyst {i}", jours_=i * 10) for i in range(6)])
+    c = EmployeursConnector(Sites(banque=site), registre(_employeur_sf("banque")))
+    trouvees = c.fetch(_requete(publiee_depuis_jours=15))
+    assert sorted(o.titre for o in trouvees) == ["Risk Analyst 0", "Risk Analyst 1"]
+    # Deux par page : la seconde montre la première trop ancienne, la troisième
+    # n'est jamais demandée.
+    assert len([u for _, u, _ in site.appels if "/search/" in u]) == 2
+
+
+def test_successfactors_sans_date_en_liste_la_veille_lit_une_page(registre):
+    site = SiteSuccessFactors([_sf(i, f"Risk Analyst {i}", jours_=i) for i in range(6)], gabarit="tuiles")
+    c = EmployeursConnector(Sites(banque=site), registre(_employeur_sf("banque")))
+    c.fetch(_requete(publiee_depuis_jours=1))
+    assert len([u for _, u, _ in site.appels if "/search/" in u]) == 1
+
+
+def test_successfactors_une_fiche_complete(registre):
+    site = SiteSuccessFactors([_sf(42, "Market Risk Analyst", jours_=3)], gabarit="tuiles")
+    c = EmployeursConnector(Sites(banque=site), registre(_employeur_sf("banque")))
+    o = c.fetch(_requete())[0]
+    assert (o.source_id, o.pays, o.lieu) == ("banque:42", "France", "Paris")
+    assert o.description_brute == "Suivi du risque de marché."
+    assert o.date_publication.date() == (maintenant() - timedelta(days=3)).date()
+    assert not [u for _, u, _ in site.appels if "/services/" in u], "robots.txt l'interdit"
+
+
 # --- La politesse, les pannes ---------------------------------------------------------------
 
 

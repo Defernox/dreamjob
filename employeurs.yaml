@@ -145,8 +145,8 @@ employeurs:
       priorite: 1
     - nom: "Nomura"
       logiciel: "successfactors"
-      adresse: "https://rmkcdn.successfactors.com/44ea18da/6ccac125-2bdb-4034-a11f-e.css"
-      statut: "à_venir"
+      adresse: "https://careers.nomura.com"
+      statut: "actif"
       priorite: 2
     - nom: "MUFG"
       logiciel: "workday"
@@ -155,8 +155,8 @@ employeurs:
       priorite: 2
     - nom: "SMBC"
       logiciel: "successfactors"
-      adresse: "https://rmkcdn.successfactors.com/f689b3d8/69ac8f5f-e054-40ca-8104-8.png"
-      statut: "à_venir"
+      adresse: "https://careers.smbcgroup.com"
+      statut: "actif"
       priorite: 2
     - nom: "Mizuho"
       logiciel: "workday"
@@ -226,8 +226,8 @@ employeurs:
       priorite: 2
     - nom: "Intesa Sanpaolo"
       logiciel: "successfactors"
-      adresse: "https://rmkcdn.successfactors.com/4d06cbea/63133268-2c52-43c7-86da-0.css"
-      statut: "à_venir"
+      adresse: "https://jobs.intesasanpaolo.com"
+      statut: "actif"
       priorite: 3
     - nom: "Mediobanca"
       adresse: "https://www.mediobanca.com/en/sustainability/talent-attraction.html"
@@ -239,8 +239,8 @@ employeurs:
       priorite: 3
     - nom: "Belfius"
       logiciel: "successfactors"
-      adresse: "https://rmkcdn.successfactors.com/38f357d3/6b052229-0ffa-46a0-a567-a.css"
-      statut: "à_venir"
+      adresse: "https://jobs.belfius.be"
+      statut: "actif"
       priorite: 3
     - nom: "AIB"
       logiciel: "successfactors"
@@ -448,8 +448,8 @@ employeurs:
       priorite: 2
     - nom: "Partners Group"
       logiciel: "successfactors"
-      adresse: "https://rmkcdn.successfactors.com/97291246/ac726861-f126-43ca-804f-a.css"
-      statut: "à_venir"
+      adresse: "https://jobs.partnersgroup.com"
+      statut: "actif"
       priorite: 2
     - nom: "Astorg"
       statut: "à_étudier"
@@ -513,8 +513,8 @@ employeurs:
   trading_et_hedge_funds:
     - nom: "Capital Fund Management"
       logiciel: "successfactors"
-      adresse: "https://rmkcdn.successfactors.com/174e327f/b0d584b2-5b46-40e1-8c11-7.css"
-      statut: "à_venir"
+      adresse: "https://jobs.cfm.com"
+      statut: "actif"
       priorite: 1
     - nom: "Qube Research & Technologies"
       adresse: "https://www.qube-rt.com/careers/"
@@ -661,8 +661,8 @@ employeurs:
       priorite: 3
     - nom: "Quintet Private Bank"
       logiciel: "successfactors"
-      adresse: "https://rmkcdn.successfactors.com/e375f8a1/6fb58618-4fd5-446a-af60-b.css"
-      statut: "à_venir"
+      adresse: "https://careers.quintet.com"
+      statut: "actif"
       priorite: 3
     - nom: "Banque Transatlantique"
       adresse: "https://www.banquetransatlantique.com/fr/carrieres/nos-talents.html"
@@ -742,8 +742,8 @@ employeurs:
       priorite: 2
     - nom: "Generali"
       logiciel: "successfactors"
-      adresse: "https://rmkcdn.successfactors.com/6510e6da/144c871a-1196-4c1c-9721-4.jpg"
-      statut: "à_venir"
+      adresse: "https://carrieres.generali.fr"
+      statut: "actif"
       priorite: 2
     - nom: "Covéa"
       logiciel: "smartrecruiters"
@@ -761,8 +761,8 @@ employeurs:
       priorite: 3
     - nom: "Swiss Re"
       logiciel: "successfactors"
-      adresse: "https://rmkcdn.successfactors.com/31fd1218/261d0487-fdcf-4e33-906f-c.css"
-      statut: "à_venir"
+      adresse: "https://careers.swissre.com"
+      statut: "actif"
       priorite: 3
     - nom: "Zurich"
       statut: "à_étudier"
@@ -898,8 +898,8 @@ employeurs:
       priorite: 1
     - nom: "Fitch"
       logiciel: "successfactors"
-      adresse: "https://rmkcdn.successfactors.com/b89612a3/16615b37-23f3-4031-8468-2.css"
-      statut: "à_venir"
+      adresse: "https://careers.fitch.group"
+      statut: "actif"
       priorite: 2
     - nom: "Scope Ratings"
       logiciel: "successfactors"
@@ -950,8 +950,8 @@ employeurs:
       priorite: 2
     - nom: "EY"
       logiciel: "successfactors"
-      adresse: "https://rmkcdn.successfactors.com/bcfdbc8a/a8d83cb6-60e7-47d4-b166-5.css"
-      statut: "à_venir"
+      adresse: "https://careers.ey.com"
+      statut: "actif"
       priorite: 2
     - nom: "KPMG"
       logiciel: "radancy"

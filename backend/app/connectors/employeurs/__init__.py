@@ -37,6 +37,7 @@ from .commun import cles as cles_de
 from .logiciel import Logiciel
 from .registre import ACTIF, Employeur, charger
 from .robots import Robots
+from .successfactors import SuccessFactors
 from .talentsoft import Talentsoft
 from .workday import Workday
 
@@ -45,6 +46,7 @@ log = logging.getLogger("dreamjob.employeurs")
 LOGICIELS: dict[str, type[Logiciel]] = {
     Workday.cle: Workday,
     Talentsoft.cle: Talentsoft,
+    SuccessFactors.cle: SuccessFactors,
 }
 
 # Les contrats qu'une annonce d'employeur ne prend pas la peine d'écrire.

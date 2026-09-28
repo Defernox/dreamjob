@@ -45,7 +45,7 @@ from .greenhouse import Greenhouse
 from .jibe import Jibe
 from .oracle import Oracle
 from .plan_du_site import PlanDuSite
-from .recruitee import Pinpoint, Recruitee
+from .recruitee import Lever, Pinpoint, Recruitee
 from .smartrecruiters import SmartRecruiters
 from .successfactors import SuccessFactors
 from .talentsoft import Talentsoft
@@ -68,6 +68,7 @@ LOGICIELS: dict[str, type[Logiciel]] = {
     Pinpoint.cle: Pinpoint,
     BrassRing.cle: BrassRing,
     SmartRecruiters.cle: SmartRecruiters,
+    Lever.cle: Lever,
 }
 
 # Les contrats qu'une annonce d'employeur ne prend pas la peine d'écrire.

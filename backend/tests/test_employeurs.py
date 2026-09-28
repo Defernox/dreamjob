@@ -876,6 +876,18 @@ def test_recruitee_et_les_offres_qui_n_en_sont_pas(registre):
     assert (o.source_id, o.pays, o.type_contrat, o.description_brute) == ("fonds:1", "France", "Stage", "Fonds.\n\nRisques.")
 
 
+def test_lever(registre):
+    cree = int(maintenant().timestamp() * 1000)
+    site = SiteApi([{"id": "a1", "text": "Risk Analyst", "hostedUrl": "https://jobs.lever.co/fonds/a1",
+                     "createdAt": cree, "categories": {"location": "London", "commitment": "Internship"},
+                     "description": "<p>Private equity.</p>", "lists": [{"text": "Profil", "content": "<li>Master</li>"}]}])
+    c = EmployeursConnector(Sites(api=site), registre(
+        {"nom": "Fonds", "logiciel": "lever", "adresse": "https://jobs.lever.co/fonds"}))
+    [o] = c.fetch(_requete())
+    assert (o.pays, o.type_contrat, o.url) == ("Royaume-Uni", "Stage", "https://jobs.lever.co/fonds/a1")
+    assert "Private equity." in o.description_brute and "- Master" in o.description_brute
+
+
 def test_pinpoint_sans_date(registre):
     site = SiteApi({"data": [{"id": 5, "title": "Risk Analyst", "location": {"city": "Frankfurt"},
                               "url": "https://p.fr/postings/5", "employment_type": "internship",

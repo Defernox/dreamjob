@@ -1,4 +1,4 @@
-"""Recruitee et Pinpoint : Meridiam, PAI Partners, Cinven.
+"""Recruitee, Lever et Pinpoint : Meridiam, PAI Partners, Apax, Cinven.
 
 Deux API publiques officielles, faites pour afficher les offres d'une
 entreprise sur son propre site, qui donnent tout d'un coup — description
@@ -13,7 +13,7 @@ comprise. Vérifié le 2026-09-28 :
 from __future__ import annotations
 
 import re
-from datetime import datetime
+from datetime import datetime, timezone
 
 from .commun import Annonce, contrat, texte
 from .logiciel import Logiciel
@@ -61,6 +61,42 @@ class Recruitee(Logiciel):
                 pays=pays_, publiee_le=publiee,
                 contrat=contrat(o.get("title") or "") or _type(o.get("employment_type_code")),
                 description=texte("\n".join(filter(None, [o.get("description"), o.get("requirements")]))),
+                complete=True,
+            ))
+        return [a for a in annonces if a.titre and a.url]
+
+
+class Lever(Logiciel):
+    """Lever : Apax. API publique officielle (`api.lever.co/v0/postings/<société>`),
+    robots.txt n'y interdit rien et demande une seconde entre deux requêtes."""
+
+    cle = "lever"
+
+    def annonces(self, employeur: Employeur, pays: list[str], depuis: datetime,
+                 pages_max: int) -> list[Annonce]:
+        societe = employeur.options.get("societe") or employeur.adresse.rstrip("/").rsplit("/", 1)[-1]
+        url = f"https://api.lever.co/v0/postings/{societe}?mode=json"
+        self.verifier(url)
+        r = self.http.get(url, entetes={"Accept": "application/json"}, utiliser_cache=False)
+        annonces = []
+        for o in r.json_ if isinstance(r.json_, list) else []:
+            try:
+                publiee = datetime.fromtimestamp(int(o.get("createdAt")) / 1000, tz=timezone.utc).replace(tzinfo=None)
+            except (TypeError, ValueError, OSError):
+                publiee = None
+            if publiee is not None and publiee < depuis:
+                continue
+            categories = o.get("categories") or {}
+            lieu = categories.get("location") or ""
+            pays_ = depuis_iso(o.get("country")) or depuis_lieu(lieu)
+            if pays and pays_ and pays_ not in pays:
+                continue
+            listes = "".join(f"<h3>{x.get('text', '')}</h3><ul>{x.get('content', '')}</ul>" for x in o.get("lists") or [])
+            annonces.append(Annonce(
+                ident=str(o.get("id")), titre=(o.get("text") or "").strip(), url=o.get("hostedUrl") or "",
+                lieu=lieu, pays=pays_, publiee_le=publiee,
+                contrat=contrat(o.get("text") or "", categories.get("commitment") or ""),
+                description=texte((o.get("description") or "") + listes + (o.get("additional") or "")),
                 complete=True,
             ))
         return [a for a in annonces if a.titre and a.url]

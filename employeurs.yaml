@@ -240,8 +240,14 @@ employeurs:
       adresse: "https://www.natwestgroup.com/careers-at-natwest-group.html"
       priorite: 3
     - nom: "Macquarie"
-      statut: "à_étudier"
-      adresse: "https://www.macquarie.com/fr/en/careers.html"
+      logiciel: "plan_du_site"
+      adresse: "https://recruitment.macquarie.com"
+      statut: "actif"
+      plan: "https://recruitment.macquarie.com/careers/sitemap_index.xml"
+      offres: "/careers/JobDetail/[^/]+/\\d+"
+      identifiant: "/(\\d+)/?$"
+      bloc: "class=\"article__content__view__field__value"
+      fin_bloc: "<footer"
       priorite: 2
     - nom: "RBC"
       logiciel: "plan_du_site"
@@ -327,9 +333,11 @@ employeurs:
         Racheté par BNP Paribas (2025) : ses offres passent par BNP Paribas Asset
         Management.
     - nom: "BNP Paribas Asset Management"
-      statut: "à_étudier"
-      adresse: "https://www.bnpparibas-am.com/en/why-join-us/"
+      statut: "refusé"
       priorite: 1
+      motif: >
+        Recrute sur le site du groupe BNP Paribas, protégé contre les robots : voir BNP
+        Paribas. Vérifié le 2026-09-29.
     - nom: "Natixis Investment Managers"
       statut: "inclus"
       priorite: 1
@@ -405,8 +413,8 @@ employeurs:
       priorite: 2
     - nom: "PIMCO"
       logiciel: "workday"
-      adresse: "https://pimco.wd1.myworkdayjobs.com"
-      statut: "à_venir"
+      adresse: "https://pimco.wd1.myworkdayjobs.com/pimco-careers"
+      statut: "actif"
       priorite: 2
     - nom: "Invesco"
       logiciel: "workday"
@@ -557,7 +565,9 @@ employeurs:
       statut: "à_étudier"
       priorite: 3
     - nom: "Permira"
-      statut: "à_étudier"
+      logiciel: "greenhouse"
+      adresse: "https://boards.greenhouse.io/permira"
+      statut: "actif"
       priorite: 3
     - nom: "Cinven"
       logiciel: "pinpoint"
@@ -565,7 +575,9 @@ employeurs:
       statut: "actif"
       priorite: 3
     - nom: "Apax"
-      statut: "à_étudier"
+      logiciel: "lever"
+      adresse: "https://jobs.lever.co/apax"
+      statut: "actif"
       priorite: 3
 
   # --- trading et hedge funds ---
@@ -576,12 +588,14 @@ employeurs:
       statut: "actif"
       priorite: 1
     - nom: "Qube Research & Technologies"
-      statut: "à_étudier"
-      adresse: "https://www.qube-rt.com/careers/"
+      logiciel: "greenhouse"
+      adresse: "https://boards.greenhouse.io/quberesearchandtechnologies"
+      statut: "actif"
       priorite: 1
     - nom: "Squarepoint"
-      statut: "à_étudier"
-      adresse: "https://squarepoint-capital.com/early-careers"
+      logiciel: "greenhouse"
+      adresse: "https://boards.greenhouse.io/squarepointcapital"
+      statut: "actif"
       priorite: 2
     - nom: "Millennium"
       statut: "à_étudier"
@@ -593,8 +607,9 @@ employeurs:
       statut: "à_étudier"
       priorite: 2
     - nom: "Jane Street"
-      statut: "à_étudier"
-      adresse: "https://www.janestreet.com/join-jane-street/overview/"
+      logiciel: "greenhouse"
+      adresse: "https://boards.greenhouse.io/janestreet"
+      statut: "actif"
       priorite: 3
     - nom: "Optiver"
       statut: "à_étudier"
@@ -621,8 +636,9 @@ employeurs:
       statut: "actif"
       priorite: 3
     - nom: "Marshall Wace"
-      statut: "à_étudier"
-      adresse: "https://www.mwam.com/join-us/"
+      logiciel: "greenhouse"
+      adresse: "https://boards.greenhouse.io/marshallwace"
+      statut: "actif"
       priorite: 3
     - nom: "Brevan Howard"
       logiciel: "plan_du_site"
@@ -632,7 +648,9 @@ employeurs:
       identifiant: "/job/([A-Z0-9]+?)EXTERNAL"
       priorite: 3
     - nom: "Hudson River Trading"
-      statut: "à_étudier"
+      logiciel: "greenhouse"
+      adresse: "https://boards.greenhouse.io/wehrtyou"
+      statut: "actif"
       priorite: 3
     - nom: "Susquehanna"
       logiciel: "jibe"
@@ -645,10 +663,14 @@ employeurs:
       statut: "actif"
       priorite: 3
     - nom: "DRW"
-      statut: "à_étudier"
+      logiciel: "greenhouse"
+      adresse: "https://boards.greenhouse.io/drweng"
+      statut: "actif"
       priorite: 3
     - nom: "Tower Research Capital"
-      statut: "à_étudier"
+      logiciel: "greenhouse"
+      adresse: "https://boards.greenhouse.io/towerresearchcapital"
+      statut: "actif"
       priorite: 3
     - nom: "Balyasny"
       statut: "à_étudier"
@@ -926,8 +948,9 @@ employeurs:
       adresse: "https://www.srb.europa.eu/en/vacancies"
       priorite: 3
     - nom: "BRI"
-      statut: "à_étudier"
-      adresse: "https://www.bis.org/about/careers/overview"
+      logiciel: "workday"
+      adresse: "https://bis.wd3.myworkdayjobs.com/External"
+      statut: "actif"
       priorite: 2
     - nom: "Caisse des Dépôts"
       statut: "à_étudier"

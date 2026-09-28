@@ -241,8 +241,12 @@ class PlanDuSite(Logiciel):
         annonce.lieu, annonce.pays = _lieu(e)
         # « Warsaw Financial Securities Specialist » : sans lieu balisé, la ville
         # de l'intitulé ou de l'adresse dit le pays.
+        # Avature chez Macquarie : la première ligne de l'annonce est le lieu
+        # (« Sydney ») ; on ne la lit que courte, pour ne pas prendre une phrase.
+        premiere = annonce.description.split("\n", 1)[0] if annonce.description else ""
         annonce.pays = (annonce.pays or depuis_lieu(annonce.titre)
-                        or depuis_lieu(titre_de_l_adresse(annonce.url, None)))
+                        or depuis_lieu(titre_de_l_adresse(annonce.url, None))
+                        or (depuis_lieu(premiere) if len(premiere) <= 40 else ""))
         annonce.publiee_le = _date(e.get("datePosted")) or annonce.publiee_le
         types = e.get("employmentType") or []
         types = [types] if isinstance(types, str) else types

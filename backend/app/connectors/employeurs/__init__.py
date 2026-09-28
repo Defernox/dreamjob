@@ -39,6 +39,7 @@ from .registre import ACTIF, Employeur, charger
 from .robots import Robots
 from .greenhouse import Greenhouse
 from .oracle import Oracle
+from .plan_du_site import PlanDuSite
 from .successfactors import SuccessFactors
 from .talentsoft import Talentsoft
 from .workday import Workday
@@ -51,6 +52,7 @@ LOGICIELS: dict[str, type[Logiciel]] = {
     SuccessFactors.cle: SuccessFactors,
     Oracle.cle: Oracle,
     Greenhouse.cle: Greenhouse,
+    PlanDuSite.cle: PlanDuSite,
 }
 
 # Les contrats qu'une annonce d'employeur ne prend pas la peine d'écrire.

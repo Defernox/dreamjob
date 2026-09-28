@@ -4,7 +4,8 @@
 #   actif      — interrogé à chaque scan et par la veille ;
 #   à_venir    — logiciel identifié, connecteur pas encore écrit ;
 #   à_étudier  — site carrières ou logiciel pas encore identifié ;
-#   refusé     — ne sera pas interrogé ; le motif dit pourquoi, et quand ce fut vérifié.
+#   refusé     — ne sera pas interrogé ; le motif dit pourquoi, et quand ce fut vérifié ;
+#   inclus     — ses offres arrivent déjà par un autre employeur de la liste.
 #
 # Un employeur actif a un logiciel et l'adresse de son site sur ce logiciel.
 # Avant d'en activer un : robots.txt et conditions d'utilisation (voir CLAUDE.md,
@@ -23,9 +24,12 @@ employeurs:
         aucune liste accessible sans contourner une protection. Vérifié le 2026-09-28.
         Les offres de BNP continuent d'arriver par Adzuna et DogFinance.
     - nom: "Société Générale"
-      logiciel: "taleo"
-      adresse: "https://socgen.taleo.net/careersection/sgcareers/profile.ftl"
-      statut: "à_venir"
+      logiciel: "plan_du_site"
+      adresse: "https://careers.societegenerale.com"
+      statut: "actif"
+      offres: "/(?:offres-d-emploi|job-offers)/"
+      identifiant: "-([0-9A-Z]{8})-(?:fr|en)/?$"
+      langue: "fr"
       priorite: 1
     - nom: "Groupe Crédit Agricole"
       statut: "à_étudier"
@@ -51,8 +55,8 @@ employeurs:
       statut: "actif"
       priorite: 2
     - nom: "Natixis"
-      adresse: "https://recrutement.natixis.com/"
       statut: "à_étudier"
+      adresse: "https://recrutement.natixis.com/"
       priorite: 1
     - nom: "Groupe BPCE"
       statut: "à_étudier"
@@ -61,12 +65,12 @@ employeurs:
       statut: "à_étudier"
       priorite: 2
     - nom: "Crédit Mutuel Alliance Fédérale"
-      adresse: "https://www.creditmutuel.com/fr/carrieres/rejoignez-nous.html"
       statut: "à_étudier"
+      adresse: "https://www.creditmutuel.com/fr/carrieres/rejoignez-nous.html"
       priorite: 2
     - nom: "CIC"
-      adresse: "https://recrutement.cic.fr/fr/index.html"
       statut: "à_étudier"
+      adresse: "https://recrutement.cic.fr/fr/index.html"
       priorite: 2
     - nom: "Crédit Mutuel Arkéa"
       logiciel: "talentsoft"
@@ -75,16 +79,16 @@ employeurs:
       pays_par_defaut: "France"
       priorite: 2
     - nom: "La Banque Postale"
-      adresse: "https://www.labanquepostale.com/candidats/offres-d-emploi/nos-offres-d-emploi.html"
       statut: "à_étudier"
+      adresse: "https://www.labanquepostale.com/candidats/offres-d-emploi/nos-offres-d-emploi.html"
       priorite: 2
     - nom: "HSBC Continental Europe"
-      adresse: "https://www.about.hsbc.fr/fr-fr"
       statut: "à_étudier"
+      adresse: "https://www.about.hsbc.fr/fr-fr"
       priorite: 1
     - nom: "Oddo BHF"
-      adresse: "https://www.oddo-bhf.com/fr/carrieres/"
       statut: "à_étudier"
+      adresse: "https://www.oddo-bhf.com/fr/carrieres/"
       priorite: 2
     - nom: "Kepler Cheuvreux"
       logiciel: "teamtailor"
@@ -92,12 +96,14 @@ employeurs:
       statut: "à_venir"
       priorite: 2
     - nom: "BoursoBank"
-      adresse: "https://careers.societegenerale.com/offres-d-emploi/cdd-charge-de-recrutement-confirme-26000KS0-fr"
-      statut: "à_étudier"
+      statut: "inclus"
       priorite: 3
+      motif: >
+        Ses offres paraissent sur careers.societegenerale.com : suivies avec Société
+        Générale.
     - nom: "Banque Palatine"
-      adresse: "https://www.palatine.fr/votre-banque/nos-engagements/nos-engagements-ressources-humaines/"
       statut: "à_étudier"
+      adresse: "https://www.palatine.fr/votre-banque/nos-engagements/nos-engagements-ressources-humaines/"
       priorite: 3
     - nom: "Bpifrance"
       statut: "à_étudier"
@@ -132,8 +138,8 @@ employeurs:
       statut: "actif"
       priorite: 1
     - nom: "Deutsche Bank"
-      adresse: "https://careers.db.com/index"
       statut: "à_étudier"
+      adresse: "https://careers.db.com/index"
       priorite: 1
     - nom: "UBS"
       logiciel: "brassring"
@@ -197,12 +203,12 @@ employeurs:
       statut: "actif"
       priorite: 3
     - nom: "NatWest Group"
-      adresse: "https://www.natwestgroup.com/careers-at-natwest-group.html"
       statut: "à_étudier"
+      adresse: "https://www.natwestgroup.com/careers-at-natwest-group.html"
       priorite: 3
     - nom: "Macquarie"
-      adresse: "https://www.macquarie.com/fr/en/careers.html"
       statut: "à_étudier"
+      adresse: "https://www.macquarie.com/fr/en/careers.html"
       priorite: 2
     - nom: "RBC"
       logiciel: "phenom"
@@ -218,8 +224,8 @@ employeurs:
       statut: "à_étudier"
       priorite: 2
     - nom: "DZ Bank"
-      adresse: "https://www.dzbank.com/content/dzbank/en/home/we-are-dz-bank/careers.html"
       statut: "à_étudier"
+      adresse: "https://www.dzbank.com/content/dzbank/en/home/we-are-dz-bank/careers.html"
       priorite: 3
     - nom: "UniCredit"
       statut: "à_étudier"
@@ -230,12 +236,12 @@ employeurs:
       statut: "actif"
       priorite: 3
     - nom: "Mediobanca"
-      adresse: "https://www.mediobanca.com/en/sustainability/talent-attraction.html"
       statut: "à_étudier"
+      adresse: "https://www.mediobanca.com/en/sustainability/talent-attraction.html"
       priorite: 3
     - nom: "KBC"
-      adresse: "https://www.kbc.com/en/working-at-kbc/joining-us.html"
       statut: "à_étudier"
+      adresse: "https://www.kbc.com/en/working-at-kbc/joining-us.html"
       priorite: 3
     - nom: "Belfius"
       logiciel: "successfactors"
@@ -248,8 +254,8 @@ employeurs:
       statut: "à_venir"
       priorite: 3
     - nom: "Bank of Ireland"
-      adresse: "https://careers.bankofireland.com/home"
       statut: "à_étudier"
+      adresse: "https://careers.bankofireland.com/home"
       priorite: 3
     - nom: "Spuerkeess"
       logiciel: "cornerstone"
@@ -257,8 +263,8 @@ employeurs:
       statut: "à_venir"
       priorite: 3
     - nom: "BIL"
-      adresse: "https://www.bil.com/fr/groupe-bil/Pages/index.aspx"
       statut: "à_étudier"
+      adresse: "https://www.bil.com/fr/groupe-bil/Pages/index.aspx"
       priorite: 3
     - nom: "Banque de Luxembourg"
       logiciel: "talentsoft"
@@ -266,8 +272,8 @@ employeurs:
       statut: "actif"
       priorite: 3
     - nom: "Jefferies"
-      adresse: "https://www.jefferies.com/careers/"
       statut: "à_étudier"
+      adresse: "https://www.jefferies.com/careers/"
       priorite: 2
 
   # --- gestion d'actifs ---
@@ -278,12 +284,14 @@ employeurs:
       statut: "actif"
       priorite: 1
     - nom: "AXA Investment Managers"
-      adresse: "https://www.bnpparibas-am.com/en/why-join-us/"
-      statut: "à_étudier"
+      statut: "inclus"
       priorite: 1
+      motif: >
+        Racheté par BNP Paribas (2025) : ses offres passent par BNP Paribas Asset
+        Management.
     - nom: "BNP Paribas Asset Management"
-      adresse: "https://www.bnpparibas-am.com/en/why-join-us/"
       statut: "à_étudier"
+      adresse: "https://www.bnpparibas-am.com/en/why-join-us/"
       priorite: 1
     - nom: "Natixis Investment Managers"
       statut: "à_étudier"
@@ -297,16 +305,16 @@ employeurs:
       statut: "à_étudier"
       priorite: 2
     - nom: "Comgest"
-      adresse: "https://www.comgest.com/en/about-us/our-people/careers"
       statut: "à_étudier"
+      adresse: "https://www.comgest.com/en/about-us/our-people/careers"
       priorite: 2
     - nom: "La Financière de l'Échiquier"
-      adresse: "https://www.lfde.com/fr-fr/nous-connaitre/carrieres/"
       statut: "à_étudier"
+      adresse: "https://www.lfde.com/fr-fr/nous-connaitre/carrieres/"
       priorite: 2
     - nom: "Ofi Invest"
-      adresse: "https://ofi-invest.com/fr/carriere/"
       statut: "à_étudier"
+      adresse: "https://ofi-invest.com/fr/carriere/"
       priorite: 2
     - nom: "Sycomore AM"
       logiciel: "smartrecruiters"
@@ -314,8 +322,8 @@ employeurs:
       statut: "à_venir"
       priorite: 2
     - nom: "Groupama AM"
-      adresse: "https://www.groupama-am.com/fra/fr/institutionnel/carriere/groupama-asset-management-carriere"
       statut: "à_étudier"
+      adresse: "https://www.groupama-am.com/fra/fr/institutionnel/carriere/groupama-asset-management-carriere"
       priorite: 2
     - nom: "La Française"
       logiciel: "digitalrecruiters"
@@ -323,8 +331,8 @@ employeurs:
       statut: "à_venir"
       priorite: 2
     - nom: "LBP AM"
-      adresse: "https://www.lbpam.com/fr/carrieres/un-sens-aigu-du-collectif"
       statut: "à_étudier"
+      adresse: "https://www.lbpam.com/fr/carrieres/un-sens-aigu-du-collectif"
       priorite: 2
     - nom: "Swiss Life Asset Managers"
       logiciel: "workday"
@@ -378,12 +386,12 @@ employeurs:
       statut: "actif"
       priorite: 3
     - nom: "Legal & General"
-      adresse: "https://careers.legalandgeneral.com/job/research-analyst-in-london-jid-9184"
       statut: "à_étudier"
+      adresse: "https://careers.legalandgeneral.com/job/research-analyst-in-london-jid-9184"
       priorite: 3
     - nom: "Vanguard"
-      adresse: "https://www.vanguardjobs.com"
       statut: "à_étudier"
+      adresse: "https://www.vanguardjobs.com"
       priorite: 3
     - nom: "Capital Group"
       logiciel: "workday"
@@ -401,8 +409,8 @@ employeurs:
       statut: "actif"
       priorite: 3
     - nom: "Generali Investments"
-      adresse: "https://www.generali-investments.com/global/en/institutional/career"
       statut: "à_étudier"
+      adresse: "https://www.generali-investments.com/global/en/institutional/career"
       priorite: 3
     - nom: "Eurizon"
       statut: "à_étudier"
@@ -416,8 +424,8 @@ employeurs:
       statut: "actif"
       priorite: 1
     - nom: "Eurazeo"
-      adresse: "https://www.eurazeo.com/fr/talents"
       statut: "à_étudier"
+      adresse: "https://www.eurazeo.com/fr/talents"
       priorite: 1
     - nom: "Tikehau Capital"
       statut: "à_étudier"
@@ -455,8 +463,8 @@ employeurs:
       statut: "à_étudier"
       priorite: 3
     - nom: "Andera Partners"
-      adresse: "https://www.anderapartners.com/en/talents/"
       statut: "à_étudier"
+      adresse: "https://www.anderapartners.com/en/talents/"
       priorite: 3
     - nom: "Seven2"
       logiciel: "welcomekit"
@@ -464,8 +472,8 @@ employeurs:
       statut: "à_venir"
       priorite: 3
     - nom: "Omnes Capital"
-      adresse: "https://www.omnescapital.com/culture-and-careers"
       statut: "à_étudier"
+      adresse: "https://www.omnescapital.com/culture-and-careers"
       priorite: 3
     - nom: "Bridgepoint"
       statut: "à_étudier"
@@ -484,8 +492,8 @@ employeurs:
       statut: "actif"
       priorite: 3
     - nom: "KKR"
-      adresse: "https://www.kkr.com/careers/career-opportunities"
       statut: "à_étudier"
+      adresse: "https://www.kkr.com/careers/career-opportunities"
       priorite: 3
     - nom: "Blackstone"
       statut: "à_étudier"
@@ -516,12 +524,12 @@ employeurs:
       statut: "actif"
       priorite: 1
     - nom: "Qube Research & Technologies"
-      adresse: "https://www.qube-rt.com/careers/"
       statut: "à_étudier"
+      adresse: "https://www.qube-rt.com/careers/"
       priorite: 1
     - nom: "Squarepoint"
-      adresse: "https://squarepoint-capital.com/early-careers"
       statut: "à_étudier"
+      adresse: "https://squarepoint-capital.com/early-careers"
       priorite: 2
     - nom: "Millennium"
       statut: "à_étudier"
@@ -533,12 +541,12 @@ employeurs:
       statut: "à_étudier"
       priorite: 2
     - nom: "Jane Street"
-      adresse: "https://www.janestreet.com/join-jane-street/overview/"
       statut: "à_étudier"
+      adresse: "https://www.janestreet.com/join-jane-street/overview/"
       priorite: 3
     - nom: "Optiver"
-      adresse: "https://www.optiver.com/join-us/jobs/trading/shanghai/2027-shanghai-performance-researcher-summer-internship/"
       statut: "à_étudier"
+      adresse: "https://www.optiver.com/join-us/jobs/trading/shanghai/2027-shanghai-performance-researcher-summer-internship/"
       priorite: 2
     - nom: "IMC"
       logiciel: "greenhouse"
@@ -561,8 +569,8 @@ employeurs:
       statut: "actif"
       priorite: 3
     - nom: "Marshall Wace"
-      adresse: "https://www.mwam.com/join-us/"
       statut: "à_étudier"
+      adresse: "https://www.mwam.com/join-us/"
       priorite: 3
     - nom: "Brevan Howard"
       logiciel: "phenom"
@@ -589,8 +597,8 @@ employeurs:
       statut: "à_étudier"
       priorite: 3
     - nom: "Balyasny"
-      adresse: "https://www.bamfunds.com/careers"
       statut: "à_étudier"
+      adresse: "https://www.bamfunds.com/careers"
       priorite: 3
 
   # --- courtiers ---
@@ -601,8 +609,8 @@ employeurs:
       statut: "actif"
       priorite: 2
     - nom: "Tradition"
-      adresse: "https://www.tradition.com/careers/human-resources.aspx"
       statut: "à_étudier"
+      adresse: "https://www.tradition.com/careers/human-resources.aspx"
       priorite: 2
     - nom: "Marex"
       statut: "à_étudier"
@@ -664,8 +672,8 @@ employeurs:
       statut: "actif"
       priorite: 3
     - nom: "Banque Transatlantique"
-      adresse: "https://www.banquetransatlantique.com/fr/carrieres/nos-talents.html"
       statut: "à_étudier"
+      adresse: "https://www.banquetransatlantique.com/fr/carrieres/nos-talents.html"
       priorite: 3
     - nom: "Swiss Life France"
       statut: "à_étudier"
@@ -705,8 +713,8 @@ employeurs:
       statut: "à_étudier"
       priorite: 3
     - nom: "Houlihan Lokey"
-      adresse: "https://careers.hl.com/"
       statut: "à_étudier"
+      adresse: "https://careers.hl.com/"
       priorite: 3
     - nom: "Perella Weinberg"
       statut: "à_étudier"
@@ -715,8 +723,8 @@ employeurs:
       statut: "à_étudier"
       priorite: 3
     - nom: "Alantra"
-      adresse: "https://www.alantra.com/careers/"
       statut: "à_étudier"
+      adresse: "https://www.alantra.com/careers/"
       priorite: 3
 
   # --- assurance ---
@@ -755,8 +763,8 @@ employeurs:
       statut: "actif"
       priorite: 3
     - nom: "Groupama"
-      adresse: "https://www.groupama-gan-recrute.com"
       statut: "à_étudier"
+      adresse: "https://www.groupama-gan-recrute.com"
       priorite: 3
     - nom: "Swiss Re"
       logiciel: "successfactors"
@@ -791,8 +799,8 @@ employeurs:
       statut: "actif"
       priorite: 2
     - nom: "Deutsche Börse (dont Clearstream)"
-      adresse: "https://www.deutsche-boerse.com/dbg-de/group-careers"
       statut: "à_étudier"
+      adresse: "https://www.deutsche-boerse.com/dbg-de/group-careers"
       priorite: 2
     - nom: "SIX"
       logiciel: "successfactors"
@@ -818,35 +826,35 @@ employeurs:
       statut: "actif"
       priorite: 1
     - nom: "BCE"
-      adresse: "https://www.ecb.europa.eu/pub/economic-research/programmes/html/index.en.html"
       statut: "à_étudier"
+      adresse: "https://www.ecb.europa.eu/pub/economic-research/programmes/html/index.en.html"
       priorite: 1
     - nom: "BEI"
-      adresse: "https://www.eib.org/fr/about/key-figures/eib-impacts/index"
       statut: "à_étudier"
+      adresse: "https://www.eib.org/fr/about/key-figures/eib-impacts/index"
       priorite: 1
     - nom: "ESMA"
-      adresse: "https://www.esma.europa.eu/about-esma/careers"
       statut: "à_étudier"
+      adresse: "https://www.esma.europa.eu/about-esma/careers"
       priorite: 2
     - nom: "EBA"
-      adresse: "https://www.eba.europa.eu/about-us/careers"
       statut: "à_étudier"
+      adresse: "https://www.eba.europa.eu/about-us/careers"
       priorite: 2
     - nom: "EIOPA"
       statut: "à_étudier"
       priorite: 3
     - nom: "SRB"
-      adresse: "https://www.srb.europa.eu/en/vacancies"
       statut: "à_étudier"
+      adresse: "https://www.srb.europa.eu/en/vacancies"
       priorite: 3
     - nom: "BRI"
-      adresse: "https://www.bis.org/about/careers/overview"
       statut: "à_étudier"
+      adresse: "https://www.bis.org/about/careers/overview"
       priorite: 2
     - nom: "Caisse des Dépôts"
-      adresse: "https://www.caissedesdepots.fr/recrutement/comment-nous-rejoindre/acceder-nos-offres-demploi-stage-et-apprentissage"
       statut: "à_étudier"
+      adresse: "https://www.caissedesdepots.fr/recrutement/comment-nous-rejoindre/acceder-nos-offres-demploi-stage-et-apprentissage"
       priorite: 2
     - nom: "AFD"
       logiciel: "cornerstone"
@@ -887,8 +895,8 @@ employeurs:
   # --- données, notation et logiciels financiers ---
   donnees_notation_logiciels:
     - nom: "Moody's"
-      adresse: "https://careers.moodys.com/en"
       statut: "à_étudier"
+      adresse: "https://careers.moodys.com/en"
       priorite: 1
     - nom: "S&P Global"
       logiciel: "workday"
@@ -921,8 +929,8 @@ employeurs:
       statut: "actif"
       priorite: 1
     - nom: "ION Group"
-      adresse: "https://iongroup.com/careers/"
       statut: "à_étudier"
+      adresse: "https://iongroup.com/careers/"
       priorite: 2
     - nom: "Finastra"
       statut: "à_étudier"
@@ -934,15 +942,15 @@ employeurs:
       statut: "à_étudier"
       priorite: 3
     - nom: "Linedata"
-      adresse: "https://www.linedata.com/careers-Linedata"
       statut: "à_étudier"
+      adresse: "https://www.linedata.com/careers-Linedata"
       priorite: 3
 
   # --- conseil en risques et finance ---
   conseil_risques_et_finance:
     - nom: "Deloitte"
-      adresse: "https://www.deloitte.com/global/en/careers/job-search.html"
       statut: "à_étudier"
+      adresse: "https://www.deloitte.com/global/en/careers/job-search.html"
       priorite: 2
     - nom: "PwC"
       statut: "à_étudier"
@@ -958,8 +966,8 @@ employeurs:
       statut: "à_venir"
       priorite: 2
     - nom: "Forvis Mazars"
-      adresse: "https://careers.forvismazars.com/"
       statut: "à_étudier"
+      adresse: "https://careers.forvismazars.com/"
       priorite: 2
     - nom: "Sia Partners"
       logiciel: "smartrecruiters"
@@ -975,24 +983,24 @@ employeurs:
   # --- cabinets de recrutement ---
   cabinets_de_recrutement:
     - nom: "Fed Finance"
-      adresse: "https://www.fed-group.fr/fed-finance/offres/comptable-jo-0219438"
       statut: "à_étudier"
+      adresse: "https://www.fed-group.fr/fed-finance/offres/comptable-jo-0219438"
       priorite: 1
     - nom: "Michael Page"
-      adresse: "https://www.michaelpage.fr/job-search"
       statut: "à_étudier"
+      adresse: "https://www.michaelpage.fr/job-search"
       priorite: 1
     - nom: "Robert Walters"
-      adresse: "https://www.robertwalters.fr/confiez-nous-vos-recrutements.html"
       statut: "à_étudier"
+      adresse: "https://www.robertwalters.fr/confiez-nous-vos-recrutements.html"
       priorite: 2
     - nom: "Hays"
-      adresse: "https://fr.hays-careers.com/"
       statut: "à_étudier"
+      adresse: "https://fr.hays-careers.com/"
       priorite: 2
     - nom: "Morgan Philips"
-      adresse: "https://jobs2.morganphilips.com/en-gb/jobs/selectportal/"
       statut: "à_étudier"
+      adresse: "https://jobs2.morganphilips.com/en-gb/jobs/selectportal/"
       priorite: 3
     - nom: "Robert Half"
       logiciel: "phenom"
@@ -1000,10 +1008,10 @@ employeurs:
       statut: "à_venir"
       priorite: 3
     - nom: "Expectra"
-      adresse: "https://www.randstadprofessional.fr/offre/307-s13-r001875_01r/ingenieur_informatique_industrielle_dev_c_cdi_client_final_f_h_/"
       statut: "à_étudier"
+      adresse: "https://www.randstadprofessional.fr/offre/307-s13-r001875_01r/ingenieur_informatique_industrielle_dev_c_cdi_client_final_f_h_/"
       priorite: 2
     - nom: "Page Personnel"
-      adresse: "https://www.michaelpage.fr/job-search"
       statut: "à_étudier"
+      adresse: "https://www.michaelpage.fr/job-search"
       priorite: 3

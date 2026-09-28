@@ -9,7 +9,8 @@ Ce que ces tests protègent :
 - **l'isolement des pannes** : un employeur en panne n'arrête pas les autres.
 """
 
-from datetime import timedelta
+import json
+from datetime import datetime, timedelta
 
 import pytest
 import yaml
@@ -558,6 +559,63 @@ def test_greenhouse_une_fiche_complete(registre):
     c = EmployeursConnector(_Api(site), registre(_employeur_gh()))
     o = c.fetch(_requete())[0]
     assert (o.description_brute, o.type_contrat, o.pays) == ("Trade support.", "Stage", "France")
+
+
+# --- Plan du site + JobPosting -------------------------------------------------------------------
+
+
+class SitePlan:
+    """Un site fait maison : robots.txt déclare un index de plans, qui mène au
+    plan des offres (en deux langues), chaque fiche balisée en JSON-LD."""
+
+    def __init__(self, offres):
+        self.offres, self.appels = offres, []
+
+    def get(self, url, **kw):
+        self.appels.append(("GET", url, None))
+        if url.endswith("/robots.txt"):
+            return Reponse(200, None, "User-agent: *\nDisallow: /search/\nSitemap: https://banque.fr/index.xml\n", {})
+        if url.endswith("/index.xml"):
+            return Reponse(200, None, "<sitemapindex><sitemap><loc>https://banque.fr/plan-pages.xml</loc></sitemap>"
+                                      "<sitemap><loc>https://banque.fr/plan-offres.xml</loc></sitemap></sitemapindex>", {})
+        if url.endswith("/plan-offres.xml"):
+            urls = "".join(
+                f"<url><loc>https://banque.fr/{chemin}/{o['slug']}-{o['id']}-{langue}</loc>"
+                f"<lastmod>{(maintenant() - timedelta(days=o['jours'])).isoformat()}+02:00</lastmod></url>"
+                for o in self.offres for chemin, langue in (("offres-d-emploi", "fr"), ("job-offers", "en")))
+            return Reponse(200, None, f"<urlset>{urls}</urlset>", {})
+        if url.endswith("/plan-pages.xml"):
+            raise AssertionError("un plan sans offres n'est pas lu")
+        o = next(o for o in self.offres if o["id"] in url)
+        return Reponse(200, None, '<script type="application/ld+json">' + json.dumps({"@graph": [
+            {"@type": "Organization", "name": "Banque"},
+            {"@type": "JobPosting", "title": o["titre"], "description": "<p>Risque de <b>crédit</b>.</p>",
+             "datePosted": "2026/09/27", "employmentType": "INTERN",
+             "jobLocation": {"@type": "Place", "address": {"addressLocality": "Paris", "addressCountry": "FR"}}},
+        ]}) + "</script>", {})
+
+
+def _employeur_plan():
+    return {"nom": "Banque", "logiciel": "plan_du_site", "adresse": "https://banque.fr",
+            "offres": "/(?:offres-d-emploi|job-offers)/", "identifiant": r"-(\d{6})-(?:fr|en)$", "langue": "fr"}
+
+
+def test_plan_du_site_une_offre_en_deux_langues_n_est_lue_qu_une_fois(registre):
+    site = SitePlan([{"id": "111111", "slug": "analyste-risques-credit", "titre": "Analyste risques crédit &amp; marché", "jours": 0},
+                     {"id": "222222", "slug": "analyste-risques-alm", "titre": "Analyste ALM", "jours": 40}])
+    c = EmployeursConnector(Sites(banque=site), registre(_employeur_plan()))
+    trouvees = c.fetch(_requete())
+    assert [(o.source_id, o.titre) for o in trouvees] == [("banque:111111", "Analyste risques crédit & marché")]
+    assert trouvees[0].url.endswith("-fr"), "la langue voulue"
+    o = trouvees[0]
+    assert (o.pays, o.lieu, o.type_contrat, o.description_brute) == ("France", "Paris", "Stage", "Risque de crédit.")
+    assert o.date_publication == datetime(2026, 9, 27)
+
+
+def test_le_titre_se_lit_dans_l_adresse():
+    from app.connectors.employeurs.plan_du_site import titre_de_l_adresse
+    assert titre_de_l_adresse("https://x.fr/offres-d-emploi/analyste-support-trading-2600032A-fr",
+                              r"-([0-9A-Z]{8})-(?:fr|en)$") == "analyste support trading"
 
 
 # --- La politesse, les pannes ---------------------------------------------------------------

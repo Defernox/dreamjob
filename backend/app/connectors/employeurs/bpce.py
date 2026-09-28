@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import re
 from datetime import datetime
+from html import unescape
 
 from .commun import Annonce, contrat, texte
 from .logiciel import Logiciel
@@ -79,7 +80,8 @@ class Bpce(Logiciel):
         haut = contenu.get("top") or {}
         if not offre and not haut:
             return annonce
-        annonce.titre = " ".join(str(offre.get("title") or haut.get("title") or annonce.titre).split())
+        # « ASSISTANT GESTION FINANCIERE &amp; ALM » : le titre arrive échappé en HTML.
+        annonce.titre = " ".join(unescape(str(offre.get("title") or haut.get("title") or annonce.titre)).split())
         annonce.description = texte((contenu.get("main") or {}).get("text") or "")
         lieux = haut.get("localisations") or []
         premier = lieux[0] if lieux and isinstance(lieux[0], dict) else {}

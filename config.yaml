@@ -198,6 +198,25 @@ sources:
       pages de recherche, pas les offres elles-memes, et il n'existe pas d'API
       publique documentee. Rien d'exploitable proprement pour l'instant.
 
+veille:
+  # Reperer une offre dans l'heure ou elle parait, et alerter sur le telephone
+  # (ntfy) si elle est verte. Recherche legere : les seules offres du jour.
+  active: true
+  intervalle_minutes: 30
+  heure_debut: 7        # pas d'alerte la nuit : de 7 h a 22 h
+  heure_fin: 22
+  # Adzuna (quota de 2 500 appels par mois, deja aux trois cinquiemes) et
+  # DogFinance (40 pages par jour, limite juridique) restent au scan du matin.
+  sources: [france_travail, civiweb]
+  # Aux recherches enregistrees s'ajoutent les intitules tires du CV : quand
+  # on ne fait que reperer les nouveautes, on ratisse large, le score trie.
+  elargir_depuis_le_cv: true
+  requetes_du_cv_max: 10
+  max_offres_par_requete: 50
+  seuil_alerte:         # vide = le seuil vert de l'ecran (scoring.seuils.bon)
+  alertes_par_jour_max: 15
+  conserver_jours: 7
+
 planification:
   # DreamJob n'est pas un serveur : il ne tourne que quand vous l'ouvrez. Le
   # planificateur ne peut donc declencher un scan que pendant ce temps-la.

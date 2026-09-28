@@ -98,6 +98,14 @@ export default function Offres() {
               (planification.dernier_scan_nouvelles
                 ? ` — ${planification.dernier_scan_nouvelles} nouvelle(s) offre(s).`
                 : ' — aucune nouveauté.')}
+          {planification.veille.active && (
+            <>
+              <br />
+              {`Veille : les offres du jour, toutes les ${planification.veille.intervalle_minutes} min de ${planification.veille.heure_debut} h à ${planification.veille.heure_fin} h — une alerte sur votre téléphone pour chaque nouvelle offre verte.`}
+              {planification.veille.derniere &&
+                ` Dernier passage ${anciennete(planification.veille.derniere)}.`}
+            </>
+          )}
         </p>
       )}
 

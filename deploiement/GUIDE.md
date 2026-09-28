@@ -120,6 +120,18 @@ comme depuis ton téléphone — et nulle part ailleurs.
 
 Installe l'application **ntfy** et abonne-toi au sujet choisi à l'étape 5.
 
+Tu recevras deux sortes de messages :
+
+- **une alerte par offre verte, dans la demi-heure où elle paraît** (la
+  « veille », de 7 h à 22 h). Un clic ouvre directement sa fiche. Au-dessus de
+  90, elle sonne même en mode discret. Quinze alertes par jour au plus ;
+- **le résumé du matin**, après le scan quotidien : les vertes de la nuit, et
+  celles de la veille au-delà du plafond. Une offre déjà signalée n'y revient
+  jamais.
+
+Rien de vert, rien d'envoyé. Pour régler l'horaire, la fréquence ou le seuil :
+section `veille` de `config.yaml`, puis redéployer.
+
 ---
 
 ## Ajouter un ami

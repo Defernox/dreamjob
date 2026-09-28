@@ -98,7 +98,7 @@ DreamJob/
 │     ├─ models/        tables SQLModel
 │     ├─ api/           routeurs HTTP
 │     ├─ connectors/    base · http (débit, cache) · registry · une source = un fichier
-│     ├─ services/      dedup · scan · scoring · acces (comptes) · budget · notification
+│     ├─ services/      dedup · scan · veille · scoring · acces (comptes) · budget · notification
 │     ├─ scoring/       lexique · exigences · extraction · cible · corpus · score · explain — pur code
 │     ├─ documents/     docx_outils · intitule · cv_render · ciblage · correspondance · lettre · controles · exemples · pdf · dossier
 │     ├─ importers/     CV .docx/.pdf → profil structuré
@@ -1064,6 +1064,53 @@ planificateur resterait muet jusqu'au prochain redémarrage.
 
 ---
 
+## Veille
+
+**Arriver parmi les premiers.** Le scan quotidien trouve une offre le lendemain
+au mieux ; mesuré sur la base locale, le retard médian entre la publication et
+la découverte était de 6,6 jours chez France Travail. Un recruteur trie souvent
+au fil de l'eau. La veille (`services/veille.py`) joue donc, toutes les
+`veille.intervalle_minutes` entre `heure_debut` et `heure_fin`, une recherche
+légère — **les seules offres du jour** —, note ce qui arrive, et envoie **une
+alerte par offre verte** (`notification.alerter`) : une par offre, pour qu'un
+clic ouvre sa fiche (`Click` → `/offres/{id}`), et sonnerie forcée au-dessus
+de 90.
+
+**On ratisse plus large que les recherches enregistrées.** Repérer une
+nouveauté ne coûte qu'une requête ; le score trie derrière. S'ajoutent donc les
+intitulés du CV que `cible.construire` a déjà pesés — titre visé, postes,
+mots-clés d'expérience, secteurs —, jamais les diplômes (« Master 2 Finance »
+n'est pas un poste), sans répéter une recherche, plafonnés à
+`requetes_du_cv_max` par compte.
+
+**Pas toutes les sources.** Adzuna plafonne à 2 500 appels par mois, et le scan
+quotidien en prend déjà environ 1 500 ; DogFinance est limité à quarante pages
+par jour pour une raison juridique. Les deux restent au scan du matin. France
+Travail et Civiweb n'ont pas ce problème.
+
+**Une offre n'est signalée qu'une fois**, alerte ou résumé :
+`ScoreOffre.alertee_le`. Le résumé du matin reprend sur une journée entière
+(`FENETRE_RESUME`) ce qui est vert et pas encore signalé — la nuit, et le
+surplus d'une journée où le plafond d'alertes (`alertes_par_jour_max`) a été
+atteint. Une sonnerie toutes les dix minutes apprend à les ignorer toutes.
+
+**La veille n'est pas le scan du matin.** Elle crée bien un `ScanRun`
+(`declenche_par = "veille"`), mais `dernier_scan_abouti` l'ignore : comptée, elle
+aurait réduit le badge « nouvelles » à la dernière demi-heure, et empêché le
+rattrapage du matin, qui interroge toutes les sources. Ses `ScanRun` sont
+oubliés après `conserver_jours` — trente par jour noieraient l'historique ; les
+offres trouvées restent.
+
+**Un scan et une veille ne tournent jamais ensemble** (`scheduler._VERROU_SCAN`) :
+ils écriraient les mêmes offres en même temps. Le scan attend ; la veille passe
+son tour, la suivante reprendra ce que le scan n'aura pas déjà trouvé.
+
+Elle ne prépare aucun dossier : choisir où postuler reste à l'utilisateur.
+En local, elle ne tourne que pendant que l'application est ouverte, et n'alerte
+que si un sujet ntfy est renseigné.
+
+---
+
 ## Hébergement
 
 Un VPS (Hetzner CX23, ~7 €/mois) joignable **uniquement** par Tailscale.
@@ -1118,7 +1165,8 @@ script bash en CRLF échoue sur `bash
 en mode texte Windows — il remet les CRLF qu'on croyait retirer.
 
 **Le résumé du matin** (`services/notification.py`) part après le scan
-planifié, vers ntfy, seulement s'il y a des offres vertes jamais ouvertes : une
+planifié, vers ntfy, seulement s'il y a des offres vertes jamais ouvertes ni
+déjà signalées par la veille : une
 alerte quotidienne « rien de nouveau » apprend à ignorer les autres. Chaque
 compte a son sujet, saisi dans son profil ; `NTFY_SUJET` ne vaut que pour le
 propriétaire — un ami sans sujet ne reçoit rien, surtout pas sur le téléphone
@@ -1225,3 +1273,4 @@ Sans LibreOffice, les documents sont générés en Word uniquement — même pri
 - [x] **14.** Hébergement prêt — comptes et verrou, téléchargement des documents, interface servie par l'API, image Docker (Carlito), résumé du matin par ntfy, scripts d'installation et de déploiement. Déploiement réel : à faire
 - [x] **15.** Un compte par personne — profil, recherches, notes, candidatures, documents et notifications séparés ; offres partagées mais fil propre à chacun ; DogFinance réservé au propriétaire ; budget mensuel des amis ; migration vérifiée sur la vraie base
 - [x] **16.** Score refait et mesuré — tout le CV lu, métier reconnu dans les deux sens, contenu étalonné, niveau / diplôme / certifications / statut lus dans l'annonce, pertinence × accessibilité × conditions, points rédhibitoires, explication en lignes, recalcul automatique ; 182 offres étiquetées, top 20 : 6 → 20 offres pertinentes
+- [x] **17.** Veille — les offres du jour toutes les demi-heures en journée, recherches enregistrées et intitulés du CV, une alerte ntfy par offre verte (clic vers la fiche), plafond quotidien, une offre signalée une seule fois ; Adzuna et DogFinance tenus à l'écart

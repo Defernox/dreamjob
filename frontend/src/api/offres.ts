@@ -128,6 +128,15 @@ export type Planification = {
   dernier_scan: string | null
   dernier_scan_nouvelles: number | null
   rattrapage_apres_heures: number
+  /** Repérer une offre dans l'heure où elle paraît, et alerter si elle est verte. */
+  veille: {
+    active: boolean
+    intervalle_minutes: number
+    heure_debut: number
+    heure_fin: number
+    sources: string[]
+    derniere: string | null
+  }
 }
 
 export const usePlanification = () =>

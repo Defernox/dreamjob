@@ -20,20 +20,24 @@ from __future__ import annotations
 import logging
 import threading
 from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.date import DateTrigger
+from apscheduler.triggers.interval import IntervalTrigger
 from sqlalchemy import func
 from sqlmodel import Session, select
 
 from .config import reglages as lire_reglages
 from .db import engine
-from .models import ScoreOffre
+from .models import ScanRun, ScoreOffre
 from .models.base import maintenant
 from .services.scan import demandes_de_tous, dernier_scan_abouti, lancer_scan
 from .services.scoring import scorer_tous_les_comptes
 from .services.notification import notifier
+from .services.veille import DECLENCHEUR as VEILLE
+from .services.veille import dans_la_plage, veiller
 
 log = logging.getLogger("dreamjob.planificateur")
 
@@ -46,10 +50,26 @@ DELAI_ARRET_SECONDES = 20
 
 _planificateur: BackgroundScheduler | None = None
 
+FUSEAU = "Europe/Paris"
+TACHE_VEILLE = "veille"
+# Un scan et une veille ne tournent jamais ensemble : ils écriraient les mêmes
+# offres en même temps. Le scan attend ; la veille, elle, passe son tour — une
+# demi-heure plus tard, elle reprendra ce que le scan n'aura pas déjà trouvé.
+_VERROU_SCAN = threading.Lock()
+# Le résumé du matin reprend tout ce qui est vert et n'a pas encore été signalé
+# sur ce délai : les nouveautés de la nuit, et celles de la veille au-delà du
+# plafond d'alertes du jour.
+FENETRE_RESUME = timedelta(days=1)
+
 
 def executer_scan(declenche_par: str = "planifie") -> None:
     """Scan puis scoring. Aucune exception ne doit remonter : le planificateur
     tournerait sinon en erreur silencieuse jusqu'au prochain redémarrage."""
+    with _VERROU_SCAN:
+        _executer_scan(declenche_par)
+
+
+def _executer_scan(declenche_par: str) -> None:
     try:
         with Session(engine) as session:
             # Les recherches enregistrées de CHAQUE compte, pas seulement
@@ -71,9 +91,28 @@ def executer_scan(declenche_par: str = "planifie") -> None:
                 log.info("Scoring : %d offres", scorees)
             # Après le scoring : on ne signale que ce qui est noté. Un compte
             # sans sujet ntfy ne reçoit rien.
-            notifier(session, depuis=scan.started_at)
+            notifier(session, depuis=min(scan.started_at, maintenant() - FENETRE_RESUME))
     except Exception:  # noqa: BLE001
         log.exception("Le scan %s a échoué", declenche_par)
+
+
+def executer_veille() -> None:
+    """Une passe de veille, si l'on est dans la plage horaire et qu'aucun scan
+    ne tourne. Ne lève jamais."""
+    r = lire_reglages()
+    heure = datetime.now(_planificateur.timezone if _planificateur else ZoneInfo(FUSEAU)).hour
+    if not r.veille.active or not dans_la_plage(r, heure):
+        return
+    if not _VERROU_SCAN.acquire(blocking=False):
+        log.info("Veille sautée : un scan est en cours.")
+        return
+    try:
+        with Session(engine) as session:
+            veiller(session, r)
+    except Exception:  # noqa: BLE001
+        log.exception("La veille a échoué")
+    finally:
+        _VERROU_SCAN.release()
 
 
 def _programmer_rattrapage(planificateur: BackgroundScheduler) -> bool:
@@ -159,15 +198,26 @@ def demarrer() -> BackgroundScheduler | None:
 
     heure, minute = r.heure_minute()
     _planificateur = BackgroundScheduler(
-        timezone="Europe/Paris",
+        timezone=FUSEAU,
         job_defaults={"misfire_grace_time": TOLERANCE_RETARD_SECONDES, "coalesce": True},
     )
     _planificateur.add_job(
         executer_scan, CronTrigger(hour=heure, minute=minute),
         id=TACHE_QUOTIDIENNE, replace_existing=True,
     )
+    veille = lire_reglages().veille
+    if veille.active:
+        _planificateur.add_job(
+            executer_veille,
+            IntervalTrigger(minutes=veille.intervalle_minutes,
+                            start_date=datetime.now(ZoneInfo(FUSEAU)) + timedelta(minutes=1)),
+            id=TACHE_VEILLE, replace_existing=True,
+        )
     _planificateur.start()
     log.info("Scan quotidien programmé à %02d:%02d.", heure, minute)
+    if veille.active:
+        log.info("Veille toutes les %d min, de %d h à %d h.", veille.intervalle_minutes,
+                 veille.heure_debut, veille.heure_fin)
 
     # Un scan de rattrapage se termine par un scoring : inutile de le doubler.
     if not _programmer_rattrapage(_planificateur):
@@ -230,6 +280,11 @@ def etat(utilisateur_id: int | None = None) -> dict:
                 .where(ScoreOffre.utilisateur_id == utilisateur_id,
                        ScoreOffre.ajoutee_le >= dernier.started_at)).one()
 
+        derniere_veille = session.exec(
+            select(ScanRun).where(ScanRun.declenche_par == VEILLE)
+            .order_by(ScanRun.started_at.desc()).limit(1)).first()
+
+    veille = lire_reglages().veille
     return {
         "actif": r.scan_quotidien_actif and _planificateur is not None,
         "heure": f"{heure:02d}:{minute:02d}",
@@ -237,4 +292,12 @@ def etat(utilisateur_id: int | None = None) -> dict:
         "dernier_scan": dernier.started_at if dernier else None,
         "dernier_scan_nouvelles": nouvelles,
         "rattrapage_apres_heures": r.rattrapage_apres_heures,
+        "veille": {
+            "active": veille.active and _planificateur is not None,
+            "intervalle_minutes": veille.intervalle_minutes,
+            "heure_debut": veille.heure_debut,
+            "heure_fin": veille.heure_fin,
+            "sources": veille.sources,
+            "derniere": derniere_veille.started_at if derniere_veille else None,
+        },
     }

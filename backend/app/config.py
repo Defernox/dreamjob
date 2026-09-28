@@ -237,6 +237,43 @@ class Planification(BaseModel):
         return 7, 30
 
 
+class Veille(BaseModel):
+    """La veille : repérer une offre dans l'heure où elle paraît, et alerter.
+
+    Le scan quotidien trouve les offres le lendemain au mieux ; mesuré en local,
+    où l'application n'est ouverte que de temps en temps, avec **six jours** de
+    retard médian chez France Travail. La veille joue une recherche légère —
+    les seules offres du jour — plusieurs fois par jour, et chaque nouvelle
+    offre verte part aussitôt sur le téléphone.
+
+    Seules les sources qui le permettent y entrent. Adzuna plafonne à 250 appels
+    par jour et 2 500 par mois, et le scan quotidien en consomme déjà les trois
+    cinquièmes ; DogFinance est limité à quarante pages par jour, pour une raison
+    juridique. Les deux restent au scan du matin.
+    """
+
+    active: bool = False
+    intervalle_minutes: int = Field(default=30, ge=10, le=240)
+    # Pas d'alerte la nuit : de heure_debut (incluse) à heure_fin (exclue).
+    heure_debut: int = Field(default=7, ge=0, le=23)
+    heure_fin: int = Field(default=22, ge=1, le=24)
+    sources: list[str] = Field(default_factory=lambda: ["france_travail", "civiweb"])
+    # Quand il ne s'agit que de repérer les nouveautés, on ratisse large : aux
+    # recherches enregistrées s'ajoutent les intitulés tirés du CV (titre visé,
+    # postes, mots-clés d'expérience, secteurs). Le score trie ensuite.
+    elargir_depuis_le_cv: bool = True
+    requetes_du_cv_max: int = Field(default=10, ge=0, le=30)
+    max_offres_par_requete: int = Field(default=50, ge=10, le=150)
+    # None : le seuil vert de l'écran (`scoring.seuils.bon`).
+    seuil_alerte: int | None = Field(default=None, ge=0, le=100)
+    # Au-delà, les nouveautés du jour attendent le résumé du lendemain : une
+    # sonnerie toutes les dix minutes apprend à les ignorer toutes.
+    alertes_par_jour_max: int = Field(default=15, ge=1, le=100)
+    # L'historique des scans garde les veilles une semaine : trente par jour
+    # l'auraient noyé.
+    conserver_jours: int = Field(default=7, ge=1, le=90)
+
+
 class Reglages(BaseModel):
     scoring: Scoring = Field(default_factory=Scoring)
     llm: Llm = Field(default_factory=Llm)
@@ -250,6 +287,7 @@ class Reglages(BaseModel):
     candidatures: Candidatures = Field(default_factory=Candidatures)
     sources: dict[str, Source] = Field(default_factory=dict)
     planification: Planification = Field(default_factory=Planification)
+    veille: Veille = Field(default_factory=Veille)
 
     # --- Secrets, lus dans l'environnement, jamais écrits sur disque ---
     @property

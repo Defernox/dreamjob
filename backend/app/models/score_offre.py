@@ -46,6 +46,9 @@ class ScoreOffre(SQLModel, table=True):
     # déjà en base, ramenée pour la première fois par la recherche d'un ami, est
     # une nouveauté pour lui.
     ajoutee_le: datetime = Field(default_factory=maintenant, index=True)
+    # Quand une alerte l'a signalée — la veille ou le résumé du matin. Une offre
+    # n'est jamais signalée deux fois, et c'est ce qui compte les alertes du jour.
+    alertee_le: datetime | None = None
 
 
 class DepenseLlm(SQLModel, table=True):

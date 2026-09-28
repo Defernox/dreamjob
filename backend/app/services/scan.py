@@ -53,9 +53,15 @@ def dernier_scan_abouti(session: Session, utilisateur_id: int | None = None) -> 
     Avec `utilisateur_id`, seuls comptent le scan planifié (joué pour tous) et
     ceux que ce compte a lancés : le scan manuel d'un ami ne dit rien de ce qui
     est neuf pour les autres.
+
+    La veille n'en est pas un : elle ne joue que les offres du jour, sur une
+    partie des sources. Comptée ici, elle aurait réduit le badge « nouvelles » à
+    la dernière demi-heure, et empêché le rattrapage du matin — qui, lui,
+    interroge toutes les sources.
     """
     requete = (select(ScanRun)
-               .where(ScanRun.statut.in_([StatutScan.TERMINE.value, StatutScan.PARTIEL.value])))
+               .where(ScanRun.statut.in_([StatutScan.TERMINE.value, StatutScan.PARTIEL.value]),
+                      ScanRun.declenche_par != "veille"))
     if utilisateur_id is not None:
         requete = requete.where(ScanRun.utilisateur_id.is_(None)
                                 | (ScanRun.utilisateur_id == utilisateur_id))

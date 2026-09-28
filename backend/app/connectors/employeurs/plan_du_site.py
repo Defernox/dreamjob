@@ -120,6 +120,30 @@ def microdonnees(html: str) -> dict | None:
     }
 
 
+_OG_TITRE = re.compile(r'<meta[^>]*property="og:title"[^>]*content="([^"]*)"', re.I)
+_LIEU_ETIQUETTE = re.compile(r">\s*(?:Location|Locations|Lieu|City|Office)\s*:?\s*</[^>]+>(?:\s*<[^>]+>)*\s*([^<]{2,80})<", re.I)
+
+
+def bloc(html: str, options: dict) -> dict | None:
+    """Dernier recours, pour un site sans aucun balisage (Avature : BCE,
+    Bloomberg) : le texte entre deux repères que l'employeur déclare dans
+    employeurs.yaml (`bloc`, `fin_bloc`), l'intitulé dans `og:title`."""
+    debut_marque = options.get("bloc")
+    if not debut_marque or (debut := html.find(debut_marque)) < 0:
+        return None
+    # Plusieurs repères de fin possibles (« tpt_socialShare|<footer ») : le
+    # premier rencontré ferme l'annonce.
+    fins = [i for i in (html.find(m, debut) for m in str(options.get("fin_bloc") or "").split("|") if m) if i > 0]
+    corps = html[debut:min(fins) if fins else debut + 30000]
+    corps = corps[corps.find(">") + 1:]
+    fin_balise = corps.rfind("<")
+    titre = _OG_TITRE.search(html)
+    lieu = _LIEU_ETIQUETTE.search(corps)
+    return {"title": unescape(titre.group(1)) if titre else "",
+            "description": corps[:fin_balise] if fin_balise > 0 else corps,
+            "jobLocation": {"address": {"addressLocality": unescape(lieu.group(1)).strip() if lieu else ""}}}
+
+
 def titre_de_l_adresse(url: str, identifiant: str | None) -> str:
     """« …/analyste-support-trading-2600032A-fr » → « analyste support trading ».
 
@@ -208,7 +232,7 @@ class PlanDuSite(Logiciel):
     def completer(self, employeur: Employeur, annonce: Annonce) -> Annonce:
         self.verifier(annonce.url)
         html = self.http.get(annonce.url).texte
-        e = jobposting(html) or microdonnees(html)
+        e = jobposting(html) or microdonnees(html) or bloc(html, employeur.options)
         if e is None:
             return annonce
         # « Retail &amp; Online » : le titre JSON-LD est parfois échappé en HTML.

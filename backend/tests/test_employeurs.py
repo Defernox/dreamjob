@@ -635,6 +635,18 @@ def test_un_index_aux_plans_anonymes_est_suivi_en_entier(registre):
     assert [o.source_id for o in c.fetch(_requete())] == ["banque:111111"]
 
 
+def test_une_fiche_sans_balisage_se_lit_entre_deux_reperes():
+    """Avature (BCE, Bloomberg) : ni JSON-LD ni microdonnées."""
+    from app.connectors.employeurs.plan_du_site import bloc
+    page = ('<meta property="og:title" content="Risk Analyst &amp; Trader" /><div class="article__content">'
+            '<span>Location</span><span>Tokyo</span><p>Analyse du risque.</p></div><footer>Mentions</footer>')
+    e = bloc(page, {"bloc": 'class="article__content', "fin_bloc": "tpt_socialShare|<footer"})
+    assert e["title"] == "Risk Analyst & Trader"
+    assert "Analyse du risque." in e["description"] and "Mentions" not in e["description"]
+    assert e["jobLocation"]["address"]["addressLocality"] == "Tokyo"
+    assert bloc(page, {}) is None
+
+
 def test_le_titre_se_lit_dans_l_adresse():
     from app.connectors.employeurs.plan_du_site import titre_de_l_adresse
     assert titre_de_l_adresse("https://x.fr/offres-d-emploi/analyste-support-trading-2600032A-fr",

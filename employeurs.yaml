@@ -32,8 +32,13 @@ employeurs:
       langue: "fr"
       priorite: 1
     - nom: "Groupe Crédit Agricole"
-      statut: "à_étudier"
+      statut: "refusé"
       priorite: 1
+      motif: >
+        Le Talentsoft du groupe (casa-recrute.talent-soft.com) interdit tout aux robots
+        (Disallow: /) et la vitrine groupecreditagricole.jobs ne publie aucun plan des
+        offres. CA CIB, CACEIS, Amundi, LCL et Indosuez ont leurs propres sites, ouverts
+        et suivis ; échappent surtout les caisses régionales. Vérifié le 2026-09-29.
     - nom: "Crédit Agricole CIB"
       logiciel: "talentsoft"
       adresse: "https://jobs.ca-cib.com"
@@ -849,7 +854,9 @@ employeurs:
       statut: "actif"
       priorite: 1
     - nom: "Euroclear"
-      statut: "à_étudier"
+      logiciel: "oracle"
+      adresse: "https://don.fa.em2.oraclecloud.com/hcmUI/CandidateExperience/en/sites/CX_1003"
+      statut: "actif"
       priorite: 1
     - nom: "LSEG (dont LCH)"
       logiciel: "workday"
@@ -886,13 +893,23 @@ employeurs:
       statut: "actif"
       priorite: 1
     - nom: "BCE"
-      statut: "à_étudier"
-      adresse: "https://www.ecb.europa.eu/pub/economic-research/programmes/html/index.en.html"
+      logiciel: "plan_du_site"
+      adresse: "https://talent.ecb.europa.eu"
+      statut: "actif"
+      plan: "https://talent.ecb.europa.eu/careers/sitemap_index.xml"
+      offres: "/careers/JobDetail/[^/]+/\\d+"
+      identifiant: "/(\\d+)/?$"
+      bloc: "class=\"article__content"
+      fin_bloc: "tpt_socialShare|<footer"
+      pays_par_defaut: "Allemagne"
       priorite: 1
     - nom: "BEI"
-      statut: "à_étudier"
-      adresse: "https://www.eib.org/fr/about/key-figures/eib-impacts/index"
+      statut: "refusé"
       priorite: 1
+      motif: >
+        erecruitment.eib.org rejette notre User-Agent (« Request Rejected », 403,
+        robots.txt compris) : protection contre les robots, jamais contournée. Vérifié
+        le 2026-09-29.
     - nom: "ESMA"
       statut: "à_étudier"
       adresse: "https://www.esma.europa.eu/about-esma/careers"
@@ -984,9 +1001,14 @@ employeurs:
       statut: "à_venir"
       priorite: 2
     - nom: "Bloomberg"
-      logiciel: "avature"
-      adresse: "https://bloomberg.avature.net/careers"
-      statut: "à_venir"
+      logiciel: "plan_du_site"
+      adresse: "https://bloomberg.avature.net"
+      statut: "actif"
+      plan: "https://bloomberg.avature.net/careers/sitemap.xml"
+      offres: "/careers/JobDetail/[^/]+/\\d+"
+      identifiant: "/(\\d+)/?$"
+      bloc: "class=\"article__content"
+      fin_bloc: "tpt_socialShare|<footer"
       priorite: 2
     - nom: "Murex"
       logiciel: "workday"

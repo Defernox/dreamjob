@@ -15,6 +15,9 @@ Et pour le fichier lui-même :
 - 4xx (absent, ou refusé à tous) : rien n'est interdit. Oracle renvoie 403 à
   tout le monde, navigateurs compris — ce n'est pas un refus qui nous vise ;
 - 5xx ou serveur injoignable : on s'abstient, faute de savoir.
+
+Au-delà des chemins, un site peut dire ce qu'il permet de faire de son contenu
+(`Content-Signal`, voir `Regles.usages_permis`) : c'est respecté aussi.
 """
 
 from __future__ import annotations
@@ -39,8 +42,12 @@ class Regles:
         self.plans: list[str] = []
         # Hors norme, mais répandu : « Crawl-delay: 5 » (AXA). On le respecte.
         self.delai: float | None = None
+        # « Content-Signal: search=no, ai-input=no » (Cloudflare, 2025) : ce que
+        # le site permet de faire de son contenu. Voir `usages_permis`.
+        self.signaux: dict[str, str] = {}
         groupes: list[tuple[list[str], list[tuple[bool, str]]]] = []
         delais: dict[int, float] = {}
+        signaux: dict[int, dict[str, str]] = {}
         agents: list[str] = []
         regles: list[tuple[bool, str]] = []
         dans_les_agents = False
@@ -69,6 +76,13 @@ class Regles:
                     delais[len(groupes) - 1] = float(valeur)
                 except ValueError:
                     pass
+            elif cle == "content-signal":
+                dans_les_agents = False
+                cible = signaux.setdefault(len(groupes) - 1 if groupes else -1, {})
+                for paire in valeur.split(","):
+                    if "=" in paire:
+                        nom_, oui_non = (x.strip().lower() for x in paire.split("=", 1))
+                        cible[nom_] = oui_non
         nom = agent.lower()
         # Le nom du robot, exactement : « autre » ne vise pas « AutreRobot ».
         propres = [i for i, (a, _) in enumerate(groupes) if nom in a]
@@ -77,6 +91,17 @@ class Regles:
         self.regles = [regle for i in choisis for regle in groupes[i][1]]
         delais_choisis = [delais[i] for i in choisis if i in delais]
         self.delai = max(delais_choisis) if delais_choisis else None
+        for i in [-1, *choisis]:
+            self.signaux.update(signaux.get(i, {}))
+
+    def usages_permis(self) -> bool:
+        """DreamJob fait deux des trois usages que nomme Content-Signal : il
+        range les offres pour les chercher (`search`) et en donne la
+        description à un modèle pour écrire la lettre (`ai-input`). Il n'en
+        entraîne aucun (`ai-train` ne le concerne pas). Un site qui refuse l'un
+        des deux n'est pas collecté — Antin Infrastructure Partners déclare
+        `search=no, ai-input=no`."""
+        return self.signaux.get("search") != "no" and self.signaux.get("ai-input") != "no"
 
     @staticmethod
     def _motif(chemin: str) -> re.Pattern:
@@ -136,4 +161,4 @@ class Robots:
 
     def autorise(self, url: str) -> bool:
         regles = self._pour(url)
-        return regles is not None and regles.autorise(url)
+        return regles is not None and regles.usages_permis() and regles.autorise(url)

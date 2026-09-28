@@ -32,7 +32,7 @@ from ...config import RACINE
 from ...models.base import maintenant
 from ..base import BaseConnector, ErreurConnecteur, RawOffer, SearchQuery
 from ..http import ErreurHttp
-from .commun import Annonce, Interdit, correspond, identifiant
+from .commun import Annonce, Interdit, correspond, identifiant, pas_une_offre
 from .commun import cles as cles_de
 from .logiciel import Logiciel
 from .registre import ACTIF, Employeur, charger
@@ -44,6 +44,7 @@ from .greenhouse import Greenhouse
 from .jibe import Jibe
 from .oracle import Oracle
 from .plan_du_site import PlanDuSite
+from .recruitee import Pinpoint, Recruitee
 from .successfactors import SuccessFactors
 from .talentsoft import Talentsoft
 from .workday import Workday
@@ -61,6 +62,8 @@ LOGICIELS: dict[str, type[Logiciel]] = {
     Eightfold.cle: Eightfold,
     Jibe.cle: Jibe,
     Beesite.cle: Beesite,
+    Recruitee.cle: Recruitee,
+    Pinpoint.cle: Pinpoint,
 }
 
 # Les contrats qu'une annonce d'employeur ne prend pas la peine d'écrire.
@@ -157,7 +160,8 @@ class EmployeursConnector(BaseConnector):
             raise ErreurConnecteur(f"aucun site d'employeur n'a répondu ({len(employeurs)} essayés)")
 
         retenues = [(e, a) for e, a in annonces
-                    if correspond(a.titre, recherches) and self._acceptee(a, query)]
+                    if correspond(a.titre, recherches) and not pas_une_offre(a.titre)
+                    and self._acceptee(a, query)]
         nouvelles = [(e, a) for e, a in retenues if self._id(e, a) not in self.connus]
         # Au-delà du plafond, les plus récentes d'abord : ce sont elles qu'on
         # risque de voir partir.

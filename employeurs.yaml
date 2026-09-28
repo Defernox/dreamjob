@@ -475,7 +475,7 @@ employeurs:
     - nom: "PAI Partners"
       logiciel: "recruitee"
       adresse: "https://careers.paipartners.com"
-      statut: "à_venir"
+      statut: "actif"
       priorite: 2
     - nom: "Wendel"
       statut: "à_étudier"
@@ -484,14 +484,16 @@ employeurs:
       statut: "à_étudier"
       priorite: 2
     - nom: "Antin Infrastructure Partners"
-      logiciel: "teamtailor"
-      adresse: "https://antininfrastructurepartners-1655458195.teamtailor.com"
-      statut: "à_venir"
+      statut: "refusé"
       priorite: 2
+      motif: >
+        robots.txt de son site Teamtailor déclare « Content-Signal: search=no,
+        ai-input=no » : ses offres ne doivent servir ni à un moteur de recherche ni à
+        une IA, les deux usages de DreamJob. Vérifié le 2026-09-28.
     - nom: "Meridiam"
       logiciel: "recruitee"
       adresse: "https://meridiam.recruitee.com"
-      statut: "à_venir"
+      statut: "actif"
       priorite: 2
     - nom: "InfraVia"
       statut: "à_étudier"
@@ -552,7 +554,7 @@ employeurs:
     - nom: "Cinven"
       logiciel: "pinpoint"
       adresse: "https://cinven.pinpointhq.com"
-      statut: "à_venir"
+      statut: "actif"
       priorite: 3
     - nom: "Apax"
       statut: "à_étudier"

@@ -817,6 +817,45 @@ def test_beesite_pays_et_contrat_en_allemand(registre):
         "France", "CDI", "https://careers.db.com/job/1", "Poste\nRisque de crédit.")
 
 
+# --- Recruitee, Pinpoint ------------------------------------------------------------------------
+
+
+class SiteApi:
+    """Une API publique qui donne tout d'un coup."""
+
+    def __init__(self, reponse):
+        self.reponse, self.appels = reponse, []
+
+    def get(self, url, **kw):
+        self.appels.append(("GET", url, None))
+        if url.endswith("/robots.txt"):
+            return Reponse(200, None, "User-agent: *\nDisallow: /admin\n", {})
+        return Reponse(200, self.reponse, "", {})
+
+
+def test_recruitee_et_les_offres_qui_n_en_sont_pas(registre):
+    publiee = maintenant().strftime("%Y-%m-%d %H:%M:%S UTC")
+    offre = lambda i, titre: {"id": i, "title": titre, "careers_url": f"https://c.fr/o/{i}", "country_code": "FR",  # noqa: E731
+                              "published_at": publiee, "employment_type_code": "internship",
+                              "description": "<p>Fonds.</p>", "requirements": "<p>Risques.</p>"}
+    site = SiteApi({"offers": [offre(1, "Risk Analyst Intern"), offre(2, "CLOSED: Risk Analyst"),
+                               offre(3, "Open application - Risk")]})
+    c = EmployeursConnector(Sites(fonds=site), registre(
+        {"nom": "Fonds", "logiciel": "recruitee", "adresse": "https://fonds.recruitee.com"}))
+    [o] = c.fetch(_requete())
+    assert (o.source_id, o.pays, o.type_contrat, o.description_brute) == ("fonds:1", "France", "Stage", "Fonds.\n\nRisques.")
+
+
+def test_pinpoint_sans_date(registre):
+    site = SiteApi({"data": [{"id": 5, "title": "Risk Analyst", "location": {"city": "Frankfurt"},
+                              "url": "https://p.fr/postings/5", "employment_type": "internship",
+                              "description": "<p>PE.</p>"}]})
+    c = EmployeursConnector(Sites(fonds=site), registre(
+        {"nom": "Fonds", "logiciel": "pinpoint", "adresse": "https://fonds.pinpointhq.com"}))
+    [o] = c.fetch(_requete(pays=("Allemagne",)))
+    assert (o.pays, o.type_contrat, o.date_publication) == ("Allemagne", "Stage", None)
+
+
 # --- La politesse, les pannes ---------------------------------------------------------------
 
 
@@ -854,6 +893,31 @@ def test_robots_txt_selon_la_rfc_9309(url, attendu):
     regles = Regles(texte, "DreamJob")
     assert regles.autorise(url) is attendu
     assert regles.site_maps() == ["https://ms.eightfold.ai/plan.xml"]
+
+
+@pytest.mark.parametrize("signal, permis", [
+    ("search=no, ai-train=no, ai-input=no", False),       # Antin Infrastructure Partners
+    ("search=yes, ai-train=no, ai-input=yes", True),      # Kepler Cheuvreux : on n'entraîne rien
+    ("search=yes, ai-input=no", False),                   # la lettre donne l'annonce à un modèle
+    ("ai-train=no", True),
+])
+def test_content_signal(signal, permis):
+    """Ce que le site permet de faire de son contenu : DreamJob le range pour
+    le chercher et le donne à un modèle pour écrire la lettre."""
+    from app.connectors.employeurs.robots import Regles
+    regles = Regles(f"User-Agent: aihitdata\nDisallow: /\n\nUser-Agent: *\nDisallow: /app/\n"
+                    f"Content-Signal: {signal}\n", "DreamJob")
+    assert regles.usages_permis() is permis
+    assert regles.autorise("https://x.teamtailor.com/jobs/1-analyste")
+
+
+def test_un_site_qui_refuse_la_recherche_n_est_pas_collecte(registre):
+    site = SiteWorkday([_offre("Risk Analyst")],
+                       robots="User-agent: *\nAllow: /\nContent-Signal: search=no, ai-input=no\n")
+    c = EmployeursConnector(Sites(banque=site), registre(_employeur("banque")))
+    with pytest.raises(ErreurConnecteur):
+        c.fetch(_requete())
+    assert [m for m, *_ in site.appels] == ["GET"], "seul robots.txt a été lu"
 
 
 def test_le_groupe_qui_nomme_notre_robot_passe_avant_l_etoile():

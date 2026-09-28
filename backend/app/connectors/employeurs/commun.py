@@ -67,6 +67,17 @@ def correspond(titre: str, recherches: list[frozenset[str]]) -> bool:
     return False
 
 
+_PAS_UNE_OFFRE = re.compile(
+    r"^\s*(?:closed|clos|fermée?|filled|pourvu)\b|\b(?:open|spontaneous|unsolicited|speculative)\s+application\b"
+    r"|\bcandidature\s+spontan[ée]e\b|\bInitiativbewerbung\b|\bcandidatura\s+spontanea\b", re.I)
+
+
+def pas_une_offre(titre: str) -> bool:
+    """« CLOSED: Munich Investment Group Intern », « Open application » : une
+    offre fermée ou une candidature spontanée n'est pas une offre."""
+    return bool(_PAS_UNE_OFFRE.search(titre or ""))
+
+
 # --- Le contrat ---------------------------------------------------------------------
 
 _CONTRATS = [

@@ -874,6 +874,45 @@ def test_pinpoint_sans_date(registre):
     assert (o.pays, o.type_contrat, o.date_publication) == ("Allemagne", "Stage", None)
 
 
+# --- BrassRing (UBS) --------------------------------------------------------------------------
+
+
+class SiteBrassRing:
+    """Les offres embarquées dans un champ caché, en JSON échappé en HTML."""
+
+    def __init__(self, offres):
+        self.offres, self.appels = offres, []
+
+    @staticmethod
+    def _page(donnees):
+        from html import escape
+        return Reponse(200, None, f'<input id="preLoadJSON" type="hidden" value="{escape(json.dumps(donnees))}" />', {})
+
+    def get(self, url, **kw):
+        self.appels.append(("GET", url, None))
+        if url.endswith("/robots.txt"):
+            return Reponse(404, None, "", {})
+        q = lambda **kv: [{"QuestionName": k, "Value": v} for k, v in kv.items()]  # noqa: E731
+        if "PageType=searchResults" in url:
+            return self._page({"searchResultsResponse": {"Jobs": {"Job": [
+                {"Questions": q(reqid=o["id"], jobtitle=o["titre"], formtext23="",
+                                lastupdated=(maintenant() - timedelta(days=o["jours"])).strftime("%d-%b-%Y"))}
+                for o in self.offres]}}})
+        return self._page({"Jobdetails": {"JobDetailQuestions": q(
+            formtext23="France", City="Paris", **{"Job Type": "Internship",
+                                                  "Key responsibilities": "Suivre le risque de marché au quotidien, " * 3})}})
+
+
+def test_brassring_le_pays_vient_de_la_fiche(registre):
+    site = SiteBrassRing([{"id": "7", "titre": "Market Risk Analyst", "jours": 0}])
+    c = EmployeursConnector(Sites(jobs=site), registre(
+        {"nom": "UBS", "logiciel": "brassring",
+         "adresse": "https://jobs.ubs.com/TGnewUI/Search/Home/HomeWithPreLoad?partnerid=1&siteid=2"}))
+    [o] = c.fetch(_requete(pays=("France",)))
+    assert (o.pays, o.lieu, o.type_contrat) == ("France", "Paris", "Stage")
+    assert o.description_brute.startswith("Key responsibilities\n")
+
+
 # --- La politesse, les pannes ---------------------------------------------------------------
 
 

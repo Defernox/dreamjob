@@ -39,6 +39,7 @@ from .registre import ACTIF, Employeur, charger
 from .robots import Robots
 from .beesite import Beesite
 from .bpce import Bpce
+from .brassring import BrassRing
 from .eightfold import Eightfold
 from .greenhouse import Greenhouse
 from .jibe import Jibe
@@ -64,6 +65,7 @@ LOGICIELS: dict[str, type[Logiciel]] = {
     Beesite.cle: Beesite,
     Recruitee.cle: Recruitee,
     Pinpoint.cle: Pinpoint,
+    BrassRing.cle: BrassRing,
 }
 
 # Les contrats qu'une annonce d'employeur ne prend pas la peine d'écrire.

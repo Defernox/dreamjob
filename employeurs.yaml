@@ -165,8 +165,8 @@ employeurs:
       priorite: 1
     - nom: "UBS"
       logiciel: "brassring"
-      adresse: "https://krb-workbench.brassring.com/WBWeb/TalentGateway/ResponsiveLayout/BrandingSettings"
-      statut: "à_venir"
+      adresse: "https://jobs.ubs.com/TGnewUI/Search/Home/HomeWithPreLoad?partnerid=25008&siteid=5012"
+      statut: "actif"
       priorite: 1
     - nom: "HSBC"
       logiciel: "eightfold"

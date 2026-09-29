@@ -73,8 +73,7 @@ def memoires_vierges():
 
     def vider():
         MEMOIRE.oublier()
-        with http._VERROU_VALIDATIONS:
-            http._VALIDATIONS.clear()
+        http.oublier_validations()
 
     vider()
     yield

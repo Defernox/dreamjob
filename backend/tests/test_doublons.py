@@ -77,6 +77,14 @@ def test_references_genre_et_mot_en_plus():
     assert not meme_poste(_o("2026 Summer Analyst"), _o("2027 Summer Analyst")), "deux promotions"
 
 
+def test_une_adresse_commune_ne_fait_pas_un_meme_poste():
+    """Ofi Invest n'a pas de page par offre quand le lien manque : toutes
+    portent l'adresse de la liste. Dix postes n'y font pas une seule alerte."""
+    liste = "https://ofi-invest.com/fr/carriere/nos-offres"
+    assert not meme_poste(_o("Analyste risques", "Ofi Invest", url=liste),
+                          _o("Gérant obligataire", "Ofi Invest", url=liste))
+
+
 def test_les_cles():
     assert cle_entreprise("SOCIETE GENERALE SA") == cle_entreprise("Société Générale") == {"societe", "generale"}
     assert cle_entreprise("Banque") == frozenset() and cle_entreprise("") == frozenset()
@@ -158,6 +166,19 @@ def test_le_resume_du_matin_ne_compte_qu_un_poste_par_ligne(session, envois):
     assert envois[0]["titre"] == "2 nouvelles offres vertes"
     assert envois[0]["corps"].splitlines() == ["92 — Credit Risk Analyst · Société Générale",
                                               "80 — Analyste conformité · BNP Paribas"]
+
+
+def test_le_resume_du_matin_ne_consomme_pas_le_plafond_des_alertes(session, envois):
+    """Le résumé est UNE notification. Compté offre par offre, un résumé de
+    quinze lignes faisait taire la veille jusqu'au soir."""
+    for n, (titre, employeur) in enumerate([("Analyste crédit", "Natixis"), ("Analyste marché", "BNP Paribas"),
+                                            ("Contrôleur de gestion", "AXA")], 1):
+        _offre(session, n, titre, employeur)
+    assert notification.notifier(session, maintenant() - timedelta(hours=1)) == 1
+    assert notification.alertes_du_jour(session, proprietaire(session).id) == 0
+    _offre(session, 9, "Analyste conformité", "Oddo BHF")
+    assert notification.alerter(session, maintenant() - timedelta(hours=1)) == 1
+    assert notification.alertes_du_jour(session, proprietaire(session).id) == 1
 
 
 def test_deux_comptes_sur_le_meme_telephone_ne_le_font_pas_sonner_deux_fois(session, envois):

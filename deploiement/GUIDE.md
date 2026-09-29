@@ -94,6 +94,11 @@ deploiement/deployer.sh dreamjob --donnees
 Cela envoie le code, ta base (offres, profil, candidatures), ton modèle de CV et
 tes dossiers de candidature, puis construit et démarre l'application.
 
+`--donnees` ne sert **qu'une fois**. Relancé plus tard, il refuse : la base du
+serveur porte alors les comptes de tes amis et tes candidatures récentes, que
+celle du PC n'a pas. Pour la remplacer malgré tout, `--donnees --ecraser` — elle
+est d'abord mise de côté dans `data/avant-ecrasement-<date>/`.
+
 ## 7. Ton compte (toi) — 1 min
 
 ```bash

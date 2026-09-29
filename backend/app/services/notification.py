@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime, timedelta
+from types import SimpleNamespace
 
 import httpx
 from sqlalchemy import update
@@ -25,7 +26,7 @@ from sqlmodel import Session, select
 from ..config import reglages
 from ..models import Offer, Profile, ScoreOffre, Utilisateur
 from ..models.base import maintenant
-from .doublons import meme_poste
+from .doublons import Poste, meme_poste, poste
 
 log = logging.getLogger("dreamjob.notification")
 
@@ -70,33 +71,46 @@ def offres_a_signaler(session: Session, utilisateur_id: int, depuis: datetime,
 #    une alerte perdue, rattrapée par l'écran, qu'une alerte en double.
 
 
-def deja_signalees(session: Session, utilisateur_id: int, depuis: datetime) -> list[Offer]:
-    """Les offres déjà signalées à ce compte depuis `depuis` — alertes, résumés
-    et doublons compris : un poste qu'on a déjà vu passer ne sonne plus."""
-    return list(session.exec(
-        select(Offer).join(ScoreOffre, ScoreOffre.offer_id == Offer.id)
+def deja_signalees(session: Session, utilisateur_id: int, depuis: datetime) -> list[Poste]:
+    """Les postes déjà signalés à ce compte depuis `depuis` — alertes, résumés
+    et doublons compris : un poste qu'on a déjà vu passer ne sonne plus.
+
+    Seuls les champs que la comparaison lit sont chargés : trente jours de
+    signalements, relus à chaque passe de veille, ne rapatrient pas trente
+    jours de descriptions."""
+    lignes = session.exec(
+        select(Offer.id, Offer.hash, Offer.pays, Offer.type_contrat, Offer.source,
+               Offer.entreprise, Offer.titre, Offer.lieu)
+        .join(ScoreOffre, ScoreOffre.offer_id == Offer.id)
         .where(ScoreOffre.utilisateur_id == utilisateur_id, ScoreOffre.alertee_le >= depuis)
-    ).all())
+    ).all()
+    return [poste(SimpleNamespace(id=i, hash=h, pays=p, type_contrat=c, source=s, entreprise=e, titre=t, lieu=l))
+            for i, h, p, c, s, e, t, l in lignes]
 
 
-def regrouper(offres: list[Paire], deja: list[Offer]) -> tuple[list[list[Paire]], list[tuple[Offer, ScoreOffre, int]]]:
+def regrouper(offres: list[Paire], deja: list) -> tuple[list[list[Paire]], list[tuple[Offer, ScoreOffre, int]]]:
     """(groupes à signaler, doublons de ce qui l'a déjà été).
 
     Chaque groupe est un même poste ; son premier élément, le mieux noté (les
     offres arrivent triées par note), est celui qui part. Un doublon porte
-    l'identifiant de l'offre déjà signalée qu'il répète."""
+    l'identifiant de l'offre déjà signalée qu'il répète. Les clés de chaque
+    offre sont calculées une fois, pas à chaque comparaison."""
+    anciens = [poste(d) for d in deja]
     groupes: list[list[Paire]] = []
+    tetes: list[Poste] = []
     doublons: list[tuple[Offer, ScoreOffre, int]] = []
     for offre, note in offres:
-        ancienne = next((d for d in deja if meme_poste(offre, d)), None)
+        celle_ci = poste(offre)
+        ancienne = next((d for d in anciens if meme_poste(celle_ci, d)), None)
         if ancienne is not None:
             doublons.append((offre, note, ancienne.id))
             continue
-        groupe = next((g for g in groupes if meme_poste(offre, g[0][0])), None)
-        if groupe is not None:
-            groupe.append((offre, note))
+        rang = next((i for i, tete in enumerate(tetes) if meme_poste(celle_ci, tete)), None)
+        if rang is not None:
+            groupes[rang].append((offre, note))
         else:
             groupes.append([(offre, note)])
+            tetes.append(celle_ci)
     return groupes, doublons
 
 
@@ -111,16 +125,18 @@ def _marquer_doublons(session: Session, doublons: list[tuple[Offer, ScoreOffre, 
     session.commit()
 
 
-def _reserver(session: Session, groupe: list[Paire]) -> datetime | None:
+def _reserver(session: Session, groupe: list[Paire], *, par_resume: bool = False) -> datetime | None:
     """Réserve un groupe avant de l'envoyer. L'écriture ne réussit que si l'offre
     principale n'a été signalée par personne entre-temps : deux passes
     concurrentes ne peuvent pas envoyer la même. Rend l'instant de la
-    réservation, ou None si une autre passe l'a déjà prise."""
+    réservation, ou None si une autre passe l'a déjà prise.
+
+    `par_resume` : signalée par le résumé du matin — hors du plafond d'alertes."""
     instant = maintenant()
     (principale, note), jumeaux = groupe[0], groupe[1:]
     prise = session.exec(update(ScoreOffre).where(
         ScoreOffre.utilisateur_id == note.utilisateur_id, ScoreOffre.offer_id == note.offer_id,
-        ScoreOffre.alertee_le.is_(None)).values(alertee_le=instant, doublon_de=None))
+        ScoreOffre.alertee_le.is_(None)).values(alertee_le=instant, doublon_de=None, par_resume=par_resume))
     if prise.rowcount != 1:
         session.rollback()
         return None
@@ -137,7 +153,7 @@ def _liberer(session: Session, groupe: list[Paire], instant: datetime) -> None:
     for _, note in groupe:
         session.exec(update(ScoreOffre).where(
             ScoreOffre.utilisateur_id == note.utilisateur_id, ScoreOffre.offer_id == note.offer_id,
-            ScoreOffre.alertee_le == instant).values(alertee_le=None, doublon_de=None))
+            ScoreOffre.alertee_le == instant).values(alertee_le=None, doublon_de=None, par_resume=False))
     session.commit()
 
 
@@ -181,10 +197,13 @@ class _Deja:
     réglés sur le même téléphone ne le font pas sonner deux fois."""
 
     def __init__(self) -> None:
-        self.par_sujet: dict[str, list[Offer]] = {}
+        self.par_sujet: dict[str, list[Poste]] = {}
 
-    def pour(self, sujet: str) -> list[Offer]:
+    def pour(self, sujet: str) -> list[Poste]:
         return self.par_sujet.setdefault(sujet, [])
+
+    def ajouter(self, sujet: str, groupes: list[list[Paire]]) -> None:
+        self.pour(sujet).extend(poste(o) for g in groupes for o, _ in g)
 
 
 def _a_envoyer(session: Session, utilisateur_id: int, offres: list[Paire], sujet: str,
@@ -212,11 +231,12 @@ def notifier(session: Session, depuis: datetime) -> int:
             continue
         groupes = _a_envoyer(session, utilisateur.id, offres_a_signaler(session, utilisateur.id, depuis),
                              sujet, passe)
-        reserves = [(g, instant) for g in groupes if (instant := _reserver(session, g)) is not None]
+        reserves = [(g, instant) for g in groupes
+                    if (instant := _reserver(session, g, par_resume=True)) is not None]
         if not reserves:
             continue
         if _publier(sujet, *message([g for g, _ in reserves])):
-            passe.pour(sujet).extend(o for g, _ in reserves for o, _ in g)
+            passe.ajouter(sujet, [g for g, _ in reserves])
             envoyees += 1
         else:
             for groupe, instant in reserves:
@@ -253,12 +273,14 @@ def message_alerte(offre: Offer, note: ScoreOffre, autres_lieux: int = 0) -> tup
 
 
 def alertes_du_jour(session: Session, utilisateur_id: int) -> int:
-    """Ce qui a sonné aujourd'hui. Un doublon, signalé par son jumeau, n'a pas
-    sonné : il ne consomme pas le plafond."""
+    """Les alertes qui ont sonné aujourd'hui. Un doublon, signalé par son
+    jumeau, n'a pas sonné ; une offre du résumé du matin est une ligne d'UNE
+    notification : ni l'un ni l'autre ne consomme le plafond."""
     debut = maintenant().replace(hour=0, minute=0, second=0, microsecond=0)
     return len(session.exec(select(ScoreOffre.offer_id).where(
         ScoreOffre.utilisateur_id == utilisateur_id,
-        ScoreOffre.alertee_le >= debut, ScoreOffre.doublon_de.is_(None))).all())
+        ScoreOffre.alertee_le >= debut, ScoreOffre.doublon_de.is_(None),
+        ScoreOffre.par_resume == False)).all())  # noqa: E712 — SQLAlchemy exige ==
 
 
 def alerter(session: Session, depuis: datetime) -> int:
@@ -288,7 +310,7 @@ def alerter(session: Session, depuis: datetime) -> int:
             offre, note = groupe[0]
             if _publier(sujet, *message_alerte(offre, note, _autres_lieux(groupe)), offre_id=offre.id,
                         urgente=note.score >= URGENTE):
-                passe.pour(sujet).extend(o for o, _ in groupe)
+                passe.ajouter(sujet, [groupe])
                 envoyees += 1
             else:
                 _liberer(session, groupe, instant)

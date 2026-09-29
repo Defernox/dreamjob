@@ -83,8 +83,6 @@ LOGICIELS: dict[str, type[Logiciel]] = {
 
 # Les contrats qu'une annonce d'employeur ne prend pas la peine d'écrire.
 CONTRATS_ORDINAIRES = {"CDI", "CDD"}
-# Une fenêtre aussi courte, c'est la veille qui passe.
-JOURS_DE_VEILLE = 3
 
 
 class _Memoire:
@@ -167,7 +165,7 @@ class EmployeursConnector(BaseConnector):
         if cle in self._listes:
             return self._listes[cle]
         pages = self.reglages.employeurs.pages_max
-        if maintenant() - depuis <= timedelta(days=JOURS_DE_VEILLE):
+        if self.en_veille:
             # La veille repasse toutes les demi-heures : une liste sans date
             # n'y est lue que sur ses premières pages, et un employeur marqué
             # `veille: false` (un plan du site d'un mégaoctet pour une offre)

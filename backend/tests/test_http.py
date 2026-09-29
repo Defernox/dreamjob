@@ -169,6 +169,21 @@ def test_une_page_inchangee_n_est_pas_retelechargee():
     assert seconde["if-none-match"] == '"v1"' and seconde["if-modified-since"].startswith("Sun, 27 Sep")
 
 
+def test_la_memoire_des_validateurs_garde_les_pages_relues(monkeypatch):
+    """Bornée par la taille, vidée de la page la moins récemment relue : une
+    page relue à chaque passe n'est jamais chassée par les autres."""
+    from app.connectors import http
+
+    monkeypatch.setattr(http, "VALIDATIONS_OCTETS_MAX", 30)
+    c = _client([httpx.Response(200, text="0123456789", headers={"ETag": '"v"'})])
+    for page in ("a", "b", "c"):
+        c.get(f"https://plan.test/{page}", utiliser_cache=False, revalider=True)
+    c.get("https://plan.test/a", utiliser_cache=False, revalider=True)       # relue
+    c.get("https://plan.test/d", utiliser_cache=False, revalider=True)
+    assert list(http._VALIDATIONS) == ["https://plan.test/c", "https://plan.test/a", "https://plan.test/d"]
+    assert http._validations_octets == 30
+
+
 def test_sans_validateur_la_page_est_simplement_relue():
     url = "https://plan.test/sans-etag.xml"
     c = _client([httpx.Response(200, text="a"), httpx.Response(200, text="b")])

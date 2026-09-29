@@ -32,6 +32,7 @@ jamais confondre deux postes distincts : dans le doute, ce sont deux postes.
 from __future__ import annotations
 
 import re
+from dataclasses import dataclass
 
 from ..scoring.lexique import jetons
 from ..scoring.texte import normaliser
@@ -105,21 +106,45 @@ def memes_mots(a: frozenset[str], b: frozenset[str], *, reformulation: bool = Tr
     return court < long_ and len(court) >= 3 and len(reste) == 1 and not reste & _DISTINCTIFS
 
 
+@dataclass(frozen=True)
+class Poste:
+    """Ce que la comparaison lit d'une offre, calculé une fois : le résumé du
+    matin compare chaque offre à trente jours de signalements, et recalculer
+    les clés à chaque paire coûtait l'essentiel du temps."""
+
+    id: int | None
+    hash: str
+    pays: str
+    contrat: str
+    source: str
+    entreprise: frozenset[str]
+    intitule: frozenset[str]
+
+
+def poste(offre) -> Poste:
+    """Le `Poste` d'une offre (Offer, ou tout objet qui en a les champs)."""
+    if isinstance(offre, Poste):
+        return offre
+    return Poste(id=getattr(offre, "id", None), hash=offre.hash or "", pays=offre.pays or "",
+                 contrat=offre.type_contrat or "", source=getattr(offre, "source", "") or "",
+                 entreprise=cle_entreprise(offre.entreprise), intitule=cle_intitule(offre.titre, offre.lieu))
+
+
 def meme_poste(a, b) -> bool:
-    """Deux offres (Offer, ou tout objet qui en a les champs) sont-elles le même
-    poste ? Dans le doute, non."""
-    if a is b or (getattr(a, "id", None) is not None and a.id == getattr(b, "id", None)):
+    """Deux offres (ou deux `Poste`) sont-elles le même poste ? Dans le doute, non.
+
+    L'adresse ne prouve rien : un site qui n'a pas de page par offre (Ofi
+    Invest) donne à toutes celle de sa liste, et dix postes auraient sonné
+    comme un seul."""
+    a, b = poste(a), poste(b)
+    if a.id is not None and a.id == b.id:
         return True
     if a.hash and a.hash == b.hash:
         return True
-    if a.url and a.url == b.url:
-        return True
     if a.pays and b.pays and a.pays != b.pays:
         return False
-    if a.type_contrat and b.type_contrat and a.type_contrat != b.type_contrat:
+    if a.contrat and b.contrat and a.contrat != b.contrat:
         return False
-    ea, eb = cle_entreprise(a.entreprise), cle_entreprise(b.entreprise)
-    if not ea or not eb or not (ea <= eb or eb <= ea):
+    if not a.entreprise or not b.entreprise or not (a.entreprise <= b.entreprise or b.entreprise <= a.entreprise):
         return False
-    return memes_mots(cle_intitule(a.titre, a.lieu), cle_intitule(b.titre, b.lieu),
-                      reformulation=getattr(a, "source", "") != getattr(b, "source", ""))
+    return memes_mots(a.intitule, b.intitule, reformulation=a.source != b.source)

@@ -53,6 +53,10 @@ class ScoreOffre(SQLModel, table=True):
     # l'identifiant de celle-ci. Marquée signalée sans avoir sonné — elle ne
     # compte pas dans le plafond du jour (`services/doublons.py`).
     doublon_de: int | None = None
+    # Signalée par le résumé du matin, pas par une alerte : le résumé est UNE
+    # notification, il ne consomme pas le plafond d'alertes du jour — sinon un
+    # résumé de quinze offres faisait taire la veille jusqu'au soir.
+    par_resume: bool = False
 
 
 class DepenseLlm(SQLModel, table=True):

@@ -180,7 +180,9 @@ class ApiJson(PlanDuSite):
         if annonce.complete or not annonce.url:
             annonce.complete = True
             return annonce
-        if fiche_api := annonce.brut.pop("fiche_api", None):
+        # Lue, pas retirée : si la fiche échoue, la recherche suivante du même
+        # scan la redemande à l'interface, pas à la page — une coquille vide.
+        if fiche_api := annonce.brut.get("fiche_api"):
             return self._fiche_json(employeur, annonce, fiche_api)
         resume, titre = annonce.description, annonce.titre
         fiche = super().completer(employeur, annonce)

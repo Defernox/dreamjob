@@ -70,6 +70,11 @@ class BaseConnector(ABC):
     def __init__(self, http, reglages) -> None:
         self.http = http
         self.reglages = reglages
+        # Posé par le scan : cette passe est-elle la veille ? Une source peut
+        # alors lire moins (les sites des employeurs, toutes les demi-heures).
+        # Dit explicitement, jamais deviné de la fenêtre de dates : une
+        # recherche enregistrée « depuis un jour » n'est pas la veille.
+        self.en_veille = False
 
     def verifier_configuration(self) -> None:
         """Lève ConnecteurNonConfigure si les identifiants manquent.

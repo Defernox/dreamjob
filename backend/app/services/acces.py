@@ -16,8 +16,9 @@ import hashlib
 import hmac
 import logging
 import secrets
+import threading
 import time
-from collections import defaultdict, deque
+from collections import deque
 from datetime import timedelta
 
 from sqlmodel import Session, select
@@ -189,25 +190,46 @@ class Limiteur:
     tenir un registre.
     """
 
+    # Au-delà, les adresses dont les échecs sont les plus anciens sont oubliées :
+    # la mémoire ne grossit pas avec le nombre d'adresses essayées.
+    ADRESSES_MAX = 1000
+
     def __init__(self, essais_max: int = ESSAIS_MAX, fenetre: float = FENETRE) -> None:
         self.essais_max = essais_max
         self.fenetre = fenetre
-        self._echecs: dict[str, deque[float]] = defaultdict(deque)
+        self._echecs: dict[str, deque[float]] = {}
+        self._verrou = threading.Lock()
 
-    def _purger(self, adresse: str, instant: float) -> deque[float]:
-        echecs = self._echecs[adresse]
+    def _purger(self, adresse: str, instant: float) -> deque[float] | None:
+        echecs = self._echecs.get(adresse)
+        if echecs is None:
+            return None
         while echecs and instant - echecs[0] > self.fenetre:
             echecs.popleft()
+        if not echecs:
+            # Une adresse sans échec récent n'occupe plus de place.
+            del self._echecs[adresse]
+            return None
         return echecs
 
     def bloque(self, adresse: str) -> bool:
-        return len(self._purger(adresse, time.monotonic())) >= self.essais_max
+        with self._verrou:
+            echecs = self._purger(adresse, time.monotonic())
+            return echecs is not None and len(echecs) >= self.essais_max
 
     def echec(self, adresse: str) -> None:
-        self._purger(adresse, time.monotonic()).append(time.monotonic())
+        instant = time.monotonic()
+        with self._verrou:
+            echecs = self._purger(adresse, instant)
+            if echecs is None:
+                if len(self._echecs) >= self.ADRESSES_MAX:
+                    self._echecs.pop(next(iter(self._echecs)))
+                echecs = self._echecs[adresse] = deque()
+            echecs.append(instant)
 
     def reussite(self, adresse: str) -> None:
-        self._echecs.pop(adresse, None)
+        with self._verrou:
+            self._echecs.pop(adresse, None)
 
 
 limiteur = Limiteur()

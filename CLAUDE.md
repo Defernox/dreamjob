@@ -742,7 +742,11 @@ dans l'offre. Ofi Invest laissait en ligne un poste clos depuis avril.
 **La veille lit moins que le scan.** Toutes les demi-heures, une liste sans date
 serait relue en entier — vingt-quatre pages chez Oddo BHF : en veille, seules
 les `pages_veille` premières le sont (les nouveautés sont en tête), et un
-employeur marqué `veille: false` attend le scan du matin.
+employeur marqué `veille: false` attend le scan du matin. **C'est le scan qui
+dit qu'il est la veille** (`connecteur.en_veille`), le connecteur ne le devine
+pas : il le déduisait d'une fenêtre de moins de trois jours, et une recherche
+enregistrée « publiée depuis un jour » était traitée en veille au scan du
+matin — pages plafonnées, employeurs `veille: false` jamais lus pour elle.
 
 **Et elle se mesure.** Une passe de veille sur les 158 employeurs coûtait
 582 requêtes et **72 Mo** — toutes les demi-heures, sur un serveur loué, cela
@@ -758,7 +762,10 @@ fait 2 Go par jour pour trouver trois offres. Trois causes, trois parades :
   redemandés sous condition (`revalider=True` : « If-None-Match »,
   « If-Modified-Since ») ; un site qui répond 304 ne renvoie rien, et la
   réponse gardée sert telle quelle (`http._VALIDATIONS`). Hays, 2 Mo par passe,
-  le fait ;
+  le fait. Cette mémoire est bornée par la **taille** des pages (96 Mo) et
+  chasse la moins récemment relue : bornée d'abord à trois cents pages vidées
+  dans l'ordre d'arrivée, elle débordait à chaque passe, et chaque page en
+  chassait une autre avant d'avoir resservi — plus aucun 304 ;
 - **UniCredit publie un plan par langue**, les mêmes offres dans chacune : son
   index était lu en entier. Seul le plan anglais l'est.
 
@@ -1236,7 +1243,8 @@ entretien retire du cache HTTP les réponses périmées (`purger_cache`) : jamai
 relues, jamais effacées, elles pesaient déjà 91 Mo en local — la veille d'un
 serveur, cent cinquante sites toutes les demi-heures, les aurait accumulées
 sans fin. Les journaux de Docker sont plafonnés (`docker-compose.yml`, 5 × 10 Mo)
-pour la même raison.
+pour la même raison. L'entretien est programmé même quand le scan quotidien
+est désactivé : couper l'un supprimait l'autre en silence.
 
 Le hook `hooks/pre-commit` (activé par `core.hooksPath`) refuse un commit dont
 les tests échouent.
@@ -1348,9 +1356,14 @@ le vocabulaire du score (« Credit Risk Analyst » = « Analyste risques de cré
 (H/F) - CDI »), et que rien ne les sépare — ni niveau, ni stage, ni pays, ni
 contrat connus différents. **Dans le doute, deux postes** : mieux vaut un
 doublon qui sonne qu'un poste tu. La ville ne compte pas : l'alerte dit « et 4
-autres lieux », le résumé met un poste par ligne. Un doublon est marqué signalé
-(`doublon_de`) sans avoir sonné ; il ne consomme pas le plafond du jour. Contre
-ce qui a déjà sonné, la comparaison remonte sur `veille.doublons_jours` (30).
+autres lieux », le résumé met un poste par ligne. **L'adresse ne prouve rien** :
+un site sans page par offre (Ofi Invest) donne à toutes celle de sa liste. Un
+doublon est marqué signalé (`doublon_de`) sans avoir sonné ; il ne consomme pas
+le plafond du jour — ni une offre du résumé du matin (`par_resume`), ligne d'UNE
+notification : comptées offre par offre, quinze lignes de résumé faisaient
+taire la veille jusqu'au soir. Contre ce qui a déjà sonné, la comparaison
+remonte sur `veille.doublons_jours` (30) ; seuls les champs comparés sont
+chargés, et les clés de chaque offre calculées une fois (`doublons.Poste`).
 
 Deux autres façons de sonner deux fois, deux parades :
 
@@ -1383,7 +1396,12 @@ recherche lancée depuis l'interface prend le même verrou.
 employeurs, elle dure plusieurs minutes ; attendue dans la requête HTTP, elle
 aurait été coupée par le relais HTTPS. `POST /api/scans` rend aussitôt le scan
 « en cours », que l'interface relit toutes les trois secondes ; une seconde
-recherche du même compte répond 409 tant que la première tourne. Un scan resté
+recherche du même compte répond 409 tant que la première tourne. Le scan n'est
+clos qu'**après** la notation de ses offres (`clore_scan`) : clos avant,
+l'interface relisait la liste aussitôt et montrait les nouveautés sans note.
+L'interface ne reprend jamais une passe de veille pour une recherche de
+l'utilisateur, et le diagnostic ne l'affiche pas (`avec_veille=false`) : une
+toutes les demi-heures, elle cachait les erreurs du scan du matin. Un scan resté
 « en cours » au démarrage — l'application a été arrêtée pendant — est clos en
 échec (`clore_les_interrompus`), sans quoi l'interface l'attendrait pour
 toujours.
@@ -1425,7 +1443,15 @@ le mot de passe saisi sans écho.
 l'empreinte SHA-256 de leur jeton — une sauvegarde égarée n'ouvre aucune
 session. Un seul message pour « adresse inconnue » et « mauvais mot de passe »,
 et le même coût de calcul dans les deux cas : ni le texte ni la durée ne disent
-quels comptes existent. Dix échecs en un quart d'heure bloquent l'adresse.
+quels comptes existent. Dix échecs en un quart d'heure bloquent l'adresse — le
+**dernier** maillon de `X-Forwarded-For`, celui qu'écrit le relais : le premier
+est écrit par le client, et en changer à chaque essai contournait le blocage.
+Les adresses retenues sont bornées à mille.
+
+**`deployer.sh --donnees` ne sert qu'une fois.** Relancé, il écrasait la base du
+serveur — comptes des amis, candidatures — pendant qu'elle tournait, son
+journal WAL prêt à corrompre le nouveau fichier. Il refuse désormais une base
+existante, sauf `--ecraser`, qui arrête l'application et met l'ancienne de côté.
 
 **L'API sert l'interface compilée** : un seul processus, un seul port. Toute
 adresse qui n'est ni `/api/` ni un fichier de `frontend/dist` renvoie

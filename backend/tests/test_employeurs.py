@@ -1262,6 +1262,61 @@ def test_cornerstone_reprend_le_jeton_de_la_page_et_son_delai(registre):
     assert ("afd.csod.com", 10.0) in site.delais, "Crawl-delay hors groupe respecté"
 
 
+def test_api_json_une_fiche_en_echec_reste_a_demander_a_l_interface():
+    """Retirée à la première lecture, l'adresse de la fiche JSON était perdue
+    si celle-ci échouait : la recherche suivante lisait la page, une coquille."""
+    from app.connectors.employeurs.api_json import ApiJson
+    from app.connectors.employeurs.commun import Annonce
+
+    class Http:
+        def get(self, url, **kw):
+            raise ErreurHttp(503, "indisponible")
+
+    class Robots:
+        def autorise(self, url):
+            return True
+
+    annonce = Annonce(ident="1", titre="Analyste", url="https://x.fr/1", brut={"fiche_api": "https://api.x.fr/1"})
+    with pytest.raises(ErreurHttp):
+        ApiJson(Http(), Robots()).completer(Employeur(nom="X"), annonce)
+    assert annonce.brut["fiche_api"] == "https://api.x.fr/1"
+
+
+class SiteCornerstoneSansTotal(SiteCornerstone):
+    """Une interface qui ne donne pas son total, et des fiches sans date limite."""
+
+    def get(self, url, **kw):
+        if "/requisition/" in url:
+            self.appels.append(("GET", url, None))
+            return Reponse(200, None, ('<script type="application/ld+json">{"@type": "JobPosting", '
+                                       '"title": "Analyste risques", "description": "<p>'
+                                       + "Suivi des risques. " * 30 + '</p>"}</script>'), {})
+        return super().get(url, **kw)
+
+    def post(self, url, corps_json=None, entetes=None, **kw):
+        self.appels.append(("POST", url, entetes))
+        debut = (corps_json["pageNumber"] - 1) * corps_json["pageSize"]
+        return Reponse(200, {"data": {"requisitions": self.requisitions[debut:debut + corps_json["pageSize"]]}},
+                       "", {})
+
+
+def test_cornerstone_sans_total_lit_jusqu_a_la_page_incomplete(registre):
+    hier = (maintenant() - timedelta(days=1)).strftime("%d/%m/%Y")
+    dans_un_mois = (maintenant() + timedelta(days=30)).strftime("%d/%m/%Y")
+    site = SiteCornerstoneSansTotal([
+        {"requisitionId": i, "displayJobTitle": f"Analyste risques {i}", "postingEffectiveDate": hier,
+         "postingExpirationDate": dans_un_mois, "locations": [{"city": "Paris", "country": "FR"}],
+         "externalDescription": "Résumé court."} for i in range(1, 31)])
+    c = EmployeursConnector(Sites(afd=site, uk=site), registre({
+        "nom": "AFD", "logiciel": "cornerstone", "adresse": "https://afd.csod.com/ux/ats/careersite/5/home?c=afd"}))
+    offres = c.fetch(_requete(max_offres=100))
+    assert len(offres) == 30, "un total absent ne vaut pas zéro : la seconde page est lue"
+    # La fiche ouverte (description trop courte en liste) n'a pas de date
+    # limite : celle de la liste reste.
+    limite = (maintenant() + timedelta(days=30)).date().isoformat()
+    assert {o.raw["date_limite"] for o in offres} == {limite}
+
+
 # --- Plans du site : CDATA, intitulé dans l'adresse, fiche dans un cadre (Hays, MSCI) -----------
 
 
@@ -1349,11 +1404,33 @@ def test_la_veille_ne_lit_que_les_premieres_pages_d_une_liste_sans_date(registre
         {"nom": "Lourde", "logiciel": "page_liste", "adresse": "https://lourde.fr", "veille": False,
          "liste": "https://lourde.fr/offres?page={page}", "offres": r"/offre-\d+"})
     c = EmployeursConnector(Sites(longue=longue, lourde=lourde), r)
+    c.en_veille = True
     c.fetch(_requete(publiee_depuis_jours=1))
     assert longue.pages == [1, 2, 3], "pages_veille"
     assert lourde.pages == [], "un employeur marqué « veille: false » attend le scan du matin"
     EmployeursConnector(Sites(longue=longue, lourde=lourde), r).fetch(_requete())
     assert len(lourde.pages) == r.employeurs.pages_max, "le scan, lui, lit tout"
+
+
+def test_une_recherche_d_un_jour_n_est_pas_la_veille(registre):
+    """Une recherche enregistrée « publiée depuis un jour », jouée par le scan du
+    matin, lit tout : seule la veille, dite par le scan, lit moins."""
+    class Longue:
+        def __init__(self):
+            self.pages = []
+
+        def get(self, url, **kw):
+            if url.endswith("/robots.txt"):
+                return Reponse(404, None, "", {})
+            n = int(url.split("page=")[1])
+            self.pages.append(n)
+            return Reponse(200, None, f'<a href="/offre-{n}.html">Analyste risques {n}</a>', {})
+
+    lourde = Longue()
+    r = registre({"nom": "Lourde", "logiciel": "page_liste", "adresse": "https://lourde.fr", "veille": False,
+                  "liste": "https://lourde.fr/offres?page={page}", "offres": r"/offre-\d+"})
+    EmployeursConnector(Sites(lourde=lourde), r).fetch(_requete(publiee_depuis_jours=1))
+    assert len(lourde.pages) == r.employeurs.pages_max
 
 
 def test_une_offre_dont_la_date_limite_est_passee_n_est_pas_proposee():

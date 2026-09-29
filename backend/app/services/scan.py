@@ -181,6 +181,7 @@ def lancer_scan(
     declenche_par: str = "manuel",
     utilisateur_id: int | None = None,
     scan: ScanRun | None = None,
+    clore: bool = True,
 ) -> ScanRun:
     """Joue une ou plusieurs requêtes sur les sources actives.
 
@@ -194,6 +195,9 @@ def lancer_scan(
 
     `scan` : un ScanRun déjà créé « en cours », que l'interface suit pendant
     qu'il se déroule en arrière-plan ; il est rempli au lieu d'en créer un.
+    `clore=False` le laisse « en cours » une fois les offres stockées : la
+    recherche manuelle ne le clôt (`clore_scan`) qu'après les avoir notées,
+    sans quoi l'interface affichait des offres sans note.
     """
     reglages = lire_reglages()
     proprio_id = proprietaire(session).id
@@ -236,6 +240,7 @@ def lancer_scan(
             interrogees.append(cle)
             try:
                 connecteur = construire(cle, http, reglages)
+                connecteur.en_veille = declenche_par == "veille"
                 if getattr(connecteur, "veut_les_connus", False):
                     # Une offre déjà en base n'a pas à voir sa fiche rouverte :
                     # la retrouver dans la liste suffit à la dire en ligne. Son
@@ -282,15 +287,26 @@ def lancer_scan(
     scan.nb_rejetees = rejetees
     scan.nb_appels_llm = 0        # le scan n'appelle jamais le LLM
     scan.erreurs = erreurs
-    scan.finished_at = maintenant()
-    scan.statut = _statut(interrogees, erreurs)
     session.add(scan)
-    session.commit()
-    session.refresh(scan)
+    if clore:
+        clore_scan(session, scan)
+    else:
+        session.commit()
+        session.refresh(scan)
 
     log.info("Scan terminé : %d récupérées, %d nouvelles, %d doublons, %d rejetées",
              scan.nb_recuperees, nouvelles, doublons, rejetees)
     return scan
+
+
+def clore_scan(session: Session, scan: ScanRun) -> None:
+    """Le statut final, lu sur ce que le scan a consigné : les sources
+    interrogées et leurs erreurs."""
+    scan.finished_at = maintenant()
+    scan.statut = _statut(list(scan.sources or []), list(scan.erreurs or []))
+    session.add(scan)
+    session.commit()
+    session.refresh(scan)
 
 
 def clore_les_interrompus(session: Session) -> int:

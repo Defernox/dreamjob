@@ -17,6 +17,7 @@ import logging
 import random
 import threading
 import time
+from collections import OrderedDict
 from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import urlparse
@@ -66,10 +67,27 @@ class ErreurHttp(RuntimeError):
 
 # Les validateurs (ETag, Last-Modified) des pages revalidables, avec leur corps :
 # pour toute la durée du processus, pas d'un seul scan — la veille crée un
-# client par passe, toutes les demi-heures.
-_VALIDATIONS: dict[str, tuple[dict[str, str], Reponse]] = {}
+# client par passe, toutes les demi-heures. Borné par la taille des corps, pas
+# par leur nombre, et la page la moins récemment relue part d'abord : une
+# borne à 300 pages, vidée dans l'ordre d'arrivée, était dépassée à chaque
+# passe (plans et listes de 158 employeurs) et chaque page en chassait une
+# autre avant d'avoir resservi — plus aucun 304.
+_VALIDATIONS: OrderedDict[str, tuple[dict[str, str], Reponse]] = OrderedDict()
 _VERROU_VALIDATIONS = threading.Lock()
-VALIDATIONS_MAX = 300
+VALIDATIONS_OCTETS_MAX = 96 * 1024 * 1024
+_validations_octets = 0
+
+
+def _poids(reponse: Reponse) -> int:
+    return len(reponse.texte or "")
+
+
+def oublier_validations() -> None:
+    """Vide la mémoire des validateurs (tests)."""
+    global _validations_octets
+    with _VERROU_VALIDATIONS:
+        _VALIDATIONS.clear()
+        _validations_octets = 0
 
 
 class ClientHttp:
@@ -206,6 +224,8 @@ class ClientHttp:
         if revalider and methode == "GET" and not params:
             with _VERROU_VALIDATIONS:
                 connue = _VALIDATIONS.get(url)
+                if connue is not None:
+                    _VALIDATIONS.move_to_end(url)        # relue : la plus récente
             if connue is not None:
                 tous_entetes.update(connue[0])
         derniere_erreur: Exception | None = None
@@ -261,6 +281,7 @@ class ClientHttp:
     @staticmethod
     def _retenir(url: str, reponse: Reponse) -> None:
         """Garde les validateurs d'une réponse revalidable, s'il y en a."""
+        global _validations_octets
         entetes = {k.lower(): v for k, v in reponse.entetes.items()}
         validateurs = {}
         if etag := entetes.get("etag"):
@@ -268,12 +289,15 @@ class ClientHttp:
         if modifie := entetes.get("last-modified"):
             validateurs["If-Modified-Since"] = modifie
         with _VERROU_VALIDATIONS:
-            if not validateurs:
-                _VALIDATIONS.pop(url, None)
+            if (ancienne := _VALIDATIONS.pop(url, None)) is not None:
+                _validations_octets -= _poids(ancienne[1])
+            if not validateurs or _poids(reponse) > VALIDATIONS_OCTETS_MAX:
                 return
-            if url not in _VALIDATIONS and len(_VALIDATIONS) >= VALIDATIONS_MAX:
-                _VALIDATIONS.pop(next(iter(_VALIDATIONS)))      # la plus ancienne
             _VALIDATIONS[url] = (validateurs, reponse)
+            _validations_octets += _poids(reponse)
+            while _validations_octets > VALIDATIONS_OCTETS_MAX:
+                _, (_, chassee) = _VALIDATIONS.popitem(last=False)   # la moins récemment relue
+                _validations_octets -= _poids(chassee)
 
     def _patienter(self, tentative: int, retry_after: str | None = None) -> None:
         """Backoff exponentiel avec bruit, sauf si le serveur a dit quand revenir."""

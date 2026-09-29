@@ -124,6 +124,21 @@ def texte(html: str | None) -> str:
     return re.sub(r"\n{3,}", "\n\n", "\n".join(lignes)).strip()
 
 
+def propre(fragment: str | None) -> str:
+    """Un fragment HTML sur une ligne : balises retirées, entités décodées,
+    espaces réduits — un intitulé, un lieu, un contrat."""
+    return " ".join(unescape(_BALISES.sub(" ", fragment or "")).split())
+
+
+def date_jma(jour: int, mois: int, annee: int) -> datetime | None:
+    """Une date lue en jour, mois, année — None si elle n'existe pas (« 31/02 »,
+    ou une date américaine lue à la française)."""
+    try:
+        return datetime(annee, mois, jour)
+    except ValueError:
+        return None
+
+
 def identifiant(nom: str) -> str:
     """« Crédit Agricole CIB » → « credit-agricole-cib » : préfixe des
     identifiants d'offre, stable tant que le nom ne change pas."""

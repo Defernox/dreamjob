@@ -24,7 +24,7 @@ from html import unescape
 from urllib.parse import urljoin, urlparse
 
 from ..http import ErreurHttp
-from .commun import Annonce, contrat
+from .commun import Annonce, contrat, propre
 from .plan_du_site import PlanDuSite, titre_de_l_adresse
 from .registre import Employeur
 
@@ -32,10 +32,6 @@ _LIEN = re.compile(r"<a\b[^>]*?href\s*=\s*[\"']([^\"'#]+)[\"'][^>]*>(.*?)</a>", 
 # Le bouton à côté de l'intitulé mène à la même offre : son libellé n'en est pas un.
 _GENERIQUE = re.compile(r"^(?:d[ée]tails?(?: de l'offre)?|voir(?: l'offre| plus)?|en savoir plus|postuler|"
                         r"read more|view(?: job)?|apply|plus d'infos?)$", re.I)
-
-
-def _propre(fragment: str) -> str:
-    return " ".join(unescape(re.sub(r"<[^>]+>", " ", fragment or "")).split())
 
 
 class PageListe(PlanDuSite):
@@ -81,7 +77,7 @@ class PageListe(PlanDuSite):
                 continue
             m = re.search(identifiant, cible) if identifiant else None
             ident = m.group(1) if m else urlparse(cible).path.rstrip("/").rsplit("/", 1)[-1]
-            texte_ = _propre(texte_lien)
+            texte_ = propre(texte_lien)
             titre = texte_ if texte_ and not _GENERIQUE.match(texte_) else ""
             if ident in vues:
                 # Deux liens vers la même offre : l'intitulé, le plus long, l'emporte.

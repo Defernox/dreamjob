@@ -116,11 +116,13 @@ export type ScanSuivi = {
   declenche_par: string
 }
 
-/** Les dernières recherches abouties ou non (pas celle en cours), pour le diagnostic. */
+/** Les dernières recherches abouties ou non, pour le diagnostic. Sans les passes
+ *  de veille : une toutes les demi-heures, sur une partie des sources, elles
+ *  cacheraient les erreurs du scan du matin. */
 export const useDerniersScans = () =>
   useQuery({
     queryKey: ['scans', 'historique'],
-    queryFn: () => api.get<ScanSuivi[]>('/api/scans?limite=5'),
+    queryFn: () => api.get<ScanSuivi[]>('/api/scans?limite=5&avec_veille=false'),
   })
 
 const EN_COURS = 'en cours'
@@ -146,10 +148,11 @@ export function useLancerScan() {
     refetchInterval: (requete) => (requete.state.data?.statut === EN_COURS ? 3000 : false),
   })
   // Revenu sur l'écran pendant une recherche (ou pendant le scan du matin) :
-  // on la reprend au lieu de proposer d'en lancer une seconde, refusée.
+  // on la reprend au lieu de proposer d'en lancer une seconde, refusée. Jamais
+  // une passe de veille : ce n'est pas une recherche de l'utilisateur.
   const dernier = useQuery({
     queryKey: ['scans', 'dernier'],
-    queryFn: () => api.get<ScanSuivi[]>('/api/scans?limite=1'),
+    queryFn: () => api.get<ScanSuivi[]>('/api/scans?limite=1&avec_veille=false'),
     enabled: id === null,
   })
   useEffect(() => {

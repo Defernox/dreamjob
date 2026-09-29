@@ -20,6 +20,7 @@ from ..services.scan import (
     requete_par_defaut,
     requetes_actives,
 )
+from ..services.veille import DECLENCHEUR as VEILLE
 from .acces import utilisateur_courant
 
 router = APIRouter(prefix="/api/scans", tags=["scans"])
@@ -121,13 +122,15 @@ def _en_lecture(scan: ScanRun, moi: Utilisateur) -> ScanLecture:
 
 
 @router.get("", response_model=list[ScanLecture])
-def historique(limite: int = 20, session: Session = Depends(get_session),
+def historique(limite: int = 20, avec_veille: bool = True, session: Session = Depends(get_session),
                moi: Utilisateur = Depends(utilisateur_courant)) -> list[ScanLecture]:
-    scans = session.exec(
-        select(ScanRun)
-        .where(ScanRun.utilisateur_id.is_(None) | (ScanRun.utilisateur_id == moi.id))
-        .order_by(desc(ScanRun.started_at)).limit(limite)
-    ).all()
+    """`avec_veille=false` : les seules recherches. Une passe de veille toutes
+    les demi-heures masquerait sinon le scan du matin dans le diagnostic, et
+    l'écran Offres la prendrait pour une recherche de l'utilisateur."""
+    requete = select(ScanRun).where(ScanRun.utilisateur_id.is_(None) | (ScanRun.utilisateur_id == moi.id))
+    if not avec_veille:
+        requete = requete.where(ScanRun.declenche_par != VEILLE)
+    scans = session.exec(requete.order_by(desc(ScanRun.started_at)).limit(limite)).all()
     return [_en_lecture(scan, moi) for scan in scans]
 
 

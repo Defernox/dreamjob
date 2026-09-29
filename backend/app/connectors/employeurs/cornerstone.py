@@ -19,7 +19,7 @@ import re
 from datetime import datetime
 from urllib.parse import parse_qs, urlparse
 
-from .commun import Annonce, contrat, texte
+from .commun import Annonce, contrat, date_jma, texte
 from .pays import depuis_iso, depuis_lieu
 from .plan_du_site import PlanDuSite
 from .registre import Employeur
@@ -38,10 +38,7 @@ def _jour(brut: str, culture: str) -> datetime | None:
         return None
     a, b, annee = (int(x) for x in m.groups())
     jour, mois = (b, a) if culture.lower() == "en-us" else (a, b)
-    try:
-        return datetime(annee, mois, jour)
-    except ValueError:
-        return None
+    return date_jma(jour, mois, annee)
 
 
 class Cornerstone(PlanDuSite):
@@ -94,7 +91,10 @@ class Cornerstone(PlanDuSite):
                 expiration = _jour(str(o.get("postingExpirationDate") or ""), culture)
                 annonce.brut["date_limite"] = expiration.date().isoformat() if expiration else None
                 annonces.append(annonce)
-            if len(lot) < PAR_PAGE or numero * PAR_PAGE >= int(donnees.get("totalCount") or 0):
+            # Sans total connu, seule une page incomplète dit la fin : un total
+            # absent valait zéro, et la lecture s'arrêtait à la première page.
+            total = int(donnees.get("totalCount") or 0)
+            if len(lot) < PAR_PAGE or (total and numero * PAR_PAGE >= total):
                 break
         return [a for a in annonces if a.titre and a.ident]
 

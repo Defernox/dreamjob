@@ -317,6 +317,8 @@ class PlanDuSite(Logiciel):
         annonce.contrat = (contrat(annonce.titre, *types)
                            or next((_CONTRATS[t.upper()] for t in types if t.upper() in _CONTRATS), "")
                            or annonce.contrat)
-        annonce.brut["date_limite"] = e.get("validThrough")
+        # Une date limite donnée par la liste (Cornerstone) survit à une fiche
+        # qui n'en dit rien.
+        annonce.brut["date_limite"] = e.get("validThrough") or annonce.brut.get("date_limite")
         annonce.complete = True
         return annonce

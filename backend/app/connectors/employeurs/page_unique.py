@@ -25,7 +25,7 @@ from datetime import datetime
 from html import unescape
 from urllib.parse import urljoin
 
-from .commun import Annonce, contrat, identifiant, texte
+from .commun import Annonce, contrat, date_jma, identifiant, propre, texte
 from .pays import depuis_lieu
 from .plan_du_site import _CONTRAT_ETIQUETTE, _LIEU_ETIQUETTE, PlanDuSite
 from .registre import Employeur
@@ -38,17 +38,9 @@ _DATE_PARUTION = re.compile(r"(?:date\s+de\s+(?:parution|publication)|publi[ée]
                             + _JJ_MM_AAAA, re.I)
 
 
-def _propre(fragment: str) -> str:
-    return " ".join(unescape(re.sub(r"<[^>]+>", " ", fragment or "")).split())
-
-
 def _jour(motif: re.Pattern, texte_: str) -> datetime | None:
     if m := motif.search(texte_ or ""):
-        jour, mois, annee = (int(x) for x in m.groups())
-        try:
-            return datetime(annee, mois, jour)
-        except ValueError:
-            return None
+        return date_jma(*(int(x) for x in m.groups()))
     return None
 
 
@@ -71,7 +63,7 @@ class PageUnique(PlanDuSite):
         vues: dict[str, Annonce] = {}
         for morceau in morceaux:
             m = re.search(o["titre_motif"], morceau, re.S) if o.get("titre_motif") else _TITRE.search(morceau)
-            titre = _propre(m.group(1)) if m else ""
+            titre = propre(m.group(1)) if m else ""
             if not titre:
                 continue
             lien = next((urljoin(url, unescape(h)) for h in _LIEN.findall(morceau)
@@ -83,7 +75,7 @@ class PageUnique(PlanDuSite):
             # `lieu_motif` et `contrat_motif` le disent, un groupe chacun.
             lieu_m = (re.search(o["lieu_motif"], morceau, re.S) if o.get("lieu_motif")
                       else _LIEU_ETIQUETTE.search(morceau))
-            lieu = _propre(lieu_m.group(1)) if lieu_m else ""
+            lieu = propre(lieu_m.group(1)) if lieu_m else ""
             type_m = (re.search(o["contrat_motif"], morceau, re.S) if o.get("contrat_motif")
                       else _CONTRAT_ETIQUETTE.search(morceau))
             pays_ = depuis_lieu(lieu) or depuis_lieu(titre) or o.get("pays_par_defaut", "")

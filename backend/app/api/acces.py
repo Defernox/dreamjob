@@ -41,9 +41,12 @@ class Identifiants(BaseModel):
 
 def _adresse(request: Request) -> str:
     """L'adresse du client. Derrière `tailscale serve`, toutes les requêtes
-    arrivent de 127.0.0.1 : on prend alors le premier maillon transmis."""
+    arrivent du relais : on prend alors le DERNIER maillon transmis, celui que
+    le relais ajoute lui-même. Le premier est écrit par le client — en
+    changer à chaque essai contournait le blocage après dix échecs."""
     transmise = request.headers.get("x-forwarded-for", "")
-    return transmise.split(",")[0].strip() or (request.client.host if request.client else "?")
+    dernier = transmise.rsplit(",", 1)[-1].strip()
+    return dernier or (request.client.host if request.client else "?")
 
 
 def utilisateur_courant(request: Request, session: Session = Depends(get_session)) -> Utilisateur:

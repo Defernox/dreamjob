@@ -36,7 +36,13 @@ from .models import ScanRun, ScoreOffre
 from .models.base import maintenant
 from .models.enums import StatutScan
 from .services.sauvegarde import sauvegarder
-from .services.scan import clore_les_interrompus, demandes_de_tous, dernier_scan_abouti, lancer_scan
+from .services.scan import (
+    clore_les_interrompus,
+    clore_scan,
+    demandes_de_tous,
+    dernier_scan_abouti,
+    lancer_scan,
+)
 from .services.scoring import rescorer, scorer_tous_les_comptes
 from .services.notification import notifier
 from .services.veille import DECLENCHEUR as VEILLE
@@ -110,12 +116,17 @@ def executer_scan_manuel(moteur, scan_id: int, requete, sources: list[str] | Non
     requête HTTP qui l'attendrait serait coupée en route par le relais
     (Tailscale, le navigateur). L'interface reçoit tout de suite le scan « en
     cours » et le suit. Même verrou que le scan du matin et la veille : les
-    trois écriraient les mêmes offres. Ne lève jamais."""
+    trois écriraient les mêmes offres. Ne lève jamais.
+
+    Le scan n'est clos qu'une fois ses offres notées : clos avant, l'interface
+    relisait la liste aussitôt et montrait les nouveautés sans note, dans le
+    désordre, jusqu'au prochain rechargement."""
     try:
         with _VERROU_SCAN, Session(moteur) as session:
             scan = session.get(ScanRun, scan_id)
             try:
-                lancer_scan(session, requete, sources=sources, utilisateur_id=utilisateur_id, scan=scan)
+                lancer_scan(session, requete, sources=sources, utilisateur_id=utilisateur_id, scan=scan,
+                            clore=False)
             except Exception as e:  # noqa: BLE001 — le scan doit se clore, quoi qu'il arrive
                 log.exception("La recherche %d a échoué", scan_id)
                 session.rollback()
@@ -126,8 +137,10 @@ def executer_scan_manuel(moteur, scan_id: int, requete, sources: list[str] | Non
                 session.commit()
                 return
         # Les nouvelles offres sont notées dans la foulée, hors du verrou : la
-        # veille n'a pas à attendre le scoring.
+        # veille n'a pas à attendre le scoring. `rescorer` ne lève jamais.
         rescorer(moteur, utilisateur_id, forcer=False)
+        with Session(moteur) as session:
+            clore_scan(session, session.get(ScanRun, scan_id))
     except Exception:  # noqa: BLE001
         log.exception("La recherche %d a échoué", scan_id)
 
@@ -250,23 +263,23 @@ def demarrer() -> BackgroundScheduler | None:
             log.warning("%d recherche(s) interrompue(s) par l'arrêt précédent, closes.", interrompus)
 
     r = lire_reglages().planification
-    if not r.scan_quotidien_actif:
-        log.info("Scan quotidien désactivé (config.yaml).")
-        return None
-
-    heure, minute = r.heure_minute()
     _planificateur = BackgroundScheduler(
         timezone=FUSEAU,
         job_defaults={"misfire_grace_time": TOLERANCE_RETARD_SECONDES, "coalesce": True},
     )
-    _planificateur.add_job(
-        executer_scan, CronTrigger(hour=heure, minute=minute),
-        id=TACHE_QUOTIDIENNE, replace_existing=True,
-    )
+    # L'entretien de nuit ne dépend pas du scan quotidien : désactiver l'un ne
+    # doit pas supprimer en silence la seule sauvegarde d'un serveur qui ne
+    # redémarre jamais.
     _planificateur.add_job(
         entretien, CronTrigger(hour=HEURE_ENTRETIEN[0], minute=HEURE_ENTRETIEN[1]),
         id=TACHE_ENTRETIEN, replace_existing=True,
     )
+    heure, minute = r.heure_minute()
+    if r.scan_quotidien_actif:
+        _planificateur.add_job(
+            executer_scan, CronTrigger(hour=heure, minute=minute),
+            id=TACHE_QUOTIDIENNE, replace_existing=True,
+        )
     veille = lire_reglages().veille
     if veille.active:
         _planificateur.add_job(
@@ -276,13 +289,17 @@ def demarrer() -> BackgroundScheduler | None:
             id=TACHE_VEILLE, replace_existing=True,
         )
     _planificateur.start()
-    log.info("Scan quotidien programmé à %02d:%02d.", heure, minute)
+    if r.scan_quotidien_actif:
+        log.info("Scan quotidien programmé à %02d:%02d.", heure, minute)
+    else:
+        log.info("Scan quotidien désactivé (config.yaml) ; l'entretien de nuit reste programmé.")
     if veille.active:
         log.info("Veille toutes les %d min, de %d h à %d h.", veille.intervalle_minutes,
                  veille.heure_debut, veille.heure_fin)
 
     # Un scan de rattrapage se termine par un scoring : inutile de le doubler.
-    if not _programmer_rattrapage(_planificateur):
+    # Sans scan quotidien, il n'y a rien à rattraper.
+    if not (r.scan_quotidien_actif and _programmer_rattrapage(_planificateur)):
         _planificateur.add_job(
             rescorer_tout,
             DateTrigger(run_date=datetime.now(_planificateur.timezone)

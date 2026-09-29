@@ -39,6 +39,38 @@ def test_la_recherche_part_en_arriere_plan_et_se_suit(client, monkeypatch):
     assert deuxieme.status_code == 409, "une recherche à la fois"
 
 
+def test_la_recherche_n_est_close_qu_une_fois_ses_offres_notees(client, monkeypatch):
+    """Close avant, l'interface relisait aussitôt la liste et montrait les
+    nouveautés sans note, dans le désordre."""
+    from sqlmodel import Session
+
+    from app import scheduler
+
+    pendant = []
+
+    def rescorer(moteur, utilisateur_id, *, forcer):
+        with Session(moteur) as s:
+            pendant.append(s.exec(select(ScanRun)).one().statut)
+
+    monkeypatch.setattr(scheduler, "rescorer", rescorer)
+    scan = client.post("/api/scans", json={"sources": ["france_travail"]}).json()
+    assert pendant == [StatutScan.EN_COURS.value], "noté pendant que l'interface attend encore"
+    assert client.get(f"/api/scans/{scan['id']}").json()["statut"] == StatutScan.ECHEC.value
+
+
+def test_l_historique_peut_ignorer_la_veille(client, session):
+    """Une passe de veille toutes les demi-heures : sans ce filtre, elle cachait
+    le scan du matin au diagnostic, et l'écran Offres la reprenait pour une
+    recherche de l'utilisateur."""
+    session.add(ScanRun(declenche_par="planifie", statut=StatutScan.PARTIEL.value))
+    session.commit()
+    session.add(ScanRun(declenche_par="veille", statut=StatutScan.EN_COURS.value))
+    session.commit()
+    assert client.get("/api/scans?limite=1").json()[0]["declenche_par"] == "veille"
+    [dernier] = client.get("/api/scans?limite=1&avec_veille=false").json()
+    assert dernier["declenche_par"] == "planifie"
+
+
 def test_un_scan_interrompu_par_un_arret_est_clos_au_demarrage(session):
     from app.services.scan import clore_les_interrompus
 

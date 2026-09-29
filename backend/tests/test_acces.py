@@ -106,6 +106,26 @@ def test_les_essais_repetes_sont_bloques(client, serveur, compte):
     assert _connecter(client).status_code == 429
 
 
+def test_changer_d_adresse_annoncee_ne_contourne_pas_le_blocage(client, serveur, compte):
+    """Le premier maillon de X-Forwarded-For est écrit par le client ; le
+    dernier, par le relais. Un client qui en change à chaque essai reste
+    bloqué."""
+    for i in range(10):
+        client.post("/api/acces/connexion", json={"email": "moi@exemple.fr", "mot_de_passe": "faux !"},
+                    headers={"X-Forwarded-For": f"10.0.0.{i}, 100.64.0.7"})
+    reponse = client.post("/api/acces/connexion", json={"email": "moi@exemple.fr", "mot_de_passe": MOT_DE_PASSE},
+                          headers={"X-Forwarded-For": "10.9.9.9, 100.64.0.7"})
+    assert reponse.status_code == 429
+
+
+def test_le_limiteur_ne_grossit_pas_avec_les_adresses():
+    limiteur = Limiteur()
+    for i in range(Limiteur.ADRESSES_MAX + 500):
+        limiteur.echec(f"10.{i // 256}.{i % 256}.1")
+        limiteur.bloque(f"192.168.{i // 256}.{i % 256}")       # une consultation ne crée rien
+    assert len(limiteur._echecs) == Limiteur.ADRESSES_MAX
+
+
 # --- Ce qui est stocké --------------------------------------------------------
 
 

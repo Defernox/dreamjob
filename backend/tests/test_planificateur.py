@@ -255,3 +255,40 @@ def test_les_notes_sont_remises_a_jour_au_demarrage(session, monkeypatch):
     session.expire_all()
     note = session.exec(select(ScoreOffre)).one()
     assert note.poids_version != 1 and note.score != 12.0
+
+
+# --- L'entretien de nuit (serveur) -------------------------------------------
+
+
+def test_le_cache_http_perime_est_retire(tmp_path):
+    """Une réponse périmée n'est plus jamais lue : sur un serveur qui veille
+    toute la journée, le dossier grossissait sans fin."""
+    import os
+    import time
+
+    from app.connectors.http import purger_cache
+
+    vieille, fraiche = tmp_path / "vieille.json", tmp_path / "fraiche.json"
+    vieille.write_text("{}"), fraiche.write_text("{}")
+    os.utime(vieille, (time.time() - 13 * 3600, time.time() - 13 * 3600))
+    assert purger_cache(tmp_path, 12 * 3600) == 1
+    assert not vieille.exists() and fraiche.exists()
+    assert purger_cache(tmp_path / "absent", 3600) == 0
+
+
+def test_l_entretien_sauvegarde_et_purge_sans_jamais_lever(monkeypatch):
+    """La sauvegarde n'avait lieu qu'au démarrage : un serveur qui tourne des
+    semaines n'en aurait plus fait aucune."""
+    from app import scheduler
+
+    faits = []
+    monkeypatch.setattr(scheduler, "sauvegarder", lambda *a, **kw: faits.append("sauvegarde"))
+    monkeypatch.setattr(scheduler, "purger_cache", lambda *a, **kw: faits.append("purge") or 3)
+    scheduler.entretien()
+    assert faits == ["sauvegarde", "purge"]
+
+    def boum(*a, **kw):
+        raise OSError("disque plein")
+
+    monkeypatch.setattr(scheduler, "sauvegarder", boum)
+    scheduler.entretien()                    # ne doit pas lever

@@ -293,6 +293,9 @@ class Veille(BaseModel):
     # Au-delà, les nouveautés du jour attendent le résumé du lendemain : une
     # sonnerie toutes les dix minutes apprend à les ignorer toutes.
     alertes_par_jour_max: int = Field(default=15, ge=1, le=100)
+    # Un poste déjà signalé ne sonne plus, même republié par une autre source ou
+    # rouvert dans une autre agence : la comparaison remonte jusque-là.
+    doublons_jours: int = Field(default=30, ge=1, le=180)
     # L'historique des scans garde les veilles une semaine : trente par jour
     # l'auraient noyé.
     conserver_jours: int = Field(default=7, ge=1, le=90)

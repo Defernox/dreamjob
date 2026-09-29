@@ -22,3 +22,11 @@ services:
       interval: 60s
       timeout: 10s
       retries: 3
+    # Le journal de Docker n'a pas de limite par défaut : la veille écrit toute
+    # la journée, il aurait fini par remplir le disque. Cinq fichiers de 10 Mo,
+    # soit plusieurs semaines d'historique.
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"

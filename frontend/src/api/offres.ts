@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useEffect, useState } from 'react'
 import { api } from './client'
 
 export type OffreResume = {
@@ -102,12 +103,71 @@ export const useOffre = (id: number | null) =>
     enabled: id !== null,
   })
 
+/** `avertissement` : quelques sites d'employeurs muets, la source a répondu. */
+export type ErreurScan = { source: string; type: 'non_configure' | 'panne' | 'inattendu' | 'avertissement'; erreur: string }
+
+export type ScanSuivi = {
+  id: number
+  statut: string
+  nb_nouvelles: number
+  erreurs: ErreurScan[]
+  started_at: string
+  finished_at: string | null
+  declenche_par: string
+}
+
+/** Les dernières recherches abouties ou non (pas celle en cours), pour le diagnostic. */
+export const useDerniersScans = () =>
+  useQuery({
+    queryKey: ['scans', 'historique'],
+    queryFn: () => api.get<ScanSuivi[]>('/api/scans?limite=5'),
+  })
+
+const EN_COURS = 'en cours'
+
+/** La recherche part en arrière-plan : avec les sites des employeurs, elle dure
+ *  plusieurs minutes, et une requête qui l'attendrait serait coupée par le
+ *  relais HTTPS. On lance, puis on relit le scan toutes les trois secondes
+ *  jusqu'à ce qu'il soit clos. Même forme que l'ancienne mutation. */
 export function useLancerScan() {
   const qc = useQueryClient()
-  return useMutation({
-    mutationFn: () => api.post<{ statut: string; nb_nouvelles: number; erreurs: unknown[] }>('/api/scans'),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['offres'] }),
+  const [id, setId] = useState<number | null>(null)
+  const lancer = useMutation({
+    mutationFn: () => api.post<ScanSuivi>('/api/scans'),
+    onSuccess: (scan) => {
+      qc.setQueryData(['scan', scan.id], scan)
+      setId(scan.id)
+    },
   })
+  const suivi = useQuery({
+    queryKey: ['scan', id],
+    queryFn: () => api.get<ScanSuivi>(`/api/scans/${id}`),
+    enabled: id !== null,
+    refetchInterval: (requete) => (requete.state.data?.statut === EN_COURS ? 3000 : false),
+  })
+  // Revenu sur l'écran pendant une recherche (ou pendant le scan du matin) :
+  // on la reprend au lieu de proposer d'en lancer une seconde, refusée.
+  const dernier = useQuery({
+    queryKey: ['scans', 'dernier'],
+    queryFn: () => api.get<ScanSuivi[]>('/api/scans?limite=1'),
+    enabled: id === null,
+  })
+  useEffect(() => {
+    const scan = dernier.data?.[0]
+    if (id === null && scan?.statut === EN_COURS) setId(scan.id)
+  }, [dernier.data, id])
+  const fini = suivi.data !== undefined && suivi.data.statut !== EN_COURS
+  useEffect(() => {
+    if (fini) qc.invalidateQueries({ queryKey: ['offres'] })
+  }, [fini, qc])
+  return {
+    mutate: () => lancer.mutate(),
+    isPending: lancer.isPending || (id !== null && !fini),
+    isError: lancer.isError || suivi.isError,
+    error: lancer.error ?? suivi.error,
+    isSuccess: fini,
+    data: fini ? suivi.data : undefined,
+  }
 }
 
 export function useScorer() {

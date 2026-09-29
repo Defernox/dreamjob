@@ -30,11 +30,14 @@ from sqlalchemy import func
 from sqlmodel import Session, select
 
 from .config import reglages as lire_reglages
+from .connectors.http import purger_cache
 from .db import engine
 from .models import ScanRun, ScoreOffre
 from .models.base import maintenant
-from .services.scan import demandes_de_tous, dernier_scan_abouti, lancer_scan
-from .services.scoring import scorer_tous_les_comptes
+from .models.enums import StatutScan
+from .services.sauvegarde import sauvegarder
+from .services.scan import clore_les_interrompus, demandes_de_tous, dernier_scan_abouti, lancer_scan
+from .services.scoring import rescorer, scorer_tous_les_comptes
 from .services.notification import notifier
 from .services.veille import DECLENCHEUR as VEILLE
 from .services.veille import dans_la_plage, veiller
@@ -44,6 +47,9 @@ log = logging.getLogger("dreamjob.planificateur")
 TACHE_QUOTIDIENNE = "scan_quotidien"
 TACHE_RATTRAPAGE = "scan_rattrapage"
 TACHE_RESCORING = "rescoring_demarrage"
+TACHE_ENTRETIEN = "entretien"
+# La nuit, avant le scan du matin : la sauvegarde ne croise aucune écriture.
+HEURE_ENTRETIEN = (3, 30)
 # Au-dela, on n'attend plus un scan en cours : fermer l'application doit rester
 # une operation rapide.
 DELAI_ARRET_SECONDES = 20
@@ -94,6 +100,53 @@ def _executer_scan(declenche_par: str) -> None:
             notifier(session, depuis=min(scan.started_at, maintenant() - FENETRE_RESUME))
     except Exception:  # noqa: BLE001
         log.exception("Le scan %s a échoué", declenche_par)
+
+
+def executer_scan_manuel(moteur, scan_id: int, requete, sources: list[str] | None,
+                         utilisateur_id: int) -> None:
+    """La recherche lancée depuis l'interface, en arrière-plan.
+
+    Avec les sites des employeurs, une recherche dure plusieurs minutes : une
+    requête HTTP qui l'attendrait serait coupée en route par le relais
+    (Tailscale, le navigateur). L'interface reçoit tout de suite le scan « en
+    cours » et le suit. Même verrou que le scan du matin et la veille : les
+    trois écriraient les mêmes offres. Ne lève jamais."""
+    try:
+        with _VERROU_SCAN, Session(moteur) as session:
+            scan = session.get(ScanRun, scan_id)
+            try:
+                lancer_scan(session, requete, sources=sources, utilisateur_id=utilisateur_id, scan=scan)
+            except Exception as e:  # noqa: BLE001 — le scan doit se clore, quoi qu'il arrive
+                log.exception("La recherche %d a échoué", scan_id)
+                session.rollback()
+                scan = session.get(ScanRun, scan_id)
+                scan.statut, scan.finished_at = StatutScan.ECHEC.value, maintenant()
+                scan.erreurs = [{"source": "-", "type": "inattendu", "erreur": f"{type(e).__name__}: {e}"}]
+                session.add(scan)
+                session.commit()
+                return
+        # Les nouvelles offres sont notées dans la foulée, hors du verrou : la
+        # veille n'a pas à attendre le scoring.
+        rescorer(moteur, utilisateur_id, forcer=False)
+    except Exception:  # noqa: BLE001
+        log.exception("La recherche %d a échoué", scan_id)
+
+
+def entretien() -> None:
+    """Chaque nuit : une sauvegarde de la base, et le cache HTTP périmé retiré.
+
+    La sauvegarde n'avait lieu qu'au démarrage : sur un poste qu'on ouvre chaque
+    jour, c'était quotidien ; sur un serveur qui tourne des semaines sans
+    redémarrer, il n'y en aurait plus eu aucune. Ne lève jamais."""
+    r = lire_reglages()
+    try:
+        if r.sauvegardes.a_conserver > 0:
+            sauvegarder(r.chemins.db, r.chemins.dossier_sauvegardes, r.sauvegardes.a_conserver)
+        retirees = purger_cache(r.chemins.dossier_cache / "http", r.http.cache_ttl_heures * 3600)
+        if retirees:
+            log.info("Cache HTTP : %d réponses périmées retirées.", retirees)
+    except Exception:  # noqa: BLE001
+        log.exception("Entretien de nuit en échec")
 
 
 def executer_veille() -> None:
@@ -191,6 +244,11 @@ def demarrer() -> BackgroundScheduler | None:
     # orphelin qui continuerait a declencher des scans en double.
     arreter()
 
+    # Un scan resté « en cours » a été interrompu par l'arrêt précédent.
+    with Session(engine) as session:
+        if interrompus := clore_les_interrompus(session):
+            log.warning("%d recherche(s) interrompue(s) par l'arrêt précédent, closes.", interrompus)
+
     r = lire_reglages().planification
     if not r.scan_quotidien_actif:
         log.info("Scan quotidien désactivé (config.yaml).")
@@ -204,6 +262,10 @@ def demarrer() -> BackgroundScheduler | None:
     _planificateur.add_job(
         executer_scan, CronTrigger(hour=heure, minute=minute),
         id=TACHE_QUOTIDIENNE, replace_existing=True,
+    )
+    _planificateur.add_job(
+        entretien, CronTrigger(hour=HEURE_ENTRETIEN[0], minute=HEURE_ENTRETIEN[1]),
+        id=TACHE_ENTRETIEN, replace_existing=True,
     )
     veille = lire_reglages().veille
     if veille.active:

@@ -129,8 +129,19 @@ Tu recevras deux sortes de messages :
   celles de la veille au-delà du plafond. Une offre déjà signalée n'y revient
   jamais.
 
+**Un même poste ne sonne qu'une fois.** Publié par la banque puis repris par
+France Travail ou Adzuna, ouvert dans dix agences, republié la semaine
+suivante : une seule alerte (elle dit « et 9 autres lieux »), et le résumé du
+matin ne le répète pas. Deux postes vraiment différents — un autre niveau, un
+stage au lieu d'un CDI, un autre pays — sonnent chacun.
+
 Rien de vert, rien d'envoyé. Pour régler l'horaire, la fréquence ou le seuil :
 section `veille` de `config.yaml`, puis redéployer.
+
+**La première recherche est longue** : une dizaine de minutes, le temps de lire
+les ~160 sites d'employeurs et d'ouvrir leurs offres. Ensuite, chaque passage
+n'ouvre que les nouveautés. Le bouton « Lancer une recherche » rend la main
+tout de suite ; l'écran se met à jour quand elle se termine.
 
 ---
 
@@ -168,8 +179,8 @@ ssh -t root@dreamjob "cd /opt/dreamjob && docker compose exec dreamjob python -m
 `aucun` à la place du montant retire la limite.
 
 **DogFinance reste à toi seul** : ses conditions n'autorisent qu'un usage
-personnel. Les recherches de tes amis interrogent France Travail, Civiweb et
-Adzuna, jamais DogFinance.
+personnel. Les recherches de tes amis interrogent France Travail, Civiweb,
+Adzuna et les sites des employeurs, jamais DogFinance.
 
 ---
 
@@ -182,6 +193,14 @@ Adzuna, jamais DogFinance.
 | Changer ton mot de passe | `ssh -t root@dreamjob "cd /opt/dreamjob && docker compose exec dreamjob python -m app.compte mot-de-passe ton@email.fr"` |
 | Ajouter un ami | voir « Ajouter un ami » ci-dessus |
 | Voir les comptes et leurs dépenses | `ssh -t root@dreamjob "cd /opt/dreamjob && docker compose exec dreamjob python -m app.compte lister"` |
+| Rapatrier la dernière sauvegarde | `scp "root@dreamjob:/opt/dreamjob/data/sauvegardes/dreamjob-*.db" .` |
+
+**Ce qui s'entretient tout seul.** Chaque nuit à 3 h 30, une copie de la base
+(les sept dernières sont gardées, dans `data/sauvegardes`) et le ménage du cache
+des pages lues. Les journaux de Docker sont plafonnés à 50 Mo. Une recherche
+interrompue par un redéploiement est close au redémarrage. Les sauvegardes
+restant sur le même disque, les **Backups Hetzner** (étape 3) protègent contre
+la perte du serveur lui-même.
 
 **Ta machine locale** continue de fonctionner comme avant, avec sa propre base.
 Une fois le serveur en place, c'est lui qui fait foi : évite de postuler depuis

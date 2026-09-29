@@ -231,3 +231,16 @@ def test_la_trace_du_scan_conserve_toutes_les_requetes(session, sources):
     scan = lancer_scan(session, [SearchQuery(mots_cles=["x"]), SearchQuery(mots_cles=["y"])],
                        sources=["a"])
     assert len(scan.requete["requetes"]) == 2
+
+
+def test_quelques_sites_muets_se_voient_sans_mettre_la_source_en_panne(session, sources):
+    """Un site d'employeur sur cent cinquante qui ne répond pas : la source a
+    répondu, le scan est terminé, mais le diagnostic le dit."""
+    classe = _source("employeurs", [_offre("employeurs")])
+    classe.__init__ = lambda self, http, r: (BaseConnector.__init__(self, http, r),
+                                             setattr(self, "pannes", {"Banque B": "HTTP 503"}))[0]
+    sources["employeurs"] = classe
+    scan = lancer_scan(session, SearchQuery(), sources=["employeurs"])
+    assert scan.statut == StatutScan.TERMINE.value
+    [avertissement] = scan.erreurs
+    assert avertissement["type"] == "avertissement" and "Banque B (HTTP 503)" in avertissement["erreur"]

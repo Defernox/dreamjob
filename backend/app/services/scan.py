@@ -180,6 +180,7 @@ def lancer_scan(
     sources: list[str] | None = None,
     declenche_par: str = "manuel",
     utilisateur_id: int | None = None,
+    scan: ScanRun | None = None,
 ) -> ScanRun:
     """Joue une ou plusieurs requêtes sur les sources actives.
 
@@ -190,6 +191,9 @@ def lancer_scan(
     Des `SearchQuery` nues sont jouées pour `utilisateur_id` (le propriétaire
     par défaut) ; des `Demande` portent chacune leur compte — c'est le scan
     planifié, joué pour tous.
+
+    `scan` : un ScanRun déjà créé « en cours », que l'interface suit pendant
+    qu'il se déroule en arrière-plan ; il est rempli au lieu d'en créer un.
     """
     reglages = lire_reglages()
     proprio_id = proprietaire(session).id
@@ -204,13 +208,10 @@ def lancer_scan(
 
     cles = sources if sources is not None else cles_actives(reglages)
 
-    scan = ScanRun(
-        sources=cles,
-        requete={"requetes": [d.requete.en_dict() for d in demandes]} if len(demandes) > 1
-        else demandes[0].requete.en_dict(),
-        declenche_par=declenche_par,
-        utilisateur_id=utilisateur_id,
-    )
+    scan = scan or ScanRun(declenche_par=declenche_par, utilisateur_id=utilisateur_id)
+    scan.sources = cles
+    scan.requete = ({"requetes": [d.requete.en_dict() for d in demandes]} if len(demandes) > 1
+                    else demandes[0].requete.en_dict())
     session.add(scan)
     session.commit()
     session.refresh(scan)
@@ -249,6 +250,14 @@ def lancer_scan(
                         nombre += 1
                 log.info("%s : %d offres récupérées (%d recherche(s))",
                          cle, nombre, len(pour_elle))
+                # Les sites des employeurs : un site sur cent cinquante qui ne
+                # répond pas n'est pas une panne de la source, mais doit se voir
+                # ailleurs que dans les journaux du serveur.
+                if pannes := getattr(connecteur, "pannes", None):
+                    erreurs.append({"source": cle, "type": "avertissement", "erreur": (
+                        f"{len(pannes)} site(s) sans réponse : "
+                        + " ; ".join(f"{nom} ({motif[:90]})" for nom, motif in sorted(pannes.items()))
+                    )[:2000]})
             except ConnecteurNonConfigure as e:
                 # Pas une panne : la source n'est simplement pas branchée.
                 erreurs.append({"source": cle, "type": "non_configure", "erreur": str(e)})
@@ -284,6 +293,21 @@ def lancer_scan(
     return scan
 
 
+def clore_les_interrompus(session: Session) -> int:
+    """Un scan resté « en cours » au démarrage a été interrompu (arrêt,
+    redéploiement) : sans ceci, l'interface l'attendrait pour toujours, et
+    aucune nouvelle recherche ne pourrait partir."""
+    interrompus = session.exec(select(ScanRun).where(ScanRun.statut == StatutScan.EN_COURS.value)).all()
+    for scan in interrompus:
+        scan.statut = StatutScan.ECHEC.value
+        scan.finished_at = scan.finished_at or maintenant()
+        scan.erreurs = [*(scan.erreurs or []), {"source": "-", "type": "panne",
+                                               "erreur": "interrompu par l'arrêt de l'application"}]
+        session.add(scan)
+    session.commit()
+    return len(interrompus)
+
+
 def _regrouper(demandes: list[Demande]) -> list[tuple[SearchQuery, set[int]]]:
     """Une requête identique demandée par deux comptes n'est jouée qu'une fois."""
     groupes: dict[str, tuple[SearchQuery, set[int]]] = {}
@@ -296,7 +320,9 @@ def _regrouper(demandes: list[Demande]) -> list[tuple[SearchQuery, set[int]]]:
 def _statut(cles: list[str], erreurs: list[dict]) -> str:
     if not cles:
         return StatutScan.ECHEC.value
-    en_echec = {e["source"] for e in erreurs}
+    # Un avertissement (quelques sites d'employeurs muets) ne fait pas d'une
+    # source qui a répondu une source en panne.
+    en_echec = {e["source"] for e in erreurs if e.get("type") != "avertissement"}
     if not en_echec:
         return StatutScan.TERMINE.value
     return StatutScan.ECHEC.value if en_echec >= set(cles) else StatutScan.PARTIEL.value

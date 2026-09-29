@@ -28,6 +28,27 @@ log = logging.getLogger("dreamjob.http")
 STATUTS_A_REESSAYER = {408, 425, 429, 500, 502, 503, 504}
 
 
+def purger_cache(dossier: Path, ttl_secondes: float) -> int:
+    """Supprime les réponses mises en cache et périmées. Renvoie leur nombre.
+
+    Une réponse périmée n'est plus jamais lue, mais restait sur le disque : 91 Mo
+    en local après quelques semaines d'usage intermittent. Sur un serveur qui
+    veille toute la journée — cent cinquante sites d'employeurs toutes les
+    demi-heures —, le dossier aurait grossi sans fin."""
+    if not dossier.is_dir():
+        return 0
+    limite = time.time() - ttl_secondes
+    retirees = 0
+    for fichier in dossier.glob("*.json"):
+        try:
+            if fichier.stat().st_mtime < limite:
+                fichier.unlink()
+                retirees += 1
+        except OSError:
+            continue                # lu ou retiré par un autre au même moment
+    return retirees
+
+
 @dataclass
 class Reponse:
     statut: int

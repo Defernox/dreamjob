@@ -110,13 +110,24 @@ export default function Offres() {
       )}
 
       {scan.isError && <Message ton="rouge">{(scan.error as Error).message}</Message>}
-      {scan.isSuccess && (
-        <Message ton={scan.data.erreurs.length ? 'ambre' : 'vert'}>
-          Recherche terminée : {scan.data.nb_nouvelles} nouvelle(s) offre(s).
-          {scan.data.erreurs.length > 0 &&
-            ' Certaines sources n’ont pas répondu — voir Profil → Diagnostic.'}
-        </Message>
+      {scan.isPending && (
+        <p className="text-xs text-encre-400 -mt-2">
+          La recherche interroge chaque source et les sites des employeurs : comptez quelques minutes.
+          Vous pouvez continuer à naviguer.
+        </p>
       )}
+      {scan.isSuccess && scan.data && (() => {
+        const pannes = scan.data.erreurs.filter((e) => e.type !== 'avertissement')
+        const muets = scan.data.erreurs.length - pannes.length
+        return (
+          <Message ton={pannes.length ? 'ambre' : 'vert'}>
+            Recherche terminée : {scan.data.nb_nouvelles} nouvelle(s) offre(s).
+            {pannes.length > 0 && ' Certaines sources n’ont pas répondu — voir Profil → Diagnostic.'}
+            {pannes.length === 0 && muets > 0 &&
+              ' Quelques sites d’employeurs n’ont pas répondu — le détail est dans Profil → Diagnostic.'}
+          </Message>
+        )
+      })()}
       {scorer.isError && <Message ton="rouge">{(scorer.error as Error).message}</Message>}
       {scorer.isSuccess && (
         <Message ton="vert">

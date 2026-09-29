@@ -14,7 +14,7 @@ FIXTURES = Path(__file__).parent / "fixtures"
 
 # Ce qui, d'une offre, appartient à celui qui la regarde : la note et « vue ».
 CHAMPS_DE_NOTE = ("score", "score_detail", "score_explication", "scored_at",
-                  "poids_version", "version_signaux", "vue", "ajoutee_le")
+                  "poids_version", "version_signaux", "vue", "ajoutee_le", "alertee_le", "doublon_de")
 
 
 def ajouter_offre(session, utilisateur_id: int | None = None, **champs):

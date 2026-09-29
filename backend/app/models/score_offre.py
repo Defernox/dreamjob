@@ -49,6 +49,10 @@ class ScoreOffre(SQLModel, table=True):
     # Quand une alerte l'a signalée — la veille ou le résumé du matin. Une offre
     # n'est jamais signalée deux fois, et c'est ce qui compte les alertes du jour.
     alertee_le: datetime | None = None
+    # Le même poste qu'une offre déjà signalée (autre source, autre agence) :
+    # l'identifiant de celle-ci. Marquée signalée sans avoir sonné — elle ne
+    # compte pas dans le plafond du jour (`services/doublons.py`).
+    doublon_de: int | None = None
 
 
 class DepenseLlm(SQLModel, table=True):

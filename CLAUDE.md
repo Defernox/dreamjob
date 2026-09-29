@@ -99,7 +99,7 @@ DreamJob/
 │     ├─ models/        tables SQLModel
 │     ├─ api/           routeurs HTTP
 │     ├─ connectors/    base · http (débit, cache) · registry · une source = un fichier · employeurs/ (un logiciel = un fichier)
-│     ├─ services/      dedup · scan · veille · scoring · acces (comptes) · budget · notification
+│     ├─ services/      dedup · scan · veille · scoring · acces (comptes) · budget · notification · doublons
 │     ├─ scoring/       lexique · exigences · extraction · cible · corpus · score · explain — pur code
 │     ├─ documents/     docx_outils · intitule · cv_render · ciblage · correspondance · lettre · controles · exemples · pdf · dossier
 │     ├─ importers/     CV .docx/.pdf → profil structuré
@@ -639,10 +639,16 @@ BNP Paribas et 10 de Société Générale, qui en ont des centaines d'ouvertes.
 **Un connecteur par logiciel, pas par employeur** (`connectors/employeurs/`).
 228 employeurs ont été repérés le 2026-09-28 (banques, gestion d'actifs, fonds,
 trading, banque privée, assurance, institutions, notation, conseil, cabinets de
-recrutement) : leurs sites reposent sur une vingtaine de logiciels, Workday en
-tête (32), puis SuccessFactors, Talentsoft, Oracle, Greenhouse. Ajouter un
-employeur, c'est une entrée dans `employeurs.yaml` — son statut (`actif`,
-`à_venir`, `à_étudier`, `refusé`) et, pour un refus, le motif daté.
+recrutement), et **tous examinés** le 2026-09-29 : **158 actifs**, 36 refusés,
+27 écartés, 11 inclus, plus rien à étudier. Leurs sites reposent sur une
+vingtaine de logiciels, Workday en tête, puis SuccessFactors, Talentsoft,
+Oracle, Greenhouse. Ajouter un employeur, c'est une entrée dans
+`employeurs.yaml` — son statut et, sauf s'il est actif, le motif daté :
+`refusé` (ses règles ou une protection l'interdisent), `écarté` (aucune liste
+d'offres publique et lisible : un fonds qui recrute par LinkedIn, une page
+dessinée par script sans interface), `inclus` (ses offres arrivent par un autre
+employeur). Un employeur sur plusieurs sites (Blackstone et son site des
+étudiants) a une entrée par site et un seul nom affiché (`entreprise`).
 
 **On ne demande pas aux sites de chercher** : un site anglophone ne trouve rien
 à « analyste risques ». Chaque employeur est listé une fois par scan, filtré sur
@@ -709,8 +715,34 @@ l'API, interdite aux robots), le groupe BPCE, et trois lectures génériques :
   bloc.
 
 **`page_liste.py`** lit une liste HTML paginée (La Banque Postale, Crédit
-Mutuel) : de deux liens vers la même offre, le plus long l'emporte sur
-« Détails de l'offre ».
+Mutuel, Oddo BHF, Michael Page) : de deux liens vers la même offre, le plus
+long l'emporte sur « Détails de l'offre ». Plusieurs listes (une par rubrique),
+des pages comptées depuis zéro (Drupal), et un 404 au-delà de la dernière page
+est la fin de la liste, pas une panne.
+
+Trois lectures génériques de plus, toutes décrites dans employeurs.yaml :
+
+- **`api_json.py`** : l'interface JSON que la page appelle elle-même — Optiver
+  (`/en/api/v1/jobs`, seize offres par page quoi qu'on demande : une page qui
+  n'apporte rien de neuf clôt la lecture), Groupama (POST, clé publiée dans le
+  script de la page, comme Civiweb), La Française (Digital Recruiters, dont la
+  fiche aussi est servie en JSON : `fiche_api`). L'intitulé de l'interface fait
+  foi : la page ne donne souvent qu'un titre générique ;
+- **`page_unique.py`** : toutes les offres d'une page, texte compris (Ofi
+  Invest). Rien à ouvrir de plus ;
+- **`cornerstone.py`** : la page ne contient pas les offres ; son script les
+  demande à l'hôte régional de Cornerstone avec un jeton qu'elle embarque pour
+  tout visiteur. On fait pareil — aucun compte, aucune connexion (AFD,
+  Spuerkeess, Crystal).
+
+**Une offre dont la date limite est passée n'est plus proposée** (`echue`) :
+`validThrough` du JobPosting, ou « Date limite de dépôt de candidature » écrite
+dans l'offre. Ofi Invest laissait en ligne un poste clos depuis avril.
+
+**La veille lit moins que le scan.** Toutes les demi-heures, une liste sans date
+serait relue en entier — vingt-quatre pages chez Oddo BHF : en veille, seules
+les `pages_veille` premières le sont (les nouveautés sont en tête), et un
+employeur marqué `veille: false` attend le scan du matin.
 
 **L'intitulé connu fait foi.** Le scan transmet au connecteur l'intitulé des
 offres déjà en base, pas seulement leur identifiant : une offre connue est
@@ -757,17 +789,35 @@ applique à cet hôte (`ClientHttp.ralentir`).
   la Roumanie, les Philippines, Jersey…
 - **Une adresse d'offre peut disparaître du site avant son plan** (ING) : la
   fiche en 404 est ignorée et consignée, rien d'autre.
+- **Hays** enrobe les adresses de son plan de CDATA noyés d'espaces ; **Scope**
+  et Commerzbank y laissent « &amp; » — une adresse de plan est du XML, elle est
+  désechappée. **MSCI** (iCIMS) publie un plan par portail régional et sert
+  l'offre dans un cadre : `plan` accepte une liste, `fiche_suffixe` fait lire
+  `?in_iframe=1` en gardant l'adresse publique. **Michael Page** laisse des sauts
+  de ligne bruts dans les chaînes de son JSON-LD : lu sans mode strict.
+- **Cornerstone écrit `Crawl-delay: 10` seul, hors de tout groupe** : la demande
+  vaut pour tous, elle est respectée.
+- **Un nom trompe.** « bgc-group-1 » sur Workable est un cabinet de Singapour,
+  pas le courtier BGC. DWS publie aussi sur le site de Deutsche Bank (la moitié
+  de ses intitulés à l'identique) : inclus, pas suivi deux fois.
 
 **Refusés, motif daté dans `employeurs.yaml`** : BNP Paribas et sa gestion
 d'actifs (liste protégée, recherche Avature désactivée), Goldman Sachs
 (robots.txt n'autorise que les fiches, sans plan du site), le groupe Crédit
 Agricole (son Talentsoft interdit tout ; ses filiales ouvertes restent
-suivies), Deutsche Börse, Pictet et AIB (SuccessFactors hébergé par SAP,
-robots.txt interdit tout), Antin (Content-Signal), et les sites qui refusent
-notre User-Agent : Bpifrance, Tikehau, la BEI, Julius Baer, Citadel, Citadel
-Securities, Primonial, PwC, Robert Walters. **Un 403 isolé ne suffit pas** :
-pendant le repérage, Millennium, Wendel et ION répondaient 403 sous la rafale,
-200 ensuite — un refus se vérifie sur robots.txt et la page d'accueil, à froid.
+suivies), Deutsche Börse, Pictet, AIB et DZ Bank (SuccessFactors hébergé par
+SAP, robots.txt interdit tout), l'ESMA (son portail interdit tout), Antin et
+Morgan Philips (Content-Signal), Seven2, Siparex et Nortia (Welcome to the
+Jungle), et les sites protégés contre les robots : Bpifrance, Tikehau, la BEI,
+Julius Baer, Citadel, Citadel Securities, Primonial, PwC, Robert Walters,
+NatWest, Evercore, Wendel, JTC, DC Advisory, ION, UFF, Swiss Life (défi
+Cloudflare), Jefferies et Perella Weinberg (Oleeo, « Quick Check Needed »), BGC,
+IQ-EQ, Eurazeo (403). **Un 403 isolé ne suffit pas** : pendant le repérage,
+Millennium répondait 403 sous la rafale, 200 ensuite — un refus se vérifie sur
+robots.txt et la page d'accueil, à froid, et c'est ainsi qu'ont été revus tous
+ceux du 2026-09-29. **Groupama** montre le cas inverse : son Talentsoft interdit
+tout, mais sa vitrine, qui l'autorise, publie les mêmes offres — c'est elle qui
+est lue.
 
 **Des tableaux retrouvés ailleurs.** Plusieurs sociétés de trading dont le site
 ne dit rien ont un tableau Greenhouse public : QRT (199 offres), Jane Street,
@@ -778,7 +828,11 @@ Mesuré sur les 79 premiers actifs et les 4 recherches du propriétaire : 368
 offres en 3 min 15, 90 en France ; une passe de veille en 25 s. Une passe de
 veille de bout en bout, sur une copie de la base (114 employeurs, notification
 interceptée) : 92 offres d'employeurs entrées, dont 4 vertes, en 2 min 50 —
-la première ; les suivantes n'ouvrent que les fiches nouvelles.
+la première ; les suivantes n'ouvrent que les fiches nouvelles. Les 40 ajoutés
+du 2026-09-29, seuls : 64 offres en 2 min 30, dont « Market Risk Analyst » (BIL),
+« Analyste risques financiers » (Caisse des Dépôts), « Chargé(e) de mission
+data analyse risques » (AFD), quatre « Gestionnaire middle office » (Crystal)
+et cinq stages de marché (Oddo BHF).
 
 ---
 
@@ -1150,6 +1204,15 @@ statuts sont exclus — relancer un refus n'a aucun sens.
 de SQLite, **jamais par un `copy` de fichier** : en WAL, les écritures récentes
 vivent dans un journal annexe et une copie brute serait amputée.
 
+**Et chaque nuit à 3 h 30** (`scheduler.entretien`) : sur un poste qu'on ouvre
+chaque jour, la sauvegarde du démarrage était quotidienne ; sur un serveur qui
+tourne des semaines sans redémarrer, il n'y en aurait plus eu aucune. Le même
+entretien retire du cache HTTP les réponses périmées (`purger_cache`) : jamais
+relues, jamais effacées, elles pesaient déjà 91 Mo en local — la veille d'un
+serveur, cent cinquante sites toutes les demi-heures, les aurait accumulées
+sans fin. Les journaux de Docker sont plafonnés (`docker-compose.yml`, 5 × 10 Mo)
+pour la même raison.
+
 Le hook `hooks/pre-commit` (activé par `core.hooksPath`) refuse un commit dont
 les tests échouent.
 
@@ -1249,6 +1312,36 @@ Travail et Civiweb n'ont pas ce problème.
 surplus d'une journée où le plafond d'alertes (`alertes_par_jour_max`) a été
 atteint. Une sonnerie toutes les dix minutes apprend à les ignorer toutes.
 
+**Et un poste, une seule fois** (`services/doublons.py`). La déduplication de la
+base ne reconnaît qu'une annonce republiée à l'identique ; or la banque publie
+sur son site, France Travail reprend avec sa mise en forme, Adzuna tronque : trois
+offres en base, trois alertes pour un seul poste. Et Crystal ouvre le même
+« Gestionnaire middle office » dans cinq agences. Deux offres sont le même
+poste quand l'employeur est le même (noms sans forme juridique, inclus l'un
+dans l'autre ; « Banque » seul ne nomme personne), l'intitulé le même lu avec
+le vocabulaire du score (« Credit Risk Analyst » = « Analyste risques de crédit
+(H/F) - CDI »), et que rien ne les sépare — ni niveau, ni stage, ni pays, ni
+contrat connus différents. **Dans le doute, deux postes** : mieux vaut un
+doublon qui sonne qu'un poste tu. La ville ne compte pas : l'alerte dit « et 4
+autres lieux », le résumé met un poste par ligne. Un doublon est marqué signalé
+(`doublon_de`) sans avoir sonné ; il ne consomme pas le plafond du jour. Contre
+ce qui a déjà sonné, la comparaison remonte sur `veille.doublons_jours` (30).
+
+Deux autres façons de sonner deux fois, deux parades :
+
+- **deux passes concurrentes** (une seconde instance, un redémarrage au mauvais
+  moment) : l'offre est *réservée* avant l'envoi par une écriture atomique
+  (`UPDATE … WHERE alertee_le IS NULL`) ; qui ne l'obtient pas n'envoie rien.
+  Deux comptes réglés sur le même sujet ntfy ne font pas sonner deux fois le
+  même téléphone ;
+- **un envoi dont l'issue est inconnue** (délai dépassé après l'envoi) : tenu
+  pour parti. Seul un échec certain — connexion impossible, refus de ntfy —
+  libère la réservation pour la passe suivante.
+
+Cinq mutations du code (sans comparaison au déjà signalé, sans regroupement,
+réservation non atomique, envoi incertain tenu pour échoué, doublons comptés
+dans le plafond) font chacune échouer un test de `test_doublons.py`.
+
 **La veille n'est pas le scan du matin.** Elle crée bien un `ScanRun`
 (`declenche_par = "veille"`), mais `dernier_scan_abouti` l'ignore : comptée, elle
 aurait réduit le badge « nouvelles » à la dernière demi-heure, et empêché le
@@ -1258,7 +1351,17 @@ offres trouvées restent.
 
 **Un scan et une veille ne tournent jamais ensemble** (`scheduler._VERROU_SCAN`) :
 ils écriraient les mêmes offres en même temps. Le scan attend ; la veille passe
-son tour, la suivante reprendra ce que le scan n'aura pas déjà trouvé.
+son tour, la suivante reprendra ce que le scan n'aura pas déjà trouvé. La
+recherche lancée depuis l'interface prend le même verrou.
+
+**La recherche manuelle se déroule en arrière-plan.** Avec les sites des
+employeurs, elle dure plusieurs minutes ; attendue dans la requête HTTP, elle
+aurait été coupée par le relais HTTPS. `POST /api/scans` rend aussitôt le scan
+« en cours », que l'interface relit toutes les trois secondes ; une seconde
+recherche du même compte répond 409 tant que la première tourne. Un scan resté
+« en cours » au démarrage — l'application a été arrêtée pendant — est clos en
+échec (`clore_les_interrompus`), sans quoi l'interface l'attendrait pour
+toujours.
 
 Elle ne prépare aucun dossier : choisir où postuler reste à l'utilisateur.
 En local, elle ne tourne que pendant que l'application est ouverte, et n'alerte
@@ -1429,4 +1532,6 @@ Sans LibreOffice, les documents sont générés en Word uniquement — même pri
 - [x] **15.** Un compte par personne — profil, recherches, notes, candidatures, documents et notifications séparés ; offres partagées mais fil propre à chacun ; DogFinance réservé au propriétaire ; budget mensuel des amis ; migration vérifiée sur la vraie base
 - [x] **16.** Score refait et mesuré — tout le CV lu, métier reconnu dans les deux sens, contenu étalonné, niveau / diplôme / certifications / statut lus dans l'annonce, pertinence × accessibilité × conditions, points rédhibitoires, explication en lignes, recalcul automatique ; 182 offres étiquetées, top 20 : 6 → 20 offres pertinentes
 - [x] **17.** Veille — les offres du jour toutes les demi-heures en journée, recherches enregistrées et intitulés du CV, une alerte ntfy par offre verte (clic vers la fiche), plafond quotidien, une offre signalée une seule fois ; Adzuna et DogFinance tenus à l'écart
-- [x] **18.** Sites des employeurs — 228 employeurs repérés, 114 actifs par dix-huit connecteurs (un par logiciel, plus trois lectures génériques), robots.txt selon la RFC 9309, Crawl-delay et Content-Signal, refus motivés ; branchés sur la veille
+- [x] **18.** Sites des employeurs — 228 employeurs repérés et tous examinés : 158 actifs par dix-neuf connecteurs (quinze logiciels, quatre lectures génériques), robots.txt selon la RFC 9309, Crawl-delay et Content-Signal, 36 refus et 27 écarts motivés, offres échues écartées ; branchés sur la veille, qui lit moins que le scan
+- [x] **19.** Un poste, une alerte — le même poste d'une source à l'autre ou d'une agence à l'autre reconnu (FR/EN confondus, dans le doute deux postes), réservation atomique avant l'envoi, envoi incertain tenu pour parti ; cinq mutations attrapées par les tests
+- [x] **20.** Prêt pour le serveur — recherche manuelle en arrière-plan suivie par l'interface, scans interrompus clos au démarrage, sauvegarde et ménage du cache chaque nuit, journaux Docker plafonnés

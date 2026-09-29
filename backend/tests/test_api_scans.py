@@ -3,7 +3,50 @@
 Ces tests tournent sur la configuration réelle du projet : France Travail est
 active dans config.yaml mais sans identifiants dans .env. C'est exactement l'état
 d'une installation neuve — le comportement doit être lisible, pas un plantage.
+
+La recherche se déroule en arrière-plan ; ici, elle est déroulée sur place
+(`sur_place`), pour lire son résultat dans la réponse.
 """
+
+import pytest
+from sqlmodel import select
+
+from app.api import scans as api_scans
+from app.models import ScanRun
+from app.models.enums import StatutScan
+
+
+@pytest.fixture(autouse=True)
+def sur_place(monkeypatch):
+    lancees = []
+
+    def demarrer(cible, *arguments):
+        lancees.append(arguments)
+        cible(*arguments)
+
+    monkeypatch.setattr(api_scans, "_demarrer", demarrer)
+    return lancees
+
+
+def test_la_recherche_part_en_arriere_plan_et_se_suit(client, monkeypatch):
+    """Plusieurs minutes avec les sites des employeurs : la réponse n'attend
+    pas, elle rend le scan « en cours », que l'interface relit."""
+    monkeypatch.setattr(api_scans, "_demarrer", lambda cible, *a: None)
+    scan = client.post("/api/scans", json={"sources": ["france_travail"]}).json()
+    assert scan["statut"] == StatutScan.EN_COURS.value
+    assert client.get(f"/api/scans/{scan['id']}").json()["statut"] == StatutScan.EN_COURS.value
+    deuxieme = client.post("/api/scans", json={"sources": ["france_travail"]})
+    assert deuxieme.status_code == 409, "une recherche à la fois"
+
+
+def test_un_scan_interrompu_par_un_arret_est_clos_au_demarrage(session):
+    from app.services.scan import clore_les_interrompus
+
+    session.add(ScanRun(statut=StatutScan.EN_COURS.value))
+    session.commit()
+    assert clore_les_interrompus(session) == 1
+    [scan] = session.exec(select(ScanRun)).all()
+    assert scan.statut == StatutScan.ECHEC.value and "interrompu" in scan.erreurs[0]["erreur"]
 
 
 def test_un_scan_sans_identifiants_repond_200_et_explique(client):

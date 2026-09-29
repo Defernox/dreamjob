@@ -13,7 +13,8 @@ import {
 import { Bouton, Champ, Section, ZoneTexte } from '../components/champs'
 import { ChoixMultipleGroupe, ChoixOrdonne, ListeTags } from '../components/ListeTags'
 import { GROUPES, poidsDansLeGroupe } from '../components/BarresScore'
-import { dateHeureFr } from '../lib/format'
+import { anciennete, dateHeureFr } from '../lib/format'
+import { useDerniersScans, type ErreurScan } from '../api/offres'
 
 /** Ramène une saisie libre dans les bornes du schéma (0 à 60).
  *
@@ -432,6 +433,41 @@ function Vide({ children }: { children: React.ReactNode }) {
   return <p className="text-sm text-encre-400">{children}</p>
 }
 
+const LIBELLE_ERREUR: Record<ErreurScan['type'], string> = {
+  non_configure: 'non configurée',
+  panne: 'en panne',
+  inattendu: 'erreur inattendue',
+  avertissement: 'sites muets',
+}
+
+/** Ce que la dernière recherche close n'a pas pu faire : c'est ici que renvoie
+ *  le message « certaines sources n'ont pas répondu ». */
+function DerniereRecherche() {
+  const { data: scans } = useDerniersScans()
+  const dernier = scans?.find((s) => s.statut !== 'en cours')
+  if (!dernier) return null
+  return (
+    <>
+      <h3 className="text-xs font-semibold uppercase tracking-wide text-encre-500 mt-5 mb-2">
+        Dernière recherche — {anciennete(dernier.started_at)}, {dernier.statut}
+      </h3>
+      {dernier.erreurs.length === 0 ? (
+        <p className="text-sm text-encre-500">Toutes les sources ont répondu.</p>
+      ) : (
+        <div className="divide-y divide-craie-200 text-sm border-t border-craie-200">
+          {dernier.erreurs.map((e, i) => (
+            <div key={i} className="py-2.5">
+              <span className="font-medium">{e.source}</span>
+              <span className="text-encre-500"> — {LIBELLE_ERREUR[e.type] ?? e.type}</span>
+              <div className="text-encre-500 text-xs break-words">{e.erreur}</div>
+            </div>
+          ))}
+        </div>
+      )}
+    </>
+  )
+}
+
 /** L'état de l'installation, replié : utile quand quelque chose ne marche pas. */
 function Diagnostic() {
   const { data: sante } = useSante()
@@ -468,6 +504,8 @@ function Diagnostic() {
           </div>
         ))}
       </div>
+
+      <DerniereRecherche />
 
       {reglages && (
         <>

@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
+import threading
+
+from fastapi import APIRouter, Depends, HTTPException
 from sqlmodel import Session, desc, select
 
 from ..config import reglages
@@ -10,14 +12,14 @@ from ..connectors.registry import cles_actives
 from ..db import get_session
 from ..connectors.base import SearchQuery
 from ..models import ScanRun, Utilisateur
+from ..models.enums import StatutScan
+from ..scheduler import executer_scan_manuel
 from ..schemas.scan import RequeteScan, ScanLecture
 from ..services.scan import (
-    lancer_scan,
     requete_depuis_profil,
     requete_par_defaut,
     requetes_actives,
 )
-from ..services.scoring import rescorer
 from .acces import utilisateur_courant
 
 router = APIRouter(prefix="/api/scans", tags=["scans"])
@@ -50,14 +52,23 @@ def _construire_requete(
     )
 
 
+def _demarrer(cible, *arguments) -> None:
+    """La recherche part dans son propre fil ; l'interface suit le scan « en
+    cours » (`GET /api/scans/{id}`). Les tests la déroulent sur place."""
+    threading.Thread(target=cible, args=arguments, name="recherche-manuelle", daemon=True).start()
+
+
 @router.post("", response_model=ScanLecture)
 def lancer(
-    taches: BackgroundTasks,
     demande: RequeteScan | None = None,
     session: Session = Depends(get_session),
     moi: Utilisateur = Depends(utilisateur_courant),
 ) -> ScanLecture:
-    """Interroge les sources actives. Synchrone : un scan dure quelques secondes."""
+    """Lance une recherche sur les sources actives, en arrière-plan.
+
+    Elle dure plusieurs minutes depuis que les sites des employeurs en font
+    partie : attendue dans la requête, elle serait coupée par le relais HTTPS.
+    La réponse est le scan « en cours » ; l'interface le relit jusqu'à la fin."""
     # `sources` absent => les sources actives de config.yaml.
     # `sources: []` => demande vide, sans doute une erreur : on le dit.
     sources = demande.sources if demande else None
@@ -75,10 +86,19 @@ def lancer(
         raise HTTPException(
             409, "Rien à chercher : enregistrez une recherche, ou renseignez le "
                  "titre visé de votre profil.")
-    scan = lancer_scan(session, requete, sources=sources, utilisateur_id=moi.id)
-    # Les nouvelles offres sont notées dans la foulée : un scan manuel les
+    en_cours = session.exec(select(ScanRun).where(
+        ScanRun.utilisateur_id == moi.id, ScanRun.statut == StatutScan.EN_COURS.value)).first()
+    if en_cours is not None:
+        raise HTTPException(409, "Une recherche est déjà en cours : elle se termine avant d'en lancer une autre.")
+    scan = ScanRun(declenche_par="manuel", utilisateur_id=moi.id,
+                   sources=sources if sources is not None else cles_actives(reglages()))
+    session.add(scan)
+    session.commit()
+    session.refresh(scan)
+    # Le scan note ses nouvelles offres dans la foulée : un scan manuel les
     # laissait sans note jusqu'au prochain clic sur « Scorer ».
-    taches.add_task(rescorer, session.get_bind(), moi.id, forcer=False)
+    _demarrer(executer_scan_manuel, session.get_bind(), scan.id, requete, sources, moi.id)
+    session.refresh(scan)
     return _en_lecture(scan, moi)
 
 

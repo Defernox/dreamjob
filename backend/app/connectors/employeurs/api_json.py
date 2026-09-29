@@ -10,7 +10,9 @@ un seul, décrit dans employeurs.yaml :
 - `methode` (GET par défaut, ou POST) et `corps` : le corps JSON d'un POST, où
   les mêmes marques sont remplacées (« {debut} » seul devient un nombre) ;
 - `entetes` : en-têtes à joindre (une clé que le site publie dans sa page) ;
-- `taille` : offres par page (50 par défaut) ;
+- `taille` : offres par page (50 par défaut) — ce que l'interface rend
+  VRAIMENT : Optiver en rend seize quoi qu'on demande, et un décalage calculé
+  sur cinquante sauterait trente-quatre offres par page ;
 - `liste` : le chemin vers le tableau des offres (« items », « data.results ») ;
 - `total` : le chemin vers le nombre total d'offres, s'il est donné ;
 - `champs` : où lire l'identifiant, l'intitulé, l'adresse, le lieu, le pays,
@@ -70,6 +72,15 @@ def valeur(offre: dict, regle: str | list | None) -> str:
     return "" if brut is None else str(brut)
 
 
+_PAGINATION = re.compile(r"\{(debut|taille|page)\}")
+
+
+def _paginer(texte_: str, marques: dict[str, int]) -> str:
+    """Les seules marques de pagination sont remplacées : une accolade d'une
+    autre nature (un filtre JSON dans l'adresse) reste telle quelle."""
+    return _PAGINATION.sub(lambda m: str(marques[m.group(1)]), texte_)
+
+
 def _remplir(modele: Any, marques: dict[str, int]) -> Any:
     """Les marques de pagination dans un corps JSON : « {debut} » seul devient
     le nombre, pour que l'interface reçoive un entier et non un texte."""
@@ -78,9 +89,9 @@ def _remplir(modele: Any, marques: dict[str, int]) -> Any:
     if isinstance(modele, list):
         return [_remplir(v, marques) for v in modele]
     if isinstance(modele, str):
-        if (m := re.fullmatch(r"\{(\w+)\}", modele)) and m.group(1) in marques:
+        if (m := _PAGINATION.fullmatch(modele)) is not None:
             return marques[m.group(1)]
-        return modele.format(**marques) if "{" in modele else modele
+        return _paginer(modele, marques)
     return modele
 
 
@@ -103,7 +114,7 @@ class ApiJson(PlanDuSite):
         vus: set[str] = set()
         for page in range(pages_max):
             marques = {"debut": page * taille, "taille": taille, "page": page + 1}
-            url = str(o["api"]).format(**marques)
+            url = _paginer(str(o["api"]), marques)
             self.verifier(url)
             entetes = {"Accept": "application/json", **(o.get("entetes") or {})}
             if str(o.get("methode") or "GET").upper() == "POST":
@@ -130,6 +141,10 @@ class ApiJson(PlanDuSite):
                 if a := self._annonce(offre, champs, pays, depuis):
                     if o.get("fiche_api"):
                         a.brut["fiche_api"] = valeur(offre, o["fiche_api"])
+                    # Une fiche déclarée (`bloc`, `fiche_api`) est toujours lue :
+                    # la liste de Groupama n'en donne qu'un résumé automatique.
+                    if o.get("bloc") or o.get("fiche_api"):
+                        a.complete = False
                     vues.setdefault(a.ident, a)
             total = chemin(donnees, o["total"]) if o.get("total") else None
             if not neuves or (isinstance(total, int) and len(vus) >= total):

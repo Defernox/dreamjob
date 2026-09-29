@@ -5,8 +5,15 @@ depuis tes appareils (PC, téléphone) grâce à Tailscale, derrière un mot de 
 Le scan part chaque matin à 7 h 30 et t'envoie les nouvelles offres vertes sur
 ton téléphone.
 
-Coût : ~7 €/mois (serveur Hetzner CX23), + ~1,40 € si tu actives les sauvegardes
-Hetzner (recommandé). Tailscale et ntfy sont gratuits.
+Coût : **4,49 € HT/mois (≈ 5,39 € TTC)** pour un VPS-1 d'OVHcloud sans
+engagement — 3,81 € HT (≈ 4,57 € TTC) en payant l'année d'avance —, sauvegarde
+quotidienne et trafic illimité compris. Tarifs relevés le 2026-09-29. Tailscale
+et ntfy sont gratuits.
+
+Pourquoi OVH : Hetzner, d'abord prévu, n'avait plus de petit serveur disponible
+le 2026-09-29 ; le VPS-1 a la même taille (2 cœurs, 4 Go, 40 Go), coûte moins,
+et tourne **en France** (Gravelines) — ce que certains sites d'employeurs
+regardent pour choisir les offres qu'ils montrent (HSBC).
 
 Compte une heure la première fois. Les étapes marquées **(toi)** demandent de
 créer un compte, de payer ou de saisir un mot de passe : c'est à toi de les faire.
@@ -34,45 +41,60 @@ Garde le chemin proposé ; choisis une phrase de passe. Puis affiche la clé
 cat ~/.ssh/id_ed25519.pub
 ```
 
-## 3. Le serveur Hetzner (toi) — 10 min
+## 3. Le serveur OVHcloud (toi) — 10 min
 
-1. Crée un compte sur https://console.hetzner.com et ajoute un moyen de paiement.
-2. **Nouveau serveur** : Ubuntu 24.04 · type **CX23** · Allemagne (Nuremberg ou
-   Falkenstein) · colle ta clé **publique** dans « SSH keys » · coche
-   **Backups** (recommandé).
-3. Note l'adresse IP du serveur.
+1. Crée un compte sur https://www.ovhcloud.com/fr/ et ajoute un moyen de paiement.
+2. Commande un **VPS-1** depuis https://www.ovhcloud.com/fr/vps/ → *Configurer* :
+   - **Période d'engagement** : *Aucun engagement* (ou *12 mois*, 15 % moins
+     cher, renouvelé automatiquement — désactivable dans l'espace client) ;
+   - **Localisation** : *Europe (France - Gravelines)* ;
+   - **Image** : *Distribution uniquement* → **Ubuntu 24.04** (pas 26.04 : les
+     scripts ont été écrits pour la 24.04) ;
+   - **Options** : aucune. La sauvegarde quotidienne est déjà incluse.
+3. OVH t'envoie par e-mail l'**adresse IP** du serveur, l'utilisateur
+   **ubuntu** et de quoi obtenir son mot de passe. Garde ce message.
 
-## 4. Préparer le serveur — 5 min
+## 4. Ta clé sur le serveur (toi) — 2 min
 
-Depuis Git Bash, à la racine du projet (remplace `IP` par l'adresse du serveur) :
+Depuis Git Bash (remplace `IP` par l'adresse du serveur). Le mot de passe
+d'OVH est demandé une dernière fois : ensuite, seule ta clé ouvrira le serveur.
 
 ```bash
-scp deploiement/installer-serveur.sh root@IP:
+cat ~/.ssh/id_ed25519.pub | ssh ubuntu@IP "mkdir -p ~/.ssh && chmod 700 ~/.ssh && cat >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys"
+```
+
+Si le serveur exige de changer le mot de passe à la première connexion,
+connecte-toi d'abord avec `ssh ubuntu@IP`, change-le, puis relance la commande.
+
+## 5. Préparer le serveur — 5 min
+
+Toujours depuis Git Bash, à la racine du projet :
+
+```bash
+scp deploiement/installer-serveur.sh ubuntu@IP:
 ```
 
 ```bash
-ssh root@IP bash installer-serveur.sh
+ssh -t ubuntu@IP sudo bash installer-serveur.sh
 ```
 
-Le script affiche un lien Tailscale : ouvre-le et valide avec ton compte. Le
-serveur apparaît alors sous le nom **dreamjob** dans ton réseau Tailscale.
+Le script ferme la connexion par mot de passe (ta clé suffit), installe Docker
+et Tailscale, et ferme le pare-feu. Il affiche un lien Tailscale : ouvre-le et
+valide avec ton compte. Le serveur apparaît alors sous le nom **dreamjob** dans
+ton réseau Tailscale.
 
-## 5. Les secrets (toi) — 2 min
+## 6. Les secrets (toi) — 2 min
 
 Ton `.env` local contient déjà les clés. Copie-le sur le serveur :
 
 ```bash
-scp .env root@dreamjob:/opt/dreamjob/.env
+ssh ubuntu@dreamjob "sudo tee /opt/dreamjob/.env >/dev/null && sudo chmod 600 /opt/dreamjob/.env" < .env
 ```
 
 Puis ajoute les deux lignes propres au serveur :
 
 ```bash
-ssh root@dreamjob
-```
-
-```bash
-nano /opt/dreamjob/.env
+ssh -t ubuntu@dreamjob sudo nano /opt/dreamjob/.env
 ```
 
 ```
@@ -83,7 +105,7 @@ NTFY_SUJET=une-suite-longue-et-imprevisible-de-mots
 `TON-RESEAU` : le nom de ton réseau, visible dans la console Tailscale (DNS).
 `NTFY_SUJET` : invente-le long, il sert de mot de passe aux notifications.
 
-## 6. Déployer — 10 min la première fois
+## 7. Déployer — 10 min la première fois
 
 Depuis ton PC, à la racine du projet :
 
@@ -99,23 +121,23 @@ serveur porte alors les comptes de tes amis et tes candidatures récentes, que
 celle du PC n'a pas. Pour la remplacer malgré tout, `--donnees --ecraser` — elle
 est d'abord mise de côté dans `data/avant-ecrasement-<date>/`.
 
-## 7. Ton compte (toi) — 1 min
+## 8. Ton compte (toi) — 1 min
 
 ```bash
-ssh -t root@dreamjob "cd /opt/dreamjob && docker compose exec dreamjob python -m app.compte creer ton@email.fr"
+ssh -t ubuntu@dreamjob "cd /opt/dreamjob && sudo docker compose exec dreamjob python -m app.compte creer ton@email.fr"
 ```
 
 Tu saisis le mot de passe au clavier (12 caractères minimum) : il n'apparaît
 nulle part.
 
-Ce premier compte est **le tien** : il reprend tout ce que l'étape 6 a envoyé
+Ce premier compte est **le tien** : il reprend tout ce que l'étape 7 a envoyé
 (profil, recherches, offres notées, candidatures). Crée-le avant ceux de tes
 amis.
 
-## 8. Ouvrir l'accès HTTPS — 1 min
+## 9. Ouvrir l'accès HTTPS — 1 min
 
 ```bash
-ssh root@dreamjob tailscale serve --bg 8000
+ssh ubuntu@dreamjob sudo tailscale serve --bg 8000
 ```
 
 DreamJob est maintenant sur **https://dreamjob.TON-RESEAU.ts.net**, depuis ton PC
@@ -127,9 +149,9 @@ continuerait de tourner — veille, résumé du matin — mais tu ne pourrais pl
 ouvrir l'interface. Dans la console Tailscale (login.tailscale.com), onglet
 *Machines*, menu « … » de **dreamjob** → *Disable key expiry*.
 
-## 9. Les notifications sur ton téléphone (toi) — 2 min
+## 10. Les notifications sur ton téléphone (toi) — 2 min
 
-Installe l'application **ntfy** et abonne-toi au sujet choisi à l'étape 5.
+Installe l'application **ntfy** et abonne-toi au sujet choisi à l'étape 6.
 
 Tu recevras deux sortes de messages :
 
@@ -168,7 +190,7 @@ siens. Les offres trouvées pour vous deux ne sont téléchargées qu'une fois.
 2. **Son compte (toi, avec lui à côté pour taper son mot de passe)** :
 
    ```bash
-   ssh -t root@dreamjob "cd /opt/dreamjob && docker compose exec dreamjob python -m app.compte creer ami@email.fr"
+   ssh -t ubuntu@dreamjob "cd /opt/dreamjob && sudo docker compose exec dreamjob python -m app.compte creer ami@email.fr"
    ```
 
 3. **Lui** : il se connecte, remplit son **Profil** (ou importe son CV), crée
@@ -180,11 +202,11 @@ Anthropic. Chaque compte ami a donc un budget : **2 $ par mois** par défaut
 mois. Pour le changer, ou voir qui a dépensé quoi :
 
 ```bash
-ssh -t root@dreamjob "cd /opt/dreamjob && docker compose exec dreamjob python -m app.compte budget ami@email.fr 5"
+ssh -t ubuntu@dreamjob "cd /opt/dreamjob && sudo docker compose exec dreamjob python -m app.compte budget ami@email.fr 5"
 ```
 
 ```bash
-ssh -t root@dreamjob "cd /opt/dreamjob && docker compose exec dreamjob python -m app.compte lister"
+ssh -t ubuntu@dreamjob "cd /opt/dreamjob && sudo docker compose exec dreamjob python -m app.compte lister"
 ```
 
 `aucun` à la place du montant retire la limite.
@@ -200,20 +222,25 @@ Adzuna et les sites des employeurs, jamais DogFinance.
 | Pour… | Commande (Git Bash, racine du projet) |
 |---|---|
 | Mettre à jour le code | `deploiement/deployer.sh dreamjob` |
-| Voir les journaux | `ssh root@dreamjob "cd /opt/dreamjob && docker compose logs --tail 100"` |
-| Changer ton mot de passe | `ssh -t root@dreamjob "cd /opt/dreamjob && docker compose exec dreamjob python -m app.compte mot-de-passe ton@email.fr"` |
+| Voir les journaux | `ssh ubuntu@dreamjob "cd /opt/dreamjob && sudo docker compose logs --tail 100"` |
+| Changer ton mot de passe | `ssh -t ubuntu@dreamjob "cd /opt/dreamjob && sudo docker compose exec dreamjob python -m app.compte mot-de-passe ton@email.fr"` |
 | Ajouter un ami | voir « Ajouter un ami » ci-dessus |
-| Voir les comptes et leurs dépenses | `ssh -t root@dreamjob "cd /opt/dreamjob && docker compose exec dreamjob python -m app.compte lister"` |
-| Rapatrier la dernière sauvegarde | `scp "root@dreamjob:/opt/dreamjob/data/sauvegardes/dreamjob-*.db" .` |
+| Voir les comptes et leurs dépenses | `ssh -t ubuntu@dreamjob "cd /opt/dreamjob && sudo docker compose exec dreamjob python -m app.compte lister"` |
+| Rapatrier la dernière sauvegarde | `scp "ubuntu@dreamjob:/opt/dreamjob/data/sauvegardes/dreamjob-*.db" .` |
 
 **Ce qui s'entretient tout seul.** Chaque nuit à 3 h 30, une copie de la base
 (les sept dernières sont gardées, dans `data/sauvegardes`) et le ménage du cache
 des pages lues. Les journaux de Docker sont plafonnés à 50 Mo. Une recherche
 interrompue par un redéploiement est close au redémarrage. La veille lit
-environ 1 Go par jour sur les sites des employeurs, très loin du trafic inclus
-dans l'offre Hetzner : ce n'est pas un poste de dépense. Les sauvegardes
-restant sur le même disque, les **Backups Hetzner** (étape 3) protègent contre
-la perte du serveur lui-même.
+environ 1 Go par jour sur les sites des employeurs ; le trafic est illimité
+chez OVH : ce n'est pas un poste de dépense. Les sauvegardes de DreamJob
+restant sur le même disque, la **sauvegarde automatique d'OVH** (incluse,
+quotidienne) protège contre la perte du serveur lui-même — elle ne garde qu'un
+jour : rapatrie de temps en temps une copie sur ton PC (tableau ci-dessus).
+
+**Les mises à jour de sécurité** s'installent seules, sans redémarrer le
+serveur. Un redémarrage de temps en temps (`ssh ubuntu@dreamjob sudo reboot`)
+les applique toutes ; DreamJob, Docker et Tailscale repartent d'eux-mêmes.
 
 **Ta machine locale** continue de fonctionner comme avant, avec sa propre base.
 Une fois le serveur en place, c'est lui qui fait foi : évite de postuler depuis

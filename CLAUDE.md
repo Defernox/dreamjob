@@ -1414,12 +1414,21 @@ que si un sujet ntfy est renseigné.
 
 ## Hébergement
 
-Un VPS (Hetzner CX23, ~7 €/mois) joignable **uniquement** par Tailscale.
-`deploiement/GUIDE.md` déroule l'installation ; `installer-serveur.sh` prépare
+Un VPS (OVHcloud VPS-1, Gravelines, 4,49 € HT/mois) joignable **uniquement**
+par Tailscale. `deploiement/GUIDE.md` déroule l'installation ; `installer-serveur.sh` prépare
 une Ubuntu neuve, `deployer.sh` envoie le dernier commit depuis le PC — sans
 passer par GitHub — et, au premier déploiement, la base, le modèle de CV et les
 dossiers. Le `.env` n'est jamais envoyé par script : les secrets se déposent à
 la main.
+
+**OVH et non Hetzner.** Le 2026-09-29, Hetzner n'avait plus aucun petit
+serveur disponible. Le VPS-1 a la même taille (2 cœurs, 4 Go), coûte moins,
+inclut une sauvegarde quotidienne, et tourne en France — ce que regardent les
+sites qui choisissent leurs offres d'après l'adresse IP (HSBC). Il se livre avec
+un compte `ubuntu` et non `root` : les scripts passent par `sudo`, que
+`installer-serveur.sh` rend utilisable sans terminal (`deployer.sh` ne peut pas
+saisir de mot de passe), et SSH n'admet plus que les clés — le port reste
+ouvert sur Internet, un mot de passe y serait essayé en boucle.
 
 **Le mode serveur est une variable d'environnement de l'image**
 (`DREAMJOB_MODE=serveur`, fixée dans le `Dockerfile`), pas un réglage de

@@ -4,7 +4,9 @@
 #   actif      — interrogé à chaque scan et par la veille ;
 #   à_venir    — logiciel identifié, connecteur pas encore écrit ;
 #   à_étudier  — site carrières ou logiciel pas encore identifié ;
-#   refusé     — ne sera pas interrogé ; le motif dit pourquoi, et quand ce fut vérifié ;
+#   refusé     — ne sera pas interrogé : ses règles ou une protection l'interdisent ; le
+#                motif dit pourquoi, et quand ce fut vérifié ;
+#   écarté     — étudié, rien à suivre : aucune liste d'offres publique et lisible ;
 #   inclus     — ses offres arrivent déjà par un autre employeur de la liste.
 #
 # Un employeur actif a un logiciel et l'adresse de son site sur ce logiciel.
@@ -84,7 +86,7 @@ employeurs:
       identifiant: "annonce=(\\d+)"
       bloc: "<h1"
       fin_bloc: "Postuler|<footer"
-      titre_h1: True
+      titre_h1: true
       pays_par_defaut: "France"
       priorite: 2
     - nom: "CIC"
@@ -108,8 +110,8 @@ employeurs:
       identifiant: "job-(\\d+)\\.html"
       bloc: "<h1"
       fin_bloc: "Partager|<footer"
-      titre_h1: True
-      titre_en_fiche: True
+      titre_h1: true
+      titre_en_fiche: true
       pays_par_defaut: "France"
       priorite: 2
     - nom: "HSBC Continental Europe"
@@ -118,8 +120,15 @@ employeurs:
       motif: >
         Ses offres paraissent sur portal.careers.hsbc.com : suivies avec HSBC.
     - nom: "Oddo BHF"
-      statut: "à_étudier"
-      adresse: "https://www.oddo-bhf.com/fr/carrieres/"
+      logiciel: "page_liste"
+      adresse: "https://recrutement.altays-progiciels.com/oddo/"
+      statut: "actif"
+      liste: "https://recrutement.altays-progiciels.com/oddo/fr/offres.html?page={page}"
+      offres: "/oddo/fr/offres/[^/]+-\\d+\\.html"
+      identifiant: "-(\\d+)\\.html"
+      bloc: "class=\"row job\""
+      fin_bloc: "</main>"
+      description_bloc: true
       priorite: 2
     - nom: "Kepler Cheuvreux"
       logiciel: "plan_du_site"
@@ -197,7 +206,7 @@ employeurs:
       adresse: "https://portal.careers.hsbc.com/careers"
       statut: "actif"
       domaine: "hsbc.com"
-      par_pays: True
+      par_pays: true
       priorite: 1
     - nom: "Nomura"
       logiciel: "successfactors"
@@ -260,9 +269,11 @@ employeurs:
       statut: "actif"
       priorite: 3
     - nom: "NatWest Group"
-      statut: "à_étudier"
-      adresse: "https://www.natwestgroup.com/careers-at-natwest-group.html"
+      statut: "refusé"
       priorite: 3
+      motif: >
+        jobs.natwestgroup.com : Défi anti-robot de Cloudflare (« Just a moment… »),
+        robots.txt compris : protection jamais contournée. Vérifié le 2026-09-29.
     - nom: "Macquarie"
       logiciel: "plan_du_site"
       adresse: "https://recruitment.macquarie.com"
@@ -292,7 +303,7 @@ employeurs:
       plan: "https://jobs.commerzbank.com/sitemap.xml"
       offres: "ac=jobad"
       identifiant: "id=(\\d+)"
-      titre_en_fiche: True
+      titre_en_fiche: true
       priorite: 2
     - nom: "DZ Bank"
       statut: "refusé"
@@ -316,13 +327,18 @@ employeurs:
       statut: "actif"
       priorite: 3
     - nom: "Mediobanca"
-      statut: "à_étudier"
-      adresse: "https://www.mediobanca.com/en/sustainability/talent-attraction.html"
+      statut: "écarté"
       priorite: 3
+      motif: >
+        Page « Open positions » sans aucun lien d'offre ni logiciel identifié. Vérifié
+        le 2026-09-29.
     - nom: "KBC"
-      statut: "à_étudier"
-      adresse: "https://www.kbc.com/en/working-at-kbc/joining-us.html"
+      statut: "écarté"
       priorite: 3
+      motif: >
+        Liste des postes dessinée par script, sans interface identifiable ; ses plans du
+        site ne portent que cinq à neuf offres. Offres surtout en néerlandais, pour la
+        Belgique. Vérifié le 2026-09-29.
     - nom: "Belfius"
       logiciel: "successfactors"
       adresse: "https://jobs.belfius.be"
@@ -342,12 +358,19 @@ employeurs:
       priorite: 3
     - nom: "Spuerkeess"
       logiciel: "cornerstone"
-      adresse: "https://spuerkeess.csod.com/ux/ats/careersite/1/home"
-      statut: "à_venir"
+      adresse: "https://spuerkeess.csod.com/ux/ats/careersite/1/home?c=spuerkeess"
+      statut: "actif"
       priorite: 3
     - nom: "BIL"
-      statut: "à_étudier"
-      adresse: "https://www.bil.com/fr/groupe-bil/Pages/index.aspx"
+      logiciel: "plan_du_site"
+      adresse: "https://stayforacareer.com"
+      statut: "actif"
+      plan: "https://stayforacareer.com/bil_careers-sitemap.xml"
+      offres: "/careers/[^/]+/?$"
+      bloc: "class=\"entry-content\""
+      fin_bloc: "<footer"
+      titre_h1: true
+      pays_par_defaut: "Luxembourg"
       priorite: 3
     - nom: "Banque de Luxembourg"
       logiciel: "talentsoft"
@@ -355,9 +378,11 @@ employeurs:
       statut: "actif"
       priorite: 3
     - nom: "Jefferies"
-      statut: "à_étudier"
-      adresse: "https://www.jefferies.com/careers/"
+      statut: "refusé"
       priorite: 2
+      motif: >
+        Oleeo (jefferies.tal.net) répond par une page de vérification anti-robot « Quick
+        Check Needed » : protection jamais contournée. Vérifié le 2026-09-29.
 
   # --- gestion d'actifs ---
   gestion_d_actifs:
@@ -389,19 +414,34 @@ employeurs:
       statut: "actif"
       priorite: 2
     - nom: "Carmignac"
-      statut: "à_étudier"
+      statut: "écarté"
       priorite: 2
+      motif: >
+        Page carrières sans liste d'offres. Vérifié le 2026-09-29.
     - nom: "Comgest"
-      statut: "à_étudier"
-      adresse: "https://www.comgest.com/en/about-us/our-people/careers"
+      statut: "écarté"
       priorite: 2
+      motif: >
+        Aucune offre publiée ce jour (candidature spontanée seulement) ; pas de logiciel
+        identifié. Vérifié le 2026-09-29.
     - nom: "La Financière de l'Échiquier"
-      statut: "à_étudier"
-      adresse: "https://www.lfde.com/fr-fr/nous-connaitre/carrieres/"
+      statut: "écarté"
       priorite: 2
+      motif: >
+        Page carrières sans offre publiée (candidature spontanée seulement). Vérifié le
+        2026-09-29.
     - nom: "Ofi Invest"
-      statut: "à_étudier"
-      adresse: "https://ofi-invest.com/fr/carriere/"
+      logiciel: "page_unique"
+      adresse: "https://ofi-invest.com/fr/carriere/nos-offres"
+      statut: "actif"
+      liste: "https://ofi-invest.com/fr/carriere/nos-offres"
+      decoupe: "class=\"tab-pane"
+      titre_motif: "<h2[^>]*>(.*?)</h2>"
+      lieu_motif: "la-map-marker\"></i>([^<]+)"
+      contrat_motif: "la-file-contract\"></i>([^<]+)"
+      offres: "/carriere/[a-z0-9]{16}-"
+      identifiant: "/carriere/([a-z0-9]{16})-"
+      pays_par_defaut: "France"
       priorite: 2
     - nom: "Sycomore AM"
       logiciel: "smartrecruiters"
@@ -409,18 +449,30 @@ employeurs:
       statut: "actif"
       priorite: 2
     - nom: "Groupama AM"
-      statut: "à_étudier"
-      adresse: "https://www.groupama-am.com/fra/fr/institutionnel/carriere/groupama-asset-management-carriere"
+      statut: "inclus"
       priorite: 2
+      motif: >
+        Recrute sur groupama-gan-recrute.com : suivie avec Groupama.
     - nom: "La Française"
-      logiciel: "digitalrecruiters"
-      adresse: "https://api.digitalrecruiters.com/careers/v1/careers-sites/careers.la-francaise.com/css"
-      statut: "à_venir"
+      logiciel: "api_json"
+      adresse: "https://careers.la-francaise.com/fr/annonces"
+      statut: "actif"
+      api: "https://api.digitalrecruiters.com/public/v1/careers-site/job-ads?domainName=careers.la-francaise.com&limit={taille}&page={page}&locale=fr_FR"
+      methode: "POST"
+      corps: {}
+      taille: 20
+      liste: "items"
+      total: "count"
+      champs: {"ident": "id", "titre": "title", "url": "https://careers.la-francaise.com/fr/annonces/{url}", "lieu": "location", "contrat": "contract"}
+      fiche_api: "https://api.digitalrecruiters.com/public/v1/careers-site/job-ads/{job_ad_id}?domainName=careers.la-francaise.com&locale=fr_FR"
+      fiche_champs: {"description": ["description", "profile"], "date": "republished_at", "lieu": "address.city", "pays": "address.country", "contrat": "contract"}
       priorite: 2
     - nom: "LBP AM"
-      statut: "à_étudier"
-      adresse: "https://www.lbpam.com/fr/carrieres/un-sens-aigu-du-collectif"
+      statut: "écarté"
       priorite: 2
+      motif: >
+        Une seule offre, d'avril 2025, perdue dans un plan du site d'un mégaoctet : rien
+        qui justifie de le relire chaque jour. Vérifié le 2026-09-29.
     - nom: "Swiss Life Asset Managers"
       logiciel: "workday"
       adresse: "https://swisslife.wd3.myworkdayjobs.com/Swiss_Life_Asset_Managers_Career_Site"
@@ -444,8 +496,12 @@ employeurs:
       motif: >
         Ses offres paraissent sur careers.allianz.com : suivies avec Groupe Allianz.
     - nom: "DWS"
-      statut: "à_étudier"
+      statut: "inclus"
       priorite: 2
+      motif: >
+        Filiale de Deutsche Bank : ses offres paraissent sur le site de Deutsche Bank
+        (vérifié : la moitié des intitulés de son site Workday y figurent à
+        l'identique). Suivie avec Deutsche Bank.
     - nom: "Schroders"
       logiciel: "oracle"
       adresse: "https://ekbq.fa.em2.oraclecloud.com/hcmUI/CandidateExperience/en/sites/CX_2"
@@ -470,7 +526,9 @@ employeurs:
       identifiant: "/job/([A-Za-z0-9]+)/"
       priorite: 3
     - nom: "M&G"
-      statut: "à_étudier"
+      logiciel: "workday"
+      adresse: "https://mgpru.wd3.myworkdayjobs.com/mandgprudential"
+      statut: "actif"
       priorite: 3
     - nom: "abrdn"
       logiciel: "workday"
@@ -485,9 +543,11 @@ employeurs:
       identifiant: "jid-(\\d+)"
       priorite: 3
     - nom: "Vanguard"
-      statut: "à_étudier"
-      adresse: "https://www.vanguardjobs.com"
+      statut: "écarté"
       priorite: 3
+      motif: >
+        Liste chargée hors de la page, sans interface identifiable ; postes surtout aux
+        États-Unis. Vérifié le 2026-09-29.
     - nom: "Capital Group"
       logiciel: "workday"
       adresse: "https://capgroup.wd1.myworkdayjobs.com/capitalgroupcareers"
@@ -504,12 +564,17 @@ employeurs:
       statut: "actif"
       priorite: 3
     - nom: "Generali Investments"
-      statut: "à_étudier"
-      adresse: "https://www.generali-investments.com/global/en/institutional/career"
+      statut: "écarté"
       priorite: 3
+      motif: >
+        Offres italiennes sur gogenerali.com, qui exige un jeton de session ; les postes
+        en France paraissent sur le site de Generali, suivi. Vérifié le 2026-09-29.
     - nom: "Eurizon"
-      statut: "à_étudier"
+      statut: "écarté"
       priorite: 3
+      motif: >
+        Page carrières sans offre ; filiale d'Intesa Sanpaolo, dont le site est suivi.
+        Vérifié le 2026-09-29.
 
   # --- fonds d'investissement ---
   fonds_d_investissement:
@@ -519,9 +584,11 @@ employeurs:
       statut: "actif"
       priorite: 1
     - nom: "Eurazeo"
-      statut: "à_étudier"
-      adresse: "https://www.eurazeo.com/fr/talents"
+      statut: "refusé"
       priorite: 1
+      motif: >
+        Aucune offre sur son site ; ses stages paraissent sur JobTeaser, qui refuse
+        notre User-Agent (403). Vérifié le 2026-09-29.
     - nom: "Tikehau Capital"
       statut: "refusé"
       priorite: 1
@@ -534,11 +601,18 @@ employeurs:
       statut: "actif"
       priorite: 2
     - nom: "Wendel"
-      statut: "à_étudier"
+      statut: "refusé"
       priorite: 2
+      motif: >
+        wendelgroup.com : Défi anti-robot de Cloudflare (« Just a moment… »), robots.txt
+        compris : protection jamais contournée. Vérifié le 2026-09-29.
     - nom: "Siparex"
-      statut: "à_étudier"
+      statut: "refusé"
       priorite: 2
+      motif: >
+        Offres publiées sur Welcome to the Jungle : liste servie par son moteur de
+        recherche (réservé aux partenaires), pages refusées à notre User-Agent (403).
+        Vérifié le 2026-09-29.
     - nom: "Antin Infrastructure Partners"
       statut: "refusé"
       priorite: 2
@@ -552,35 +626,47 @@ employeurs:
       statut: "actif"
       priorite: 2
     - nom: "InfraVia"
-      statut: "à_étudier"
+      statut: "écarté"
       priorite: 2
+      motif: >
+        Aucune page d'offres. Vérifié le 2026-09-29.
     - nom: "Partners Group"
       logiciel: "successfactors"
       adresse: "https://jobs.partnersgroup.com"
       statut: "actif"
       priorite: 2
     - nom: "Astorg"
-      statut: "à_étudier"
+      statut: "écarté"
       priorite: 3
+      motif: >
+        Aucune page d'offres. Vérifié le 2026-09-29.
     - nom: "Andera Partners"
-      statut: "à_étudier"
-      adresse: "https://www.anderapartners.com/en/talents/"
+      statut: "écarté"
       priorite: 3
+      motif: >
+        Aucune page d'offres. Vérifié le 2026-09-29.
     - nom: "Seven2"
-      logiciel: "welcomekit"
-      adresse: "https://welcomekit.co"
-      statut: "à_venir"
+      statut: "refusé"
       priorite: 3
+      motif: >
+        Offres publiées sur Welcome to the Jungle : liste servie par son moteur de
+        recherche (réservé aux partenaires), pages refusées à notre User-Agent (403).
+        Vérifié le 2026-09-29.
     - nom: "Omnes Capital"
-      statut: "à_étudier"
-      adresse: "https://www.omnescapital.com/culture-and-careers"
+      statut: "écarté"
       priorite: 3
+      motif: >
+        Renvoie à LinkedIn, dont la collecte est interdite. Vérifié le 2026-09-29.
     - nom: "Bridgepoint"
-      statut: "à_étudier"
+      logiciel: "smartrecruiters"
+      adresse: "https://careers.smartrecruiters.com/Bridgepoint"
+      statut: "actif"
       priorite: 3
     - nom: "CVC"
-      statut: "à_étudier"
+      statut: "écarté"
       priorite: 3
+      motif: >
+        Aucune page carrières (404), rien dans le plan du site. Vérifié le 2026-09-29.
     - nom: "EQT"
       logiciel: "greenhouse"
       adresse: "https://job-boards.eu.greenhouse.io/eqtpartners"
@@ -597,13 +683,19 @@ employeurs:
       statut: "actif"
       priorite: 3
     - nom: "Blackstone"
-      statut: "à_étudier"
+      logiciel: "workday"
+      adresse: "https://blackstone.wd1.myworkdayjobs.com/Blackstone_Careers"
+      statut: "actif"
       priorite: 3
     - nom: "Carlyle"
-      statut: "à_étudier"
+      logiciel: "workday"
+      adresse: "https://carlyle.wd1.myworkdayjobs.com/Carlyle"
+      statut: "actif"
       priorite: 3
     - nom: "Brookfield"
-      statut: "à_étudier"
+      logiciel: "workday"
+      adresse: "https://brookfield.wd5.myworkdayjobs.com/brookfield"
+      statut: "actif"
       priorite: 3
     - nom: "Permira"
       logiciel: "greenhouse"
@@ -619,6 +711,12 @@ employeurs:
       logiciel: "lever"
       adresse: "https://jobs.lever.co/apax"
       statut: "actif"
+      priorite: 3
+    - nom: "Blackstone (campus)"
+      logiciel: "workday"
+      adresse: "https://blackstone.wd1.myworkdayjobs.com/Blackstone_Campus_Careers"
+      statut: "actif"
+      entreprise: "Blackstone"
       priorite: 3
 
   # --- trading et hedge funds ---
@@ -643,7 +741,7 @@ employeurs:
       adresse: "https://mlp.eightfold.ai/careers"
       statut: "actif"
       domaine: "mlp.com"
-      par_pays: True
+      par_pays: true
       priorite: 2
     - nom: "Citadel"
       statut: "refusé"
@@ -663,8 +761,15 @@ employeurs:
       statut: "actif"
       priorite: 3
     - nom: "Optiver"
-      statut: "à_étudier"
-      adresse: "https://www.optiver.com/join-us/jobs/trading/shanghai/2027-shanghai-performance-researcher-summer-internship/"
+      logiciel: "api_json"
+      adresse: "https://www.optiver.com/join-us/jobs/"
+      statut: "actif"
+      api: "https://www.optiver.com/en/api/v1/jobs?from={debut}&size={taille}"
+      taille: 16
+      liste: "items"
+      champs: {"ident": "href", "titre": "title", "url": "https://www.optiver.com{href}", "lieu": "location"}
+      bloc: "data-epi-type=\"title\""
+      fin_bloc: "<footer"
       priorite: 2
     - nom: "IMC"
       logiciel: "greenhouse"
@@ -724,9 +829,11 @@ employeurs:
       statut: "actif"
       priorite: 3
     - nom: "Balyasny"
-      statut: "à_étudier"
-      adresse: "https://www.bamfunds.com/careers"
+      statut: "écarté"
       priorite: 3
+      motif: >
+        Pas de liste dans la page ; son interface (/api/) est interdite par robots.txt.
+        Vérifié le 2026-09-29.
 
   # --- courtiers ---
   courtiers:
@@ -736,15 +843,29 @@ employeurs:
       statut: "actif"
       priorite: 2
     - nom: "Tradition"
-      statut: "à_étudier"
-      adresse: "https://www.tradition.com/careers/human-resources.aspx"
+      statut: "écarté"
       priorite: 2
+      motif: >
+        Candidatures par courriel, aucune liste d'offres pour l'Europe. Vérifié le
+        2026-09-29.
     - nom: "Marex"
-      statut: "à_étudier"
+      logiciel: "page_liste"
+      adresse: "https://www.marex.com/careers/career-opportunities/"
+      statut: "actif"
+      liste: "https://www.marex.com/careers/career-opportunities/"
+      offres: "/careers/career-opportunities/[0-9a-f]{14}-"
+      identifiant: "/career-opportunities/([0-9a-f]{14})-"
+      bloc: "MuiTypography-h5"
+      fin_bloc: "<footer"
+      titre_motif: "MuiTypography-h5[^>]*>(.*?)</h1>"
+      titre_en_fiche: true
       priorite: 3
     - nom: "BGC Group"
-      statut: "à_étudier"
+      statut: "refusé"
       priorite: 3
+      motif: >
+        bgcg.com/careers refuse notre User-Agent (403). « bgc-group-1 » sur Workable est
+        une autre société. Vérifié le 2026-09-29.
 
   # --- banque privée et gestion de patrimoine ---
   banque_privee_et_patrimoine:
@@ -764,8 +885,11 @@ employeurs:
       statut: "actif"
       priorite: 1
     - nom: "Neuflize OBC"
-      statut: "à_étudier"
+      statut: "écarté"
       priorite: 2
+      motif: >
+        Aucune liste sur son site : offres sur LinkedIn et JobTeaser seulement. Vérifié
+        le 2026-09-29.
     - nom: "Pictet"
       statut: "refusé"
       priorite: 2
@@ -789,11 +913,16 @@ employeurs:
       statut: "actif"
       priorite: 3
     - nom: "EFG International"
-      statut: "à_étudier"
+      logiciel: "oracle"
+      adresse: "https://fa-eqai-saasfaprod1.fa.ocs.oraclecloud.com/hcmUI/CandidateExperience/en/sites/CX_1001"
+      statut: "actif"
       priorite: 3
     - nom: "UBP"
-      statut: "à_étudier"
+      statut: "écarté"
       priorite: 3
+      motif: >
+        Le site répond « page introuvable » à toutes nos requêtes, y compris aux
+        adresses qu'il indique. Vérifié le 2026-09-29.
     - nom: "Mirabaud"
       logiciel: "smartrecruiters"
       adresse: "https://careers.smartrecruiters.com/MirabaudCieSA"
@@ -805,12 +934,23 @@ employeurs:
       statut: "actif"
       priorite: 3
     - nom: "Banque Transatlantique"
-      statut: "à_étudier"
-      adresse: "https://www.banquetransatlantique.com/fr/carrieres/nos-talents.html"
+      logiciel: "page_liste"
+      adresse: "https://www.banquetransatlantique.com"
+      statut: "actif"
+      liste: "https://www.banquetransatlantique.com/fr/nos_offres.html"
+      offres: "/fr/offre\\.html\\?annonce=\\d+"
+      identifiant: "annonce=(\\d+)"
+      bloc: "<h1"
+      fin_bloc: "Postuler|<footer"
+      titre_h1: true
+      pays_par_defaut: "France"
       priorite: 3
     - nom: "Swiss Life France"
-      statut: "à_étudier"
+      statut: "refusé"
       priorite: 3
+      motif: >
+        swisslife.fr : Défi anti-robot de Cloudflare (« Just a moment… »), robots.txt
+        compris : protection jamais contournée. Vérifié le 2026-09-29.
     - nom: "Primonial"
       statut: "refusé"
       priorite: 2
@@ -818,50 +958,86 @@ employeurs:
         Site et robots.txt refusés à notre User-Agent (403) : protection contre les
         robots, jamais contournée. Vérifié le 2026-09-29.
     - nom: "UFF"
-      statut: "à_étudier"
+      statut: "refusé"
       priorite: 3
+      motif: >
+        uff.net : Défi anti-robot de Cloudflare (« Just a moment… »), robots.txt compris
+        : protection jamais contournée. Vérifié le 2026-09-29.
     - nom: "Cyrus Conseil"
-      statut: "à_étudier"
+      statut: "écarté"
       priorite: 3
+      motif: >
+        Certificat du site invalide (nom d'hôte) : connexion refusée. Vérifié le
+        2026-09-29.
     - nom: "Groupe Crystal"
       logiciel: "cornerstone"
-      adresse: "https://carriere-crystal.csod.com/ux/ats/careersite/1/home"
-      statut: "à_venir"
+      adresse: "https://carriere-crystal.csod.com/ux/ats/careersite/1/home?c=carriere-crystal"
+      statut: "actif"
       priorite: 3
     - nom: "Stellium"
-      statut: "à_étudier"
+      statut: "écarté"
       priorite: 3
+      motif: >
+        Aucune page d'offres. Vérifié le 2026-09-29.
     - nom: "Nortia"
-      logiciel: "welcomekit"
-      adresse: "https://welcometothejungle.com/fr/companies/dlpk"
-      statut: "à_venir"
+      statut: "refusé"
       priorite: 3
+      motif: >
+        Offres publiées sur Welcome to the Jungle : liste servie par son moteur de
+        recherche (réservé aux partenaires), pages refusées à notre User-Agent (403).
+        Vérifié le 2026-09-29.
     - nom: "Cholet Dupont"
-      statut: "à_étudier"
+      statut: "écarté"
       priorite: 3
+      motif: >
+        Aucune page d'offres. Vérifié le 2026-09-29.
 
   # --- banque d'affaires ---
   banque_d_affaires:
     - nom: "Evercore"
-      statut: "à_étudier"
+      statut: "refusé"
       priorite: 3
+      motif: >
+        evercore.com : Défi anti-robot de Cloudflare (« Just a moment… »), robots.txt
+        compris : protection jamais contournée. Vérifié le 2026-09-29.
     - nom: "Moelis"
-      statut: "à_étudier"
+      logiciel: "workday"
+      adresse: "https://moelis.wd1.myworkdayjobs.com/Experienced-Hires"
+      statut: "actif"
       priorite: 3
     - nom: "Houlihan Lokey"
-      statut: "à_étudier"
-      adresse: "https://careers.hl.com/"
+      logiciel: "workday"
+      adresse: "https://hl.wd1.myworkdayjobs.com/Lateral"
+      statut: "actif"
       priorite: 3
     - nom: "Perella Weinberg"
-      statut: "à_étudier"
+      statut: "refusé"
       priorite: 3
+      motif: >
+        Oleeo (pwpcareers.tal.net) répond par une page de vérification anti-robot «
+        Quick Check Needed » : protection jamais contournée. Vérifié le 2026-09-29.
     - nom: "DC Advisory"
-      statut: "à_étudier"
+      statut: "refusé"
       priorite: 3
+      motif: >
+        dcadvisory.com : Défi anti-robot de Cloudflare (« Just a moment… »), robots.txt
+        compris : protection jamais contournée. Vérifié le 2026-09-29.
     - nom: "Alantra"
       logiciel: "workday"
       adresse: "https://alantra.wd3.myworkdayjobs.com/Alantra"
       statut: "actif"
+      priorite: 3
+    - nom: "Houlihan Lokey (campus)"
+      logiciel: "workday"
+      adresse: "https://hl.wd1.myworkdayjobs.com/Campus"
+      statut: "actif"
+      entreprise: "Houlihan Lokey"
+      priorite: 3
+    - nom: "Houlihan Lokey (fonctions support)"
+      logiciel: "workday"
+      adresse: "https://hl.wd1.myworkdayjobs.com/Corporate"
+      statut: "actif"
+      entreprise: "Houlihan Lokey"
       priorite: 3
 
   # --- assurance ---
@@ -905,8 +1081,19 @@ employeurs:
       statut: "actif"
       priorite: 3
     - nom: "Groupama"
-      statut: "à_étudier"
-      adresse: "https://www.groupama-gan-recrute.com"
+      logiciel: "api_json"
+      adresse: "https://www.groupama-gan-recrute.com/nos-offres"
+      statut: "actif"
+      api: "https://7liwmhhrjd.execute-api.eu-west-1.amazonaws.com/prod/offers"
+      methode: "POST"
+      entetes: {"x-api-key": "6JZNHAcdRNJE84K7XiUrLUE7FJNu@bSDC9BjMAKiH$"}
+      corps: {"size": "{taille}", "from": "{debut}", "masquerScore": true, "resume": true, "fields": ["id", "offer_url", "jobname", "contract_type", "country", "city_formatted_name", "organisation_name", "start_publication_date", "resume"]}
+      taille: 50
+      liste: "results"
+      total: "total"
+      champs: {"ident": "id", "titre": "jobname", "url": "offer_url", "lieu": "city_formatted_name", "pays": "country", "date": "start_publication_date", "contrat": "contract_type", "entreprise": "organisation_name", "description": "resume"}
+      bloc: "Vos futures missions"
+      fin_bloc: "Profil principal|<footer"
       priorite: 3
     - nom: "Swiss Re"
       logiciel: "successfactors"
@@ -914,7 +1101,9 @@ employeurs:
       statut: "actif"
       priorite: 3
     - nom: "Zurich"
-      statut: "à_étudier"
+      logiciel: "successfactors"
+      adresse: "https://www.careers.zurich.com"
+      statut: "actif"
       priorite: 3
     - nom: "Munich Re"
       logiciel: "plan_du_site"
@@ -924,7 +1113,14 @@ employeurs:
       identifiant: "/(\\d+)/?$"
       priorite: 3
     - nom: "Aviva"
-      statut: "à_étudier"
+      logiciel: "workday"
+      adresse: "https://aviva.wd1.myworkdayjobs.com/External"
+      statut: "actif"
+      priorite: 3
+    - nom: "Aviva Investors"
+      logiciel: "workday"
+      adresse: "https://aviva.wd1.myworkdayjobs.com/Aviva_Investors_External"
+      statut: "actif"
       priorite: 3
 
   # --- infrastructures de marché et institutions ---
@@ -963,7 +1159,9 @@ employeurs:
       statut: "actif"
       priorite: 3
     - nom: "Swift"
-      statut: "à_étudier"
+      logiciel: "workday"
+      adresse: "https://swift.wd3.myworkdayjobs.com/Join-Swift"
+      statut: "actif"
       priorite: 3
     - nom: "Banque de France"
       logiciel: "workday"
@@ -994,33 +1192,47 @@ employeurs:
         robots.txt compris) : protection contre les robots, jamais contournée. Vérifié
         le 2026-09-29.
     - nom: "ESMA"
-      statut: "à_étudier"
-      adresse: "https://www.esma.europa.eu/about-esma/careers"
+      statut: "refusé"
       priorite: 2
+      motif: >
+        Portail esmacareers.adequasys.com : robots.txt interdit tout (Disallow: /).
+        Vérifié le 2026-09-29.
     - nom: "EBA"
-      statut: "à_étudier"
-      adresse: "https://www.eba.europa.eu/about-us/careers"
+      statut: "écarté"
       priorite: 2
+      motif: >
+        Une vacance ouverte (experts nationaux détachés), publiée sur sa plateforme de
+        recrutement ; pas de liste lisible. Vérifié le 2026-09-29.
     - nom: "EIOPA"
-      statut: "à_étudier"
+      statut: "écarté"
       priorite: 3
+      motif: >
+        Pas de liste d'offres lisible sur son site. Vérifié le 2026-09-29.
     - nom: "SRB"
-      statut: "à_étudier"
-      adresse: "https://www.srb.europa.eu/en/vacancies"
+      statut: "écarté"
       priorite: 3
+      motif: >
+        Page « Vacancies » sans lien d'offre lisible. Vérifié le 2026-09-29.
     - nom: "BRI"
       logiciel: "workday"
       adresse: "https://bis.wd3.myworkdayjobs.com/External"
       statut: "actif"
       priorite: 2
     - nom: "Caisse des Dépôts"
-      statut: "à_étudier"
-      adresse: "https://www.caissedesdepots.fr/recrutement/comment-nous-rejoindre/acceder-nos-offres-demploi-stage-et-apprentissage"
+      logiciel: "plan_du_site"
+      adresse: "https://caissedesdepots-recrute.fr"
+      statut: "actif"
+      plan: "https://caissedesdepots-recrute.fr/offre-sitemap.xml"
+      offres: "/offre/[^/]+/?$"
+      bloc: "<h1 class=\"elementor-heading-title"
+      fin_bloc: "<footer"
+      titre_h1: true
+      pays_par_defaut: "France"
       priorite: 2
     - nom: "AFD"
       logiciel: "cornerstone"
-      adresse: "https://afd.csod.com/ux/ats/careersite/5/home"
-      statut: "à_venir"
+      adresse: "https://afd.csod.com/ux/ats/careersite/5/home?c=afd"
+      statut: "actif"
       priorite: 2
 
   # --- administration de fonds ---
@@ -1033,27 +1245,42 @@ employeurs:
       identifiant: "/(\\d+)/?$"
       priorite: 2
     - nom: "Apex Group"
-      statut: "à_étudier"
+      logiciel: "workday"
+      adresse: "https://theapexgroup.wd3.myworkdayjobs.com/apexgroupcareers"
+      statut: "actif"
       priorite: 2
     - nom: "IQ-EQ"
-      statut: "à_étudier"
+      statut: "refusé"
       priorite: 3
+      motif: >
+        Page carrières SmartRecruiters (IQEQ) refusée à notre User-Agent (403). Vérifié
+        le 2026-09-29.
     - nom: "Citco"
       logiciel: "oracle"
       adresse: "https://fa-euxc-saasfaprod1.fa.ocs.oraclecloud.com/hcmUI/CandidateExperience/en/sites/CX_1"
       statut: "actif"
       priorite: 3
     - nom: "CSC"
-      statut: "à_étudier"
+      statut: "écarté"
       priorite: 3
+      motif: >
+        Boucle de redirections sur la page des offres. Vérifié le 2026-09-29.
     - nom: "Vistra"
-      logiciel: "successfactors"
-      adresse: "https://rmkcdn.successfactors.com/2bda47e0/27a4607c-56ef-454a-bffb-7.css"
-      statut: "à_venir"
+      logiciel: "plan_du_site"
+      adresse: "https://careers.vistra.com"
+      statut: "actif"
+      plan: "https://careers.vistra.com/sitemap.xml"
+      offres: "/job/[^/]+/\\d+/?$"
+      identifiant: "/(\\d+)/?$"
+      bloc: "class=\"joblayouttoken"
+      fin_bloc: "id=\"footerRowTop\""
       priorite: 3
     - nom: "JTC"
-      statut: "à_étudier"
+      statut: "refusé"
       priorite: 3
+      motif: >
+        jtcgroup.com : Défi anti-robot de Cloudflare (« Just a moment… »), robots.txt
+        compris : protection jamais contournée. Vérifié le 2026-09-29.
 
   # --- données, notation et logiciels financiers ---
   donnees_notation_logiciels:
@@ -1075,14 +1302,24 @@ employeurs:
       statut: "actif"
       priorite: 2
     - nom: "Scope Ratings"
-      logiciel: "successfactors"
-      adresse: "https://rmkcdn.successfactors.com/21719ecf/33ad816d-86c3-45ea-928f-f.css"
-      statut: "à_venir"
+      logiciel: "plan_du_site"
+      adresse: "https://careers.scopegroup.com"
+      statut: "actif"
+      plan: "https://careers.scopegroup.com/sitemap.xml"
+      offres: "/job/[^/]+/\\d+/?$"
+      identifiant: "/(\\d+)/?$"
+      bloc: "class=\"joblayouttoken"
+      fin_bloc: "id=\"footerRowTop\""
       priorite: 3
     - nom: "MSCI"
-      logiciel: "icims"
-      adresse: "https://ukcareers-msci.icims.com"
-      statut: "à_venir"
+      logiciel: "plan_du_site"
+      adresse: "https://careers-msci.icims.com"
+      statut: "actif"
+      plan: ["https://ukcareers-msci.icims.com/sitemap.xml", "https://uscareers-msci.icims.com/sitemap.xml", "https://globalcareers-msci.icims.com/sitemap.xml", "https://rsacareers-msci.icims.com/sitemap.xml"]
+      offres: "/jobs/\\d+/[^/]+/job"
+      identifiant: "/jobs/(\\d+)/"
+      titre_adresse: "/jobs/\\d+/([^/]+)/job"
+      fiche_suffixe: "?in_iframe=1"
       priorite: 2
     - nom: "Bloomberg"
       logiciel: "plan_du_site"
@@ -1100,28 +1337,44 @@ employeurs:
       statut: "actif"
       priorite: 1
     - nom: "ION Group"
-      statut: "à_étudier"
-      adresse: "https://iongroup.com/careers/"
+      statut: "refusé"
       priorite: 2
+      motif: >
+        iongroup.com : Défi anti-robot de Cloudflare (« Just a moment… »), robots.txt
+        compris : protection jamais contournée. Vérifié le 2026-09-29.
     - nom: "Finastra"
-      statut: "à_étudier"
+      logiciel: "workday"
+      adresse: "https://finastra.wd3.myworkdayjobs.com/FINC"
+      statut: "actif"
       priorite: 3
     - nom: "SimCorp"
-      statut: "à_étudier"
+      logiciel: "workday"
+      adresse: "https://simcorp.wd3.myworkdayjobs.com/SimCorp_Jobs"
+      statut: "actif"
       priorite: 3
     - nom: "Kyriba"
-      statut: "à_étudier"
+      logiciel: "workday"
+      adresse: "https://kyriba.wd5.myworkdayjobs.com/Kyriba-Careers"
+      statut: "actif"
       priorite: 3
     - nom: "Linedata"
-      statut: "à_étudier"
-      adresse: "https://www.linedata.com/careers-Linedata"
+      logiciel: "page_liste"
+      adresse: "https://www.linedata.com/job-offers"
+      statut: "actif"
+      liste: "https://www.linedata.com/job-offers?page={page}"
+      premiere_page: 0
+      offres: "/job-offer/[^/?#]+$"
+      bloc: "block-field-blocknodejob-offertitle"
+      fin_bloc: "Apply|<footer"
+      lieu_motif: "field-location\">(.*?)</div>"
       priorite: 3
 
   # --- conseil en risques et finance ---
   conseil_risques_et_finance:
     - nom: "Deloitte"
-      statut: "à_étudier"
-      adresse: "https://www.deloitte.com/global/en/careers/job-search.html"
+      logiciel: "workday"
+      adresse: "https://fina.wd103.myworkdayjobs.com/DeloitteRecrute"
+      statut: "actif"
       priorite: 2
     - nom: "PwC"
       statut: "refusé"
@@ -1142,8 +1395,11 @@ employeurs:
       identifiant: "/(\\d+)/?$"
       priorite: 2
     - nom: "Forvis Mazars"
-      statut: "à_étudier"
-      adresse: "https://careers.forvismazars.com/"
+      logiciel: "plan_du_site"
+      adresse: "https://recrutement-fr.forvismazars.com"
+      statut: "actif"
+      plan: "https://recrutement-fr.forvismazars.com/server-sitemap.xml"
+      offres: "/offre-emploi/[^/]+$"
       priorite: 2
     - nom: "Sia Partners"
       logiciel: "smartrecruiters"
@@ -1165,8 +1421,14 @@ employeurs:
       offres: "/fed-(?:finance|business)/offres/[^/]+/?$"
       priorite: 1
     - nom: "Michael Page"
-      statut: "à_étudier"
-      adresse: "https://www.michaelpage.fr/job-search"
+      logiciel: "page_liste"
+      adresse: "https://www.michaelpage.fr/jobs"
+      statut: "actif"
+      liste: ["https://www.michaelpage.fr/jobs/banque-services-financiers?page={page}", "https://www.michaelpage.fr/jobs/finance-comptabilit%C3%A9?page={page}"]
+      premiere_page: 0
+      offres: "/job-detail/[^/]+/ref/"
+      identifiant: "/ref/([a-z0-9-]+)"
+      pays_par_defaut: "France"
       priorite: 1
     - nom: "Robert Walters"
       statut: "refusé"
@@ -1175,23 +1437,40 @@ employeurs:
         Pages refusées à notre User-Agent (403) : protection contre les robots, jamais
         contournée. Vérifié le 2026-09-29.
     - nom: "Hays"
-      statut: "à_étudier"
-      adresse: "https://fr.hays-careers.com/"
+      logiciel: "plan_du_site"
+      adresse: "https://www.hays.fr"
+      statut: "actif"
+      plan: "https://www.hays.fr/sitemap/fr-FR/job-sitemap.xml"
+      offres: "/description-emploi/[^/]+_\\d+"
+      identifiant: "_(\\d+)/?$"
+      titre_adresse: "/description-emploi/(.+?)_\\d+"
       priorite: 2
     - nom: "Morgan Philips"
-      statut: "à_étudier"
-      adresse: "https://jobs2.morganphilips.com/en-gb/jobs/selectportal/"
+      statut: "refusé"
       priorite: 3
+      motif: >
+        robots.txt de jobs2.morganphilips.com déclare « Content-Signal: ai-input=no » :
+        ses offres ne doivent pas être données à une IA, ce que fait la lettre de
+        DreamJob. Vérifié le 2026-09-29.
     - nom: "Robert Half"
-      logiciel: "phenom"
-      adresse: "https://careers.roberthalf.com/global/en/home"
-      statut: "à_venir"
+      statut: "écarté"
       priorite: 3
+      motif: >
+        careers.roberthalf.com ne publie que ses postes internes ; les offres de ses
+        clients en France n'ont pas de plan du site. Vérifié le 2026-09-29.
     - nom: "Expectra"
-      statut: "à_étudier"
-      adresse: "https://www.randstadprofessional.fr/offre/307-s13-r001875_01r/ingenieur_informatique_industrielle_dev_c_cdi_client_final_f_h_/"
+      statut: "écarté"
       priorite: 2
+      motif: >
+        randstadprofessional.fr : liste dessinée par script, et robots.txt interdit la
+        plupart des paramètres de recherche. Vérifié le 2026-09-29.
     - nom: "Page Personnel"
-      statut: "à_étudier"
-      adresse: "https://www.michaelpage.fr/job-search"
+      logiciel: "page_liste"
+      adresse: "https://www.pagepersonnel.fr/jobs"
+      statut: "actif"
+      liste: "https://www.pagepersonnel.fr/jobs/banque-services-financiers?page={page}"
+      premiere_page: 0
+      offres: "/job-detail/[^/]+/ref/"
+      identifiant: "/ref/([a-z0-9-]+)"
+      pays_par_defaut: "France"
       priorite: 3

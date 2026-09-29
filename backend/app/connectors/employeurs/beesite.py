@@ -13,6 +13,7 @@ from __future__ import annotations
 import json
 import re
 from datetime import datetime
+from html import unescape
 from urllib.parse import quote
 
 from .commun import Annonce, contrat, texte
@@ -70,7 +71,8 @@ class Beesite(Logiciel):
                 if pays and pays_ and pays_ not in pays:
                     continue
                 ident = str(o.get("PositionID") or "")
-                titre = str(o.get("PositionTitle") or "").strip()
+                # « Monitoring &amp; Management » : l'intitulé arrive échappé en HTML.
+                titre = " ".join(unescape(str(o.get("PositionTitle") or "")).split())
                 uri = str(o.get("PositionURI") or "")
                 annonces.append(Annonce(
                     ident=ident, titre=titre,

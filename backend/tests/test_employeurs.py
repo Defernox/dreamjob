@@ -1048,6 +1048,326 @@ def test_page_liste_intitule_du_lien_et_contrat_de_la_fiche(registre):
     assert len([u for _, u, _ in site.appels if ".p-" in u]) == 3, "deux pages pleines, une vide qui arrête"
 
 
+def test_page_liste_plusieurs_rubriques_numerotees_depuis_zero(registre):
+    """Michael Page : une liste par rubrique ; Drupal compte ses pages depuis zéro."""
+    class Rubriques:
+        def __init__(self):
+            self.appels = []
+
+        def get(self, url, **kw):
+            self.appels.append(url)
+            if url.endswith("/robots.txt"):
+                return Reponse(200, None, "User-agent: *\nDisallow: /search/\n", {})
+            if "/jobs/" in url:
+                rubrique, page = url.split("/jobs/")[1].split("?page=")
+                if int(page) > 0:
+                    # Au-delà de la dernière page, Michael Page répond 404.
+                    return Reponse(404, None, "<html>introuvable</html>", {})
+                return Reponse(200, None, f'<a href="/job-detail/risk-analyst/ref/jn-{rubrique}">Risk Analyst</a>', {})
+            return Reponse(200, None, "<h1>Risk Analyst</h1><p>Risques.</p><footer>", {})
+
+    site = Rubriques()
+    c = EmployeursConnector(Sites(page=site), registre({
+        "nom": "Page", "logiciel": "page_liste", "adresse": "https://page.fr/jobs",
+        "liste": ["https://page.fr/jobs/banque?page={page}", "https://page.fr/jobs/finance?page={page}"],
+        "premiere_page": 0, "offres": "/job-detail/", "identifiant": r"/ref/([a-z0-9-]+)",
+        "bloc": "<h1", "fin_bloc": "<footer", "pays_par_defaut": "France"}))
+    assert sorted(o.source_id for o in c.fetch(_requete())) == ["page:jn-banque", "page:jn-finance"]
+    assert "https://page.fr/jobs/banque?page=0" in site.appels, "la première page est la page 0"
+
+
+# --- Une interface JSON décrite dans employeurs.yaml (Optiver, Groupama, La Française) -----------
+
+
+class SiteJson:
+    """Une interface paginée qui plafonne ses pages, et des fiches sans balisage."""
+
+    def __init__(self, offres, par_page=2):
+        self.offres, self.par_page, self.appels = offres, par_page, []
+
+    def get(self, url, **kw):
+        self.appels.append(url)
+        if url.endswith("/robots.txt"):
+            return Reponse(200, None, "User-agent: *\nDisallow: /admin\n", {})
+        if "/api/jobs" in url:
+            debut = int(url.split("from=")[1].split("&")[0])
+            return Reponse(200, {"items": self.offres[debut:debut + self.par_page]}, "", {})
+        return Reponse(200, None, ('<meta property="og:title" content="Carrières - Trading" />'
+                                   '<h1 data-epi="title">Titre</h1><p>Analyse des risques de marché.</p><footer>'), {})
+
+
+def test_api_json_pagine_ouvre_la_fiche_et_garde_l_intitule(registre):
+    site = SiteJson([{"title": "Risk Analyst", "href": "/jobs/1", "location": "Paris"},
+                     {"title": "Software Engineer", "href": "/jobs/2", "location": "Paris"},
+                     {"title": "Market Risk Analyst", "href": "/jobs/3", "location": "London"}])
+    c = EmployeursConnector(Sites(trading=site), registre({
+        "nom": "Trading", "logiciel": "api_json", "adresse": "https://trading.com/jobs",
+        "api": "https://trading.com/api/jobs?from={debut}&size={taille}", "taille": 2, "liste": "items",
+        "champs": {"ident": "href", "titre": "title", "url": "https://trading.com{href}", "lieu": "location"},
+        "bloc": 'data-epi="title"', "fin_bloc": "<footer"}))
+    trouvees = {o.titre: o for o in c.fetch(_requete())}
+    assert set(trouvees) == {"Risk Analyst", "Market Risk Analyst"}, "l'intitulé de l'interface, pas le titre de la page"
+    assert (trouvees["Risk Analyst"].pays, trouvees["Market Risk Analyst"].pays) == ("France", "Royaume-Uni")
+    assert trouvees["Risk Analyst"].url == "https://trading.com/jobs/1"
+    assert "Analyse des risques de marché." in trouvees["Risk Analyst"].description_brute
+    assert len([u for u in site.appels if "/api/jobs" in u]) == 3, "deux pages, puis une vide qui arrête"
+
+
+def test_api_json_en_post_avec_cle_et_fiche_json(registre):
+    """Digital Recruiters (La Française) : la liste en POST, la fiche par la même interface."""
+    publiee = (maintenant() - timedelta(days=2)).strftime("%Y-%m-%d %H:%M:%S")
+
+    class SiteDR:
+        def __init__(self):
+            self.appels = []
+
+        def get(self, url, **kw):
+            self.appels.append(("GET", url, kw.get("entetes")))
+            if url.endswith("/robots.txt"):
+                return Reponse(404, None, "", {})
+            return Reponse(200, {"description": "<p>Due diligence.</p>", "profile": "<p>Master 2.</p>",
+                                 "republished_at": publiee, "contract": "CDI",
+                                 "address": {"city": "Luxembourg", "country": "Luxembourg"}}, "", {})
+
+        def post(self, url, corps_json=None, entetes=None, **kw):
+            self.appels.append(("POST", url, (corps_json, entetes)))
+            premiere = "page=1&" in url
+            return Reponse(200, {"count": 1, "items": [
+                {"id": "45-1", "job_ad_id": 45, "title": "Analyste risques", "url": "45-analyste"}] if premiere else []},
+                "", {})
+
+    site = SiteDR()
+    c = EmployeursConnector(Sites(api=site), registre({
+        "nom": "Gestion", "logiciel": "api_json", "adresse": "https://careers.gestion.com",
+        "api": "https://api.dr.com/job-ads?page={page}&limit={taille}", "methode": "POST",
+        "entetes": {"x-api-key": "cle-publique"}, "corps": {"limite": "{taille}", "tri": "date"},
+        "taille": 20, "liste": "items", "total": "count",
+        "champs": {"ident": "id", "titre": "title", "url": "https://careers.gestion.com/fr/annonces/{url}"},
+        "fiche_api": "https://api.dr.com/job-ads/{job_ad_id}",
+        "fiche_champs": {"description": ["description", "profile"], "date": "republished_at",
+                         "lieu": "address.city", "pays": "address.country", "contrat": "contract"}}))
+    [o] = c.fetch(_requete(pays=("Luxembourg",)))
+    [(_, _, (corps, entetes))] = [a for a in site.appels if a[0] == "POST"]
+    assert corps == {"limite": 20, "tri": "date"}, "« {taille} » seul devient un nombre"
+    assert entetes["x-api-key"] == "cle-publique"
+    assert (o.pays, o.lieu, o.type_contrat) == ("Luxembourg", "Luxembourg", "CDI")
+    assert "Due diligence." in o.description_brute and "Master 2." in o.description_brute
+    assert o.url == "https://careers.gestion.com/fr/annonces/45-analyste"
+    assert o.date_publication.date() == (maintenant() - timedelta(days=2)).date()
+    assert ("GET", "https://api.dr.com/job-ads/45", {"Accept": "application/json", "x-api-key": "cle-publique"}) \
+        in site.appels
+
+
+# --- Toutes les offres sur une page (Ofi Invest) -----------------------------------------------
+
+
+def test_page_unique_une_offre_echue_ou_ancienne_n_est_pas_proposee(registre):
+    jour = lambda n: (maintenant() + timedelta(days=n)).strftime("%d/%m/%Y")  # noqa: E731
+
+    def bloc(code, titre, parution, limite):
+        return (f'<div class="tab-pane" id="{code}"><h2>{titre}</h2><i class="map"></i>Paris'
+                f'<i class="contrat"></i>CDI<p>Date de parution de l\'annonce : {parution}</p>'
+                f'<p>Date limite de dépôt de candidature : {limite}</p>'
+                f'<a href="/carriere/{code}-poste/98/apply">Postuler</a><p>Suivi des risques.</p></div>')
+
+    class Page:
+        appels = []
+
+        def get(self, url, **kw):
+            self.appels.append(url)
+            if url.endswith("/robots.txt"):
+                return Reponse(200, None, "User-agent: *\nDisallow: /app-assets/\n", {})
+            return Reponse(200, None, bloc("aaaa", "Analyste risques (F/H)", jour(-3), jour(30))
+                           + bloc("bbbb", "Analyste risques senior", jour(-3), jour(-1))
+                           + bloc("cccc", "Analyste risques crédit", jour(-90), jour(30)), {})
+
+    site = Page()
+    c = EmployeursConnector(Sites(ofi=site), registre({
+        "nom": "Ofi", "logiciel": "page_unique", "adresse": "https://ofi.com/carriere",
+        "liste": "https://ofi.com/carriere/nos-offres", "decoupe": 'class="tab-pane',
+        "lieu_motif": r'class="map"></i>([^<]+)', "contrat_motif": r'class="contrat"></i>([^<]+)',
+        "offres": "/carriere/[a-z]{4}-", "identifiant": "/carriere/([a-z]{4})-"}))
+    [o] = c.fetch(_requete())
+    assert (o.source_id, o.lieu, o.pays, o.type_contrat) == ("ofi:aaaa", "Paris", "France", "CDI")
+    assert o.url == "https://ofi.com/carriere/aaaa-poste/98/apply"
+    assert "Suivi des risques." in o.description_brute
+    assert site.appels == ["https://ofi.com/robots.txt", "https://ofi.com/carriere/nos-offres"], \
+        "la page porte tout : aucune fiche à ouvrir"
+
+
+# --- Cornerstone (AFD, Spuerkeess, Crystal) ------------------------------------------------------
+
+
+class SiteCornerstone:
+    def __init__(self, requisitions):
+        self.requisitions, self.appels, self.delais = requisitions, [], []
+
+    def ralentir(self, hote, secondes):
+        self.delais.append((hote, secondes))
+
+    def get(self, url, **kw):
+        self.appels.append(("GET", url, None))
+        if url.endswith("/robots.txt"):
+            # Cornerstone n'écrit que ceci, hors de tout groupe.
+            return Reponse(200, None, "Crawl-delay: 10\n", {}) if "//afd." in url else Reponse(404, None, "", {})
+        return Reponse(200, None, ('<script>csod.context={"cultureID":13,"cultureName":"fr-FR",'
+                                   '"endpoints":{"cloud":"https://uk.api.csod.com/","api":"/"},'
+                                   '"token":"eyJjeton.public"};</script>'), {})
+
+    def post(self, url, corps_json=None, entetes=None, **kw):
+        self.appels.append(("POST", url, entetes))
+        lot = self.requisitions if corps_json["pageNumber"] == 1 else []
+        return Reponse(200, {"data": {"totalCount": len(self.requisitions), "requisitions": lot}}, "", {})
+
+
+def test_cornerstone_reprend_le_jeton_de_la_page_et_son_delai(registre):
+    jour = lambda n: (maintenant() + timedelta(days=n)).strftime("%d/%m/%Y")  # noqa: E731
+    req = lambda i, titre, publiee, expire: {  # noqa: E731
+        "requisitionId": i, "displayJobTitle": titre, "postingEffectiveDate": publiee,
+        "postingExpirationDate": expire, "locations": [{"city": "Paris", "country": "FR"}],
+        "externalDescription": "<p>" + "Suivi des risques de contrepartie. " * 20 + "</p>"}
+    site = SiteCornerstone([req(1, "Analyste risques", jour(-1), jour(30)),
+                            req(2, "Analyste risques crédit", jour(-5), jour(-1)),
+                            req(3, "Analyste risques marché", jour(-60), jour(30))])
+    c = EmployeursConnector(Sites(afd=site, uk=site), registre({
+        "nom": "AFD", "logiciel": "cornerstone", "adresse": "https://afd.csod.com/ux/ats/careersite/5/home?c=afd"}))
+    [o] = c.fetch(_requete())
+    assert (o.source_id, o.pays, o.lieu) == ("afd:1", "France", "Paris")
+    assert o.url == "https://afd.csod.com/ux/ats/careersite/5/home/requisition/1?c=afd"
+    assert "contrepartie" in o.description_brute, "la liste donne la description : aucune fiche ouverte"
+    [(_, url, entetes)] = [a for a in site.appels if a[0] == "POST"]
+    assert url == "https://uk.api.csod.com/rec-job-search/external/jobs"
+    assert entetes["Authorization"] == "Bearer eyJjeton.public"
+    assert ("afd.csod.com", 10.0) in site.delais, "Crawl-delay hors groupe respecté"
+
+
+# --- Plans du site : CDATA, intitulé dans l'adresse, fiche dans un cadre (Hays, MSCI) -----------
+
+
+def test_plan_en_cdata_intitule_de_l_adresse_et_fiche_dans_un_cadre(registre):
+    aujourd_hui = maintenant().date().isoformat()
+
+    class SiteIcims:
+        appels = []
+
+        def get(self, url, **kw):
+            self.appels.append(url)
+            if url.endswith("/robots.txt"):
+                return Reponse(200, None, "User-agent: *\nDisallow: /jobs/login\n", {})
+            if url.endswith("sitemap.xml"):
+                return Reponse(200, None, (
+                    '<urlset><url>\n  <loc>\n   <![CDATA[ https://msci.icims.com/jobs/12/market-risk-analyst/job ]]>\n'
+                    f'  </loc>\n  <lastmod><![CDATA[ {aujourd_hui} ]]></lastmod></url></urlset>'), {})
+            if "in_iframe=1" in url:
+                # Un saut de ligne brut dans une chaîne JSON : invalide au sens
+                # strict (Michael Page), lisible quand même.
+                return Reponse(200, None, (
+                    '<script type="application/ld+json">{"@type": "JobPosting", "title": "Market Risk Analyst",'
+                    '"description": "<p>Ligne un\nLigne deux</p>", "datePosted": "' + aujourd_hui + '",'
+                    '"jobLocation": {"address": {"addressCountry": "GB"}}}</script>'), {})
+            return Reponse(200, None, "<html>coquille vide</html>", {})
+
+    site = SiteIcims()
+    c = EmployeursConnector(Sites(msci=site), registre({
+        "nom": "MSCI", "logiciel": "plan_du_site", "adresse": "https://msci.icims.com",
+        "plan": ["https://msci.icims.com/sitemap.xml"], "offres": r"/jobs/\d+/[^/]+/job",
+        "identifiant": r"/jobs/(\d+)/", "titre_adresse": r"/jobs/\d+/([^/]+)/job", "fiche_suffixe": "?in_iframe=1"}))
+    [o] = c.fetch(_requete())
+    assert (o.source_id, o.titre, o.pays) == ("msci:12", "Market Risk Analyst", "Royaume-Uni")
+    assert o.url == "https://msci.icims.com/jobs/12/market-risk-analyst/job", "l'adresse publique, pas le cadre"
+    assert "Ligne un" in o.description_brute
+    assert "https://msci.icims.com/jobs/12/market-risk-analyst/job" not in site.appels, "seul le cadre est lu"
+
+
+def test_la_description_du_bloc_quand_le_jobposting_n_a_que_les_missions(registre):
+    """Oddo BHF : le JobPosting ne porte que les missions ; le profil est dans la page."""
+    class SiteOddo:
+        def get(self, url, **kw):
+            if url.endswith("/robots.txt"):
+                return Reponse(404, None, "", {})
+            if "offres.html" in url:
+                return Reponse(200, None, '<a href="/oddo/fr/offres/risk-analyst-77.html">Risk Analyst</a>'
+                               if "page=1" in url else "", {})
+            jp = {"@type": "JobPosting", "title": "Risk Analyst", "description": "Aufgaben. " * 40,
+                  "jobLocation": [{"address": {"addressCountry": "Allemagne"}}]}
+            return Reponse(200, None, (
+                f'<script type="application/ld+json">{json.dumps(jp)}</script><div class="row job">'
+                '<h2>Anforderungsprofil</h2><p>Fünf Jahre Erfahrung.</p><ul><li><div class="label">Lieu du poste :'
+                '</div><span>Francfort</span></li><li><div>Type de contrat :</div><span>CDI</span></li></ul></main>'), {})
+
+    c = EmployeursConnector(Sites(oddo=SiteOddo()), registre({
+        "nom": "Oddo", "logiciel": "page_liste", "adresse": "https://oddo.fr/",
+        "liste": "https://oddo.fr/oddo/fr/offres.html?page={page}", "offres": r"/offres/[^/]+-\d+\.html",
+        "identifiant": r"-(\d+)\.html", "bloc": 'class="row job"', "fin_bloc": "</main>", "description_bloc": True}))
+    [o] = c.fetch(_requete(pays=("Allemagne",)))
+    assert "Fünf Jahre Erfahrung." in o.description_brute, "le profil recherché, que le JobPosting taisait"
+    assert (o.pays, o.lieu, o.type_contrat) == ("Allemagne", "Francfort", "CDI")
+
+
+# --- La veille, les dates limites, le nom affiché --------------------------------------------------
+
+
+def test_la_veille_ne_lit_que_les_premieres_pages_d_une_liste_sans_date(registre):
+    class Longue:
+        def __init__(self):
+            self.pages = []
+
+        def get(self, url, **kw):
+            if url.endswith("/robots.txt"):
+                return Reponse(404, None, "", {})
+            if "page=" in url:
+                n = int(url.split("page=")[1])
+                self.pages.append(n)
+                return Reponse(200, None, f'<a href="/offre-{n}.html">Analyste risques {n}</a>', {})
+            return Reponse(200, None, "<h1>Analyste risques</h1><footer>", {})
+
+    longue, lourde = Longue(), Longue()
+    r = registre(
+        {"nom": "Longue", "logiciel": "page_liste", "adresse": "https://longue.fr",
+         "liste": "https://longue.fr/offres?page={page}", "offres": r"/offre-\d+", "bloc": "<h1", "fin_bloc": "<footer"},
+        {"nom": "Lourde", "logiciel": "page_liste", "adresse": "https://lourde.fr", "veille": False,
+         "liste": "https://lourde.fr/offres?page={page}", "offres": r"/offre-\d+"})
+    c = EmployeursConnector(Sites(longue=longue, lourde=lourde), r)
+    c.fetch(_requete(publiee_depuis_jours=1))
+    assert longue.pages == [1, 2, 3], "pages_veille"
+    assert lourde.pages == [], "un employeur marqué « veille: false » attend le scan du matin"
+    EmployeursConnector(Sites(longue=longue, lourde=lourde), r).fetch(_requete())
+    assert len(lourde.pages) == r.employeurs.pages_max, "le scan, lui, lit tout"
+
+
+def test_une_offre_dont_la_date_limite_est_passee_n_est_pas_proposee():
+    from app.connectors.employeurs import echue
+    from app.connectors.employeurs.commun import Annonce
+    a = Annonce(ident="1", titre="Analyste", url="u")
+    assert not echue(a)
+    a.brut["date_limite"] = (maintenant() - timedelta(days=1)).isoformat()
+    assert echue(a)
+    a.brut["date_limite"] = maintenant().date().isoformat() + "T23:59:59Z"
+    assert not echue(a), "le dernier jour compte encore"
+
+
+def test_deux_sites_un_seul_nom_affiche(registre):
+    site = SiteWorkday([_offre("Risk Analyst")])
+    c = EmployeursConnector(Sites(banque=site), registre(
+        _employeur("banque", nom="Banque (campus)", entreprise="Banque")))
+    [o] = c.fetch(_requete())
+    assert (o.entreprise, o.source_id.split(":")[0]) == ("Banque", "banque-campus")
+
+
+def test_beesite_l_intitule_arrive_echappe(registre):
+    site = SiteBeesite([{"id": "9", "titre": "Credit Risk Analyst &amp; Controller", "pays": "Frankreich", "jours": 0}])
+    c = EmployeursConnector(Sites(apidb=site), registre(
+        {"nom": "DB", "logiciel": "beesite", "adresse": "https://apidb.beesite.de"}))
+    [o] = c.fetch(_requete(pays=("France",)))
+    assert o.titre == "Credit Risk Analyst & Controller"
+
+
+def test_un_crawl_delay_hors_de_tout_groupe_vaut_pour_tous():
+    from app.connectors.employeurs.robots import Regles
+    assert Regles("Crawl-delay: 10\n", "DreamJob").delai == 10.0
+    assert Regles("User-agent: autre\nCrawl-delay: 30\n\nUser-agent: *\nDisallow:\n", "DreamJob").delai is None
+
+
 # --- La politesse, les pannes ---------------------------------------------------------------
 
 

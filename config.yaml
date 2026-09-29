@@ -241,6 +241,9 @@ employeurs:
   fenetre_jours: 31
   # Pages de liste lues au plus par employeur et par scan (20 offres chacune).
   pages_max: 15
+  # En veille, toutes les demi-heures : les premieres pages suffisent, les
+  # nouveautes sont en tete. Une liste sans date n'est pas relue en entier.
+  pages_veille: 3
   # Employeurs interroges en meme temps, chacun sur son propre site.
   en_parallele: 8
 

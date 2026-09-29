@@ -248,6 +248,10 @@ class Employeurs(BaseModel):
     # Pages de liste lues au plus par employeur et par scan (20 offres chacune
     # chez Workday) : borne le coût d'un scan, même sur un site immense.
     pages_max: int = Field(default=15, ge=1, le=100)
+    # En veille (les offres de un à trois jours), une liste qui ne donne pas de
+    # date serait relue en entier toutes les demi-heures : vingt-quatre pages
+    # chez Oddo BHF. Les nouveautés sont en tête ; les premières pages suffisent.
+    pages_veille: int = Field(default=3, ge=1, le=100)
     # Employeurs interrogés en même temps — chacun sur son propre site, et
     # toujours une requête par seconde au plus sur un même site.
     en_parallele: int = Field(default=8, ge=1, le=32)

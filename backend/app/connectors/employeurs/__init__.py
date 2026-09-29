@@ -37,14 +37,17 @@ from .commun import cles as cles_de
 from .logiciel import Logiciel
 from .registre import ACTIF, Employeur, charger
 from .robots import Robots
+from .api_json import ApiJson
 from .beesite import Beesite
 from .bpce import Bpce
 from .brassring import BrassRing
+from .cornerstone import Cornerstone
 from .eightfold import Eightfold
 from .greenhouse import Greenhouse
 from .jibe import Jibe
 from .oracle import Oracle
 from .page_liste import PageListe
+from .page_unique import PageUnique
 from .plan_du_site import PlanDuSite
 from .recruitee import Lever, Pinpoint, Recruitee
 from .smartrecruiters import SmartRecruiters
@@ -71,10 +74,26 @@ LOGICIELS: dict[str, type[Logiciel]] = {
     SmartRecruiters.cle: SmartRecruiters,
     Lever.cle: Lever,
     PageListe.cle: PageListe,
+    PageUnique.cle: PageUnique,
+    ApiJson.cle: ApiJson,
+    Cornerstone.cle: Cornerstone,
 }
 
 # Les contrats qu'une annonce d'employeur ne prend pas la peine d'écrire.
 CONTRATS_ORDINAIRES = {"CDI", "CDD"}
+# Une fenêtre aussi courte, c'est la veille qui passe.
+JOURS_DE_VEILLE = 3
+
+
+def echue(annonce: Annonce) -> bool:
+    """La date limite de candidature est passée (`validThrough` du JobPosting,
+    ou écrite dans l'offre). Ofi Invest laissait en ligne un poste clos depuis
+    avril : un site qui oublie de retirer une offre ne doit pas la proposer."""
+    limite = str(annonce.brut.get("date_limite") or "")[:10]
+    try:
+        return datetime.fromisoformat(limite).date() < maintenant().date()
+    except ValueError:
+        return False
 
 
 class EmployeursConnector(BaseConnector):
@@ -108,6 +127,13 @@ class EmployeursConnector(BaseConnector):
         if cle in self._listes:
             return self._listes[cle]
         pages = self.reglages.employeurs.pages_max
+        if maintenant() - depuis <= timedelta(days=JOURS_DE_VEILLE):
+            # La veille repasse toutes les demi-heures : une liste sans date
+            # n'y est lue que sur ses premières pages, et un employeur marqué
+            # `veille: false` (un plan du site d'un mégaoctet pour une offre)
+            # attend le scan du matin.
+            pages = min(pages, self.reglages.employeurs.pages_veille)
+            employeurs = [e for e in employeurs if e.options.get("veille", True) is not False]
 
         def un(e: Employeur) -> list[tuple[Employeur, Annonce]]:
             try:
@@ -181,7 +207,8 @@ class EmployeursConnector(BaseConnector):
 
         retenues = [(e, a) for e, a in annonces
                     if (a_ouvrir_d_abord(e, a) or correspond(titre(e, a), recherches))
-                    and not pas_une_offre(titre(e, a)) and self._acceptee(a, query)]
+                    and not pas_une_offre(titre(e, a)) and self._acceptee(a, query)
+                    and not echue(a)]
         nouvelles = [(e, a) for e, a in retenues if self._id(e, a) not in connus]
         # Au-delà du plafond, les plus récentes d'abord : ce sont elles qu'on
         # risque de voir partir.
@@ -201,7 +228,7 @@ class EmployeursConnector(BaseConnector):
                 # cacher un poste en Inde. Et le vrai intitulé, quand l'adresse
                 # n'en disait rien.
                 if self._acceptee(fiche, query) and correspond(fiche.titre, recherches) \
-                        and not pas_une_offre(fiche.titre):
+                        and not pas_une_offre(fiche.titre) and not echue(fiche):
                     brutes.append(self._brute(e, fiche, ident))
         return brutes
 
@@ -223,7 +250,9 @@ class EmployeursConnector(BaseConnector):
             source_id=ident,
             titre=annonce.titre,
             url=annonce.url,
-            entreprise=annonce.entreprise or employeur.nom,
+            # `entreprise` : un employeur suivi sous deux entrées (Blackstone et
+            # son site des étudiants) garde un seul nom à l'écran.
+            entreprise=annonce.entreprise or employeur.options.get("entreprise") or employeur.nom,
             lieu=annonce.lieu,
             pays=annonce.pays,
             type_contrat=annonce.contrat,

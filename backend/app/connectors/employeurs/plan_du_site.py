@@ -36,7 +36,9 @@ from .logiciel import Logiciel
 from .pays import depuis_iso, depuis_lieu, depuis_nom
 from .registre import Employeur
 
-_LOC = re.compile(r"<(sitemap|url)>\s*<loc>\s*([^<\s]+)\s*</loc>(?:\s*<lastmod>\s*([^<\s]+)\s*</lastmod>)?", re.S)
+# Hays enrobe adresses et dates de CDATA, noyées d'espaces.
+_CDATA = r"\s*(?:<!\[CDATA\[\s*)?([^<\s\]]+)\s*(?:\]\]>)?\s*"
+_LOC = re.compile(rf"<(sitemap|url)>\s*<loc>{_CDATA}</loc>(?:\s*<lastmod>{_CDATA}</lastmod>)?", re.S)
 # Guillemets simples, doubles ou absents : chaque site écrit la balise à sa façon.
 _JSONLD = re.compile(r"""<script[^>]*type=["']?application/ld\+json["']?[^>]*>(.*?)</script>""", re.S | re.I)
 _CONTRATS = {"INTERN": "Stage", "INTERNSHIP": "Stage", "TEMPORARY": "CDD", "CONTRACTOR": "Freelance",
@@ -70,7 +72,9 @@ def jobposting(html: str) -> dict | None:
     compris)."""
     for bloc in _JSONLD.findall(html):
         try:
-            donnees = json.loads(bloc.strip())
+            # Michael Page laisse des sauts de ligne bruts dans ses chaînes :
+            # invalide au sens strict, parfaitement lisible.
+            donnees = json.loads(bloc.strip(), strict=False)
         except json.JSONDecodeError:
             continue
         pile = donnees if isinstance(donnees, list) else [donnees]
@@ -125,7 +129,8 @@ _OG_TITRE = re.compile(r'<meta[^>]*property="og:title"[^>]*content="([^"]*)"', r
 # hors de la capture, sans quoi elle dépassait la longueur permise.
 _ETIQUETTE = r">\s*(?:{})\s*:?\s*</[^>]+>(?:\s*<[^>]+>)*\s*([^<]{{2,80}}?)\s*<"
 _LIEU_ETIQUETTE = re.compile(_ETIQUETTE.format(
-    "Location|Locations|Lieu|City|Office|Standort|Arbeitsort|Ort|Sede|Città"), re.I)
+    "Location|Locations|Lieu du poste|Localisation du poste|Lieu|City|Office|Standort|Arbeitsort|Ort|Sede"
+    "|Città"), re.I)
 _PAYS_ETIQUETTE = re.compile(_ETIQUETTE.format("Country|Land|Pays|Paese"), re.I)
 _CONTRAT_ETIQUETTE = re.compile(_ETIQUETTE.format(
     "Type de contrat|Contrat|Contract type|Contract|Employment type|Vertragsart|Tipo di contratto"), re.I)
@@ -153,11 +158,20 @@ def bloc(html: str, options: dict) -> dict | None:
     h1 = re.search(r"<h1[^>]*>(.*?)</h1>", html, re.S)
     if options.get("titre_h1") and h1:
         titre = " ".join(re.sub(r"<[^>]+>", " ", h1.group(1)).split())
+    # Marex : deux <h1>, le premier est le titre de la rubrique. Le motif
+    # (`titre_motif`, un groupe) désigne le bon.
+    if (motif := options.get("titre_motif")) and (m := re.search(motif, html, re.S)):
+        titre = " ".join(re.sub(r"<[^>]+>", " ", m.group(1)).split())
     type_ = _CONTRAT_ETIQUETTE.search(corps)
+    # Linedata range la ville dans un bloc sans étiquette : `lieu_motif` (un
+    # groupe) la désigne.
+    if motif_lieu := options.get("lieu_motif"):
+        lieu = re.search(motif_lieu, html, re.S)
+    ville = " ".join(re.sub(r"<[^>]+>", " ", unescape(lieu.group(1))).split()) if lieu else ""
     return {"title": unescape(titre),
             "employmentType": unescape(type_.group(1)).strip() if type_ else "",
             "description": corps[:fin_balise] if fin_balise > 0 else corps,
-            "jobLocation": {"address": {"addressLocality": unescape(lieu.group(1)).strip() if lieu else "",
+            "jobLocation": {"address": {"addressLocality": ville,
                                         "addressCountry": unescape(pays.group(1)).strip() if pays else ""}}}
 
 
@@ -200,7 +214,8 @@ class PlanDuSite(Logiciel):
 
     def _plans(self, employeur: Employeur) -> list[str]:
         if plan := employeur.options.get("plan"):
-            return [plan]
+            # MSCI publie un plan par portail régional : une liste est acceptée.
+            return list(plan) if isinstance(plan, list) else [plan]
         racine = re.match(r"https?://[^/]+", employeur.adresse).group(0)
         regles = self.robots._pour(racine)
         declares = list(regles.site_maps() or []) if regles is not None else []
@@ -221,7 +236,9 @@ class PlanDuSite(Logiciel):
             xml = self.http.get(plan, utiliser_cache=False).texte
             sous_plans = []
             for balise, loc, modifie in _LOC.findall(xml):
-                loc = urljoin(plan, loc)
+                # Une adresse de plan est du XML : « &amp; » y vaut « & » (Scope,
+                # Commerzbank). Gardée échappée, elle menait à une page d'erreur.
+                loc = urljoin(plan, unescape(loc))
                 if balise == "sitemap":
                     sous_plans.append(loc)
                     continue
@@ -236,8 +253,13 @@ class PlanDuSite(Logiciel):
                 # Une offre en deux langues : on garde la langue voulue.
                 if deja and not (langue and loc.rstrip("/").endswith(f"-{langue}")):
                     continue
-                vues[ident] = Annonce(ident=ident, titre=titre_de_l_adresse(loc, identifiant),
-                                      url=loc, publiee_le=publiee)
+                # iCIMS finit ses adresses par « /job » : `titre_adresse` (un
+                # groupe) dit où est l'intitulé.
+                m_titre = re.search(employeur.options["titre_adresse"], loc) \
+                    if employeur.options.get("titre_adresse") else None
+                titre = (" ".join(re.sub(r"[-_+]+", " ", unquote(m_titre.group(1))).split()) if m_titre
+                         else titre_de_l_adresse(loc, identifiant))
+                vues[ident] = Annonce(ident=ident, titre=titre, url=loc, publiee_le=publiee)
             # Un index de plans : ceux qui parlent d'offres d'abord ; s'il n'y
             # en a aucun (Allianz : sitemap1.xml… sitemap4.xml), tous.
             parlants = [s for s in sous_plans
@@ -247,36 +269,53 @@ class PlanDuSite(Logiciel):
         return annonces
 
     def completer(self, employeur: Employeur, annonce: Annonce) -> Annonce:
-        self.verifier(annonce.url)
-        html = self.http.get(annonce.url).texte
+        # iCIMS sert l'offre dans un cadre : la page publique reste l'adresse
+        # de l'offre, le cadre (`fiche_suffixe`) est ce qu'on lit.
+        fiche = annonce.url + str(employeur.options.get("fiche_suffixe") or "")
+        self.verifier(fiche)
+        html = self.http.get(fiche).texte
         e = jobposting(html) or microdonnees(html)
         secours = bloc(html, employeur.options)
         if e is None:
             e = secours
-        elif secours and len(texte(str(e.get("description") or ""))) < 200:
+        elif secours and (employeur.options.get("description_bloc")
+                          or len(texte(str(e.get("description") or ""))) < 200):
             # UniCredit balise l'intitulé et la date, pas la description : elle
             # vient alors du bloc déclaré, le reste du balisage est gardé.
+            # Oddo BHF n'y met que les missions, sans le profil recherché :
+            # `description_bloc` préfère le bloc, qui a tout.
             e = {**e, "description": secours["description"],
-                 "jobLocation": e.get("jobLocation") or secours["jobLocation"]}
+                 "title": e.get("title") or secours["title"],
+                 "jobLocation": e.get("jobLocation") or secours["jobLocation"],
+                 "employmentType": e.get("employmentType") or secours["employmentType"]}
+            if employeur.options.get("titre_motif"):
+                e["title"] = secours["title"] or e.get("title")
         if e is None:
             return annonce
         # « Retail &amp; Online » : le titre JSON-LD est parfois échappé en HTML.
         annonce.titre = " ".join(unescape(str(e.get("title") or annonce.titre)).split())
         annonce.description = texte(str(e.get("description") or ""))
-        annonce.lieu, annonce.pays = _lieu(e)
+        # Ce que la liste savait déjà (le lieu d'une interface JSON) n'est pas
+        # effacé par une fiche qui ne le dit pas.
+        lieu, pays = _lieu(e)
+        if not lieu and secours:
+            lieu = _lieu(secours)[0]
+        annonce.lieu, annonce.pays = lieu or annonce.lieu, pays or annonce.pays
         # « Warsaw Financial Securities Specialist » : sans lieu balisé, la ville
         # de l'intitulé ou de l'adresse dit le pays.
         # Avature chez Macquarie : la première ligne de l'annonce est le lieu
         # (« Sydney ») ; on ne la lit que courte, pour ne pas prendre une phrase.
-        premiere = annonce.description.split("\n", 1)[0] if annonce.description else ""
+        # Marex la met en deuxième ligne, sous l'intitulé (« London, GB, »).
+        courtes = [ligne for ligne in annonce.description.split("\n")[:4] if 0 < len(ligne) <= 40]
         annonce.pays = (annonce.pays or depuis_lieu(annonce.titre)
                         or depuis_lieu(titre_de_l_adresse(annonce.url, None))
-                        or (depuis_lieu(premiere) if len(premiere) <= 40 else ""))
+                        or next((p for p in map(depuis_lieu, courtes) if p), ""))
         annonce.publiee_le = _date(e.get("datePosted")) or annonce.publiee_le
         types = e.get("employmentType") or []
         types = [types] if isinstance(types, str) else types
         annonce.contrat = (contrat(annonce.titre, *types)
-                           or next((_CONTRATS[t.upper()] for t in types if t.upper() in _CONTRATS), ""))
+                           or next((_CONTRATS[t.upper()] for t in types if t.upper() in _CONTRATS), "")
+                           or annonce.contrat)
         annonce.brut["date_limite"] = e.get("validThrough")
         annonce.complete = True
         return annonce

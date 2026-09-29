@@ -70,10 +70,12 @@ class Regles:
                 if groupes and valeur:
                     regles.append((cle == "allow", valeur))
                 # « Disallow: » vide n'interdit rien : aucune règle à ajouter.
-            elif cle == "crawl-delay" and groupes:
+            elif cle == "crawl-delay":
+                # Cornerstone (afd.csod.com) écrit « Crawl-delay: 10 » seul, hors
+                # de tout groupe : la demande vaut pour tous, on la respecte.
                 dans_les_agents = False
                 try:
-                    delais[len(groupes) - 1] = float(valeur)
+                    delais[len(groupes) - 1 if groupes else -1] = float(valeur)
                 except ValueError:
                     pass
             elif cle == "content-signal":
@@ -89,7 +91,7 @@ class Regles:
         communes = [i for i, (a, _) in enumerate(groupes) if "*" in a]
         choisis = propres or communes
         self.regles = [regle for i in choisis for regle in groupes[i][1]]
-        delais_choisis = [delais[i] for i in choisis if i in delais]
+        delais_choisis = [delais[i] for i in [-1, *choisis] if i in delais]
         self.delai = max(delais_choisis) if delais_choisis else None
         for i in [-1, *choisis]:
             self.signaux.update(signaux.get(i, {}))

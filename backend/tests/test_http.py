@@ -150,3 +150,28 @@ def test_les_erreurs_ne_sont_jamais_mises_en_cache(tmp_path, monkeypatch):
     with pytest.raises(ErreurHttp):
         c.get("https://exemple.test/a")
     assert list(tmp_path.glob("*.json")) == []
+
+
+# --- Revalidation (veille) -------------------------------------------------
+
+
+def test_une_page_inchangee_n_est_pas_retelechargee():
+    """Le plan du site d'un employeur, relu toutes les demi-heures : redemandé
+    sous condition, un site qui répond 304 ne renvoie rien — Hays économise
+    ainsi 2 Mo par passe. La réponse gardée est rendue telle quelle."""
+    url = "https://plan.test/sitemap.xml"
+    c = _client([httpx.Response(200, text="<urlset>1</urlset>",
+                                headers={"ETag": '"v1"', "Last-Modified": "Sun, 27 Sep 2026 23:40:06 GMT"}),
+                 httpx.Response(304)])
+    assert c.get(url, utiliser_cache=False, revalider=True).texte == "<urlset>1</urlset>"
+    assert c.get(url, utiliser_cache=False, revalider=True).texte == "<urlset>1</urlset>"
+    seconde = c.appels[1].headers
+    assert seconde["if-none-match"] == '"v1"' and seconde["if-modified-since"].startswith("Sun, 27 Sep")
+
+
+def test_sans_validateur_la_page_est_simplement_relue():
+    url = "https://plan.test/sans-etag.xml"
+    c = _client([httpx.Response(200, text="a"), httpx.Response(200, text="b")])
+    assert c.get(url, utiliser_cache=False, revalider=True).texte == "a"
+    assert c.get(url, utiliser_cache=False, revalider=True).texte == "b"
+    assert "if-none-match" not in c.appels[1].headers

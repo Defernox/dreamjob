@@ -315,7 +315,7 @@ employeurs:
       logiciel: "plan_du_site"
       adresse: "https://careers.unicredit.eu"
       statut: "actif"
-      plan: "https://careers.unicredit.eu/jobsuche/sitemap_index.xml"
+      plan: "https://careers.unicredit.eu/en_GB/jobsuche/sitemap.xml"
       offres: "/JobDetail/[^/]+/\\d+"
       identifiant: "/(\\d+)/?$"
       bloc: "class=\"article__content__view__field__value"

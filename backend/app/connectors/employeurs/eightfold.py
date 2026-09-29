@@ -54,7 +54,7 @@ class Eightfold(Logiciel):
         for page in range(pages):
             url = url_de(page * PAR_PAGE)
             self.verifier(url)
-            r = self.http.get(url, entetes={"Accept": "application/json"}, utiliser_cache=False)
+            r = self.http.get(url, entetes={"Accept": "application/json"}, utiliser_cache=False, revalider=True)
             corps = r.json_ if isinstance(r.json_, dict) else {}
             positions = (corps.get("data") or corps).get(cle_liste) or []
             trop_vieille = False

@@ -57,7 +57,7 @@ class PageListe(PlanDuSite):
                 self.verifier(url)
                 # Michael Page répond 404 au-delà de sa dernière page : c'est la
                 # fin de la liste, pas une panne — sauf dès la première.
-                rep = self.http.get(url, utiliser_cache=False, statuts_acceptes=(200, 404))
+                rep = self.http.get(url, utiliser_cache=False, revalider=True, statuts_acceptes=(200, 404))
                 if rep.statut == 404:
                     if page == premiere:
                         raise ErreurHttp(404, f"HTTP 404 sur {url}")

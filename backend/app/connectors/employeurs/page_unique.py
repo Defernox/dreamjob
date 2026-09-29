@@ -66,7 +66,7 @@ class PageUnique(PlanDuSite):
         o = employeur.options
         url = str(o["liste"])
         self.verifier(url)
-        html = self.http.get(url, utiliser_cache=False).texte or ""
+        html = self.http.get(url, utiliser_cache=False, revalider=True).texte or ""
         morceaux = html.split(str(o["decoupe"]))[1:]
         vues: dict[str, Annonce] = {}
         for morceau in morceaux:

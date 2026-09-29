@@ -52,7 +52,7 @@ class Beesite(Logiciel):
             }, separators=(",", ":"))
             url = f"{api}/search/?data={quote(donnees)}"
             self.verifier(url)
-            r = self.http.get(url, entetes={"Accept": "application/json"}, utiliser_cache=False)
+            r = self.http.get(url, entetes={"Accept": "application/json"}, utiliser_cache=False, revalider=True)
             resultat = (r.json_ or {}).get("SearchResult") or {} if isinstance(r.json_, dict) else {}
             items = resultat.get("SearchResultItems") or []
             # Le tri par date n'est pas garanti : chez Commerzbank, la première

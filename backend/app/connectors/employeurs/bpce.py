@@ -41,7 +41,7 @@ class Bpce(Logiciel):
     def _routes(self) -> dict[str, str]:
         url = f"{BASE}/app/wp-json/bpce/v1/routes/?lang=fr"
         self.verifier(url)
-        r = self.http.get(url, utiliser_cache=False)
+        r = self.http.get(url, utiliser_cache=False, revalider=True)
         routes = r.json_ if isinstance(r.json_, list) else []
         return {x["path"].rstrip("/"): x["_uid"] for x in routes
                 if isinstance(x, dict) and str(x.get("_uid", "")).startswith("job-") and x.get("path")}
@@ -51,7 +51,7 @@ class Bpce(Logiciel):
         publiees: dict[str, datetime | None] = {}
         for plan in PLANS:
             self.verifier(f"{BASE}{plan}")
-            r = self.http.get(f"{BASE}{plan}", utiliser_cache=False, statuts_acceptes=(200, 404))
+            r = self.http.get(f"{BASE}{plan}", utiliser_cache=False, revalider=True, statuts_acceptes=(200, 404))
             if r.statut != 200:
                 break
             for loc, modifie in _URL.findall(r.texte or ""):

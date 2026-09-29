@@ -233,7 +233,8 @@ class PlanDuSite(Logiciel):
             plan = a_lire.pop(0)
             lus += 1
             self.verifier(plan)
-            xml = self.http.get(plan, utiliser_cache=False).texte
+            # Relu à chaque passe de veille : redemandé sous condition (304 = inchangé).
+            xml = self.http.get(plan, utiliser_cache=False, revalider=True).texte
             sous_plans = []
             for balise, loc, modifie in _LOC.findall(xml):
                 # Une adresse de plan est du XML : « &amp; » y vaut « & » (Scope,

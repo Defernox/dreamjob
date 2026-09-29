@@ -42,7 +42,7 @@ class Jibe(Logiciel):
             url = (f"{base}/api/jobs?page={page}&limit={PAR_PAGE}&sortBy=posted_date"
                    f"&descending=true&internal=false")
             self.verifier(url)
-            r = self.http.get(url, entetes={"Accept": "application/json"}, utiliser_cache=False)
+            r = self.http.get(url, entetes={"Accept": "application/json"}, utiliser_cache=False, revalider=True)
             offres = [o.get("data") or {} for o in (r.json_ or {}).get("jobs") or []] if isinstance(r.json_, dict) else []
             trop_vieille = False
             for o in offres:

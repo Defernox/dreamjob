@@ -744,6 +744,31 @@ serait relue en entier — vingt-quatre pages chez Oddo BHF : en veille, seules
 les `pages_veille` premières le sont (les nouveautés sont en tête), et un
 employeur marqué `veille: false` attend le scan du matin.
 
+**Et elle se mesure.** Une passe de veille sur les 158 employeurs coûtait
+582 requêtes et **72 Mo** — toutes les demi-heures, sur un serveur loué, cela
+fait 2 Go par jour pour trouver trois offres. Trois causes, trois parades :
+
+- **une fiche écartée était rouverte à chaque passe.** Un intitulé lu sur la
+  fiche qui ne répond à rien (Marex, Commerzbank), un poste « 3 Locations »
+  qui s'avère en Inde : l'offre n'entre pas en base, donc n'est jamais
+  « connue », et la veille crée un connecteur neuf par passe. Marex coûtait à
+  lui seul quarante requêtes et 12 Mo par demi-heure. Les fiches ouvertes sont
+  désormais retenues pour le processus (`MEMOIRE`, vingt-quatre heures) ;
+- **les plans et les listes étaient retéléchargés entiers.** Ils sont
+  redemandés sous condition (`revalider=True` : « If-None-Match »,
+  « If-Modified-Since ») ; un site qui répond 304 ne renvoie rien, et la
+  réponse gardée sert telle quelle (`http._VALIDATIONS`). Hays, 2 Mo par passe,
+  le fait ;
+- **UniCredit publie un plan par langue**, les mêmes offres dans chacune : son
+  index était lu en entier. Seul le plan anglais l'est.
+
+Après correction, deux passes consécutives : la première 602 requêtes et
+60 Mo, la seconde **500 requêtes et 36 Mo** — la moitié, soit environ 1 Go par
+journée de veille (trente passes de 7 h à 22 h). Restent lourds, parce qu'ils
+ne savent pas répondre « inchangé » : Susquehanna, UBS, Greenhouse, HSBC, Michael Page (1,5 à 2 Mo
+chacun). Les deux mémoires sont vidées avant chaque test (`conftest.py`) :
+sinon l'ordre des tests déciderait du résultat.
+
 **L'intitulé connu fait foi.** Le scan transmet au connecteur l'intitulé des
 offres déjà en base, pas seulement leur identifiant : une offre connue est
 comparée aux recherches sur son vrai titre. Pour un site dont l'adresse ne dit

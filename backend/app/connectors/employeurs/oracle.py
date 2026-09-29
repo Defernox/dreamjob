@@ -59,7 +59,7 @@ class Oracle(Logiciel):
                    f"&finder=findReqs;siteNumber={site},limit={PAR_PAGE},offset={page * PAR_PAGE},"
                    f"sortBy=POSTING_DATES_DESC")
             self.verifier(url)
-            r = self.http.get(url, entetes={"Accept": "application/json"}, utiliser_cache=False)
+            r = self.http.get(url, entetes={"Accept": "application/json"}, utiliser_cache=False, revalider=True)
             items = (r.json_ or {}).get("items") or [] if isinstance(r.json_, dict) else []
             offres = (items[0].get("requisitionList") or []) if items else []
             trop_vieille = False

@@ -42,7 +42,7 @@ class Recruitee(Logiciel):
                  pages_max: int) -> list[Annonce]:
         url = f"{_racine(employeur)}/api/offers/"
         self.verifier(url)
-        r = self.http.get(url, entetes={"Accept": "application/json"}, utiliser_cache=False)
+        r = self.http.get(url, entetes={"Accept": "application/json"}, utiliser_cache=False, revalider=True)
         annonces = []
         for o in (r.json_ or {}).get("offers") or [] if isinstance(r.json_, dict) else []:
             try:
@@ -77,7 +77,7 @@ class Lever(Logiciel):
         societe = employeur.options.get("societe") or employeur.adresse.rstrip("/").rsplit("/", 1)[-1]
         url = f"https://api.lever.co/v0/postings/{societe}?mode=json"
         self.verifier(url)
-        r = self.http.get(url, entetes={"Accept": "application/json"}, utiliser_cache=False)
+        r = self.http.get(url, entetes={"Accept": "application/json"}, utiliser_cache=False, revalider=True)
         annonces = []
         for o in r.json_ if isinstance(r.json_, list) else []:
             try:
@@ -109,7 +109,7 @@ class Pinpoint(Logiciel):
                  pages_max: int) -> list[Annonce]:
         url = f"{_racine(employeur)}/postings.json"
         self.verifier(url)
-        r = self.http.get(url, entetes={"Accept": "application/json"}, utiliser_cache=False)
+        r = self.http.get(url, entetes={"Accept": "application/json"}, utiliser_cache=False, revalider=True)
         annonces = []
         for o in (r.json_ or {}).get("data") or [] if isinstance(r.json_, dict) else []:
             lieu = o.get("location") or {}

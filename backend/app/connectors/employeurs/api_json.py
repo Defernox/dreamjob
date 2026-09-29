@@ -121,7 +121,7 @@ class ApiJson(PlanDuSite):
                 r = self.http.post(url, corps_json=_remplir(o.get("corps") or {}, marques),
                                    entetes=entetes, utiliser_cache=False)
             else:
-                r = self.http.get(url, entetes=entetes, utiliser_cache=False)
+                r = self.http.get(url, entetes=entetes, utiliser_cache=False, revalider=True)
             donnees = r.json_ if r.json_ is not None else json.loads(r.texte or "null")
             lot = chemin(donnees, o.get("liste") or "")
             if not isinstance(lot, list) or not lot:

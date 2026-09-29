@@ -219,6 +219,8 @@ def test_une_fiche_n_est_ouverte_que_pour_une_offre_nouvelle_qui_repond(registre
     connue = [o for o in c.fetch(_requete()) if o.titre == "Credit Risk Analyst"][0].source_id
 
     site.appels.clear()
+    from app.connectors.employeurs import MEMOIRE
+    MEMOIRE.oublier()                     # le lendemain : les fiches de la veille sont périmées
     c2 = EmployeursConnector(Sites(banque=site), registre(_employeur("banque", nom="Banque")))
     c2.connus = {connue}
     trouvees = {o.titre: o for o in c2.fetch(_requete())}
@@ -681,6 +683,25 @@ def test_une_adresse_muette_fait_ouvrir_la_fiche_avant_de_juger(registre):
     assert set(trouvees) == {"banque:1", "banque:3"}, "l'architecte IT ne répond pas"
     fiches = [u for _, u, _ in site.appels if "jobad" in u and "plan" not in u]
     assert sorted(u.rsplit("=", 1)[-1] for u in fiches) == ["1", "2"]
+
+
+def test_une_fiche_ouverte_ne_l_est_plus_a_la_passe_suivante(registre):
+    """Marex, Commerzbank : l'offre est ouverte pour lire son intitulé ; écartée,
+    elle n'entre pas en base — et était rouverte à chaque passe de veille, toutes
+    les demi-heures. Lue une fois, elle reste connue pour la journée."""
+    site = SiteSansTitre()
+    r = registre({"nom": "Banque", "logiciel": "plan_du_site", "adresse": "https://banque.de",
+                  "plan": "https://banque.de/plan.xml", "offres": "ac=jobad", "identifiant": r"id=(\d+)",
+                  "titre_en_fiche": True})
+    fiches = lambda: [u for _, u, _ in site.appels if "jobad" in u and "plan" not in u]  # noqa: E731
+    premiere = {o.source_id for o in EmployeursConnector(Sites(banque=site), r).fetch(_requete())}
+    assert len(fiches()) == 3
+    site.appels.clear()
+    # La passe suivante : rien n'est entré en base (le scan ne stocke rien ici),
+    # et pourtant aucune fiche n'est rouverte ; le résultat est le même.
+    seconde = {o.source_id for o in EmployeursConnector(Sites(banque=site), r).fetch(_requete())}
+    assert fiches() == [], "aucune fiche rouverte"
+    assert seconde == premiere == {"banque:1", "banque:3"}
 
 
 def test_le_titre_connu_l_emporte_sur_celui_de_l_adresse(registre):

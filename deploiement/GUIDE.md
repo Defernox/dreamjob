@@ -198,7 +198,9 @@ Adzuna et les sites des employeurs, jamais DogFinance.
 **Ce qui s'entretient tout seul.** Chaque nuit à 3 h 30, une copie de la base
 (les sept dernières sont gardées, dans `data/sauvegardes`) et le ménage du cache
 des pages lues. Les journaux de Docker sont plafonnés à 50 Mo. Une recherche
-interrompue par un redéploiement est close au redémarrage. Les sauvegardes
+interrompue par un redéploiement est close au redémarrage. La veille lit
+environ 1 Go par jour sur les sites des employeurs, très loin du trafic inclus
+dans l'offre Hetzner : ce n'est pas un poste de dépense. Les sauvegardes
 restant sur le même disque, les **Backups Hetzner** (étape 3) protègent contre
 la perte du serveur lui-même.
 

@@ -79,7 +79,7 @@ class Talentsoft(Logiciel):
         base = self._base(employeur)
         url = f"{base}/handlers/offerRss.ashx?LCID={self._lcid(employeur)}"
         self.verifier(url)
-        r = self.http.get(url, utiliser_cache=False)
+        r = self.http.get(url, utiliser_cache=False, revalider=True)
         try:
             racine = ET.fromstring(r.texte.encode("utf-8") if isinstance(r.texte, str) else r.texte)
         except ET.ParseError:
@@ -114,7 +114,7 @@ class Talentsoft(Logiciel):
         for page in range(1, pages_max + 1):
             url = f"{base}{employeur.options.get('liste', LISTE)}?page={page}&LCID={self._lcid(employeur)}"
             self.verifier(url)
-            html = self.http.get(url, utiliser_cache=False).texte
+            html = self.http.get(url, utiliser_cache=False, revalider=True).texte
             nouvelles = 0
             for chemin, ident, titre, details in _CARTE.findall(html):
                 if ident in vus:

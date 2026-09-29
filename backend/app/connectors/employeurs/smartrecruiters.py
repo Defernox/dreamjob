@@ -36,7 +36,7 @@ class SmartRecruiters(PlanDuSite):
     def annonces(self, employeur: Employeur, pays: list[str], depuis: datetime,
                  pages_max: int) -> list[Annonce]:
         self.verifier(employeur.adresse)
-        html = self.http.get(employeur.adresse, utiliser_cache=False).texte
+        html = self.http.get(employeur.adresse, utiliser_cache=False, revalider=True).texte
         annonces, vus = [], set()
         for bloc_ in _OFFRE.findall(html or ""):
             lien, titre = _LIEN.search(bloc_), _TITRE.search(bloc_)

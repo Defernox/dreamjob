@@ -25,6 +25,8 @@ les robots est refusé, jamais contourné — le motif est consigné dans
 from __future__ import annotations
 
 import logging
+import threading
+import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta
 
@@ -85,6 +87,45 @@ CONTRATS_ORDINAIRES = {"CDI", "CDD"}
 JOURS_DE_VEILLE = 3
 
 
+class _Memoire:
+    """Les fiches ouvertes, pour toute la durée du processus.
+
+    La veille crée un connecteur par passe, toutes les demi-heures. Sans
+    mémoire, une fiche ouverte puis écartée — un intitulé lu sur la fiche qui ne
+    répond à aucune recherche (Marex, Commerzbank), un poste de la liste
+    « 3 Locations » qui s'avère en Inde — n'entre jamais en base, et était
+    rouverte à chaque passe : Marex coûtait à lui seul quarante requêtes et
+    douze mégaoctets par demi-heure. Une fiche retenue sert vingt-quatre
+    heures ; au-delà, elle est rouverte (l'offre a pu changer)."""
+
+    DUREE = 24 * 3600
+    TAILLE_MAX = 5000
+
+    def __init__(self) -> None:
+        self._fiches: dict[str, tuple[float, Annonce]] = {}
+        self._verrou = threading.Lock()
+
+    def lire(self, ident: str) -> Annonce | None:
+        with self._verrou:
+            entree = self._fiches.get(ident)
+        if entree is None or time.monotonic() - entree[0] > self.DUREE:
+            return None
+        return entree[1]
+
+    def retenir(self, ident: str, fiche: Annonce) -> None:
+        with self._verrou:
+            if ident not in self._fiches and len(self._fiches) >= self.TAILLE_MAX:
+                self._fiches.pop(next(iter(self._fiches)))       # la plus ancienne
+            self._fiches[ident] = (time.monotonic(), fiche)
+
+    def oublier(self) -> None:
+        with self._verrou:
+            self._fiches.clear()
+
+
+MEMOIRE = _Memoire()
+
+
 def echue(annonce: Annonce) -> bool:
     """La date limite de candidature est passée (`validThrough` du JobPosting,
     ou écrite dans l'offre). Ofi Invest laissait en ligne un poste clos depuis
@@ -110,7 +151,6 @@ class EmployeursConnector(BaseConnector):
         self._robots = Robots(http, reglages.user_agent)
         self._logiciels = {cle: classe(http, self._robots) for cle, classe in LOGICIELS.items()}
         self._listes: dict[tuple, list[tuple[Employeur, Annonce]]] = {}
-        self._fiches: dict[str, Annonce] = {}
 
     # ---------------------------------------------------------------- employeurs
 
@@ -157,7 +197,7 @@ class EmployeursConnector(BaseConnector):
         return toutes
 
     def _completer(self, paires: list[tuple[Employeur, Annonce]]) -> None:
-        a_ouvrir = [(e, a) for e, a in paires if self._id(e, a) not in self._fiches]
+        a_ouvrir = [(e, a) for e, a in paires if MEMOIRE.lire(self._id(e, a)) is None]
 
         def un(paire: tuple[Employeur, Annonce]) -> None:
             e, a = paire
@@ -166,7 +206,7 @@ class EmployeursConnector(BaseConnector):
                 # Arkéa ne donne que la ville (« Brest ») : pour un employeur dont
                 # tous les postes sont dans un pays, employeurs.yaml le dit.
                 fiche.pays = fiche.pays or e.options.get("pays_par_defaut", "")
-                self._fiches[self._id(e, a)] = fiche
+                MEMOIRE.retenir(self._id(e, a), fiche)
             except (Interdit, ErreurHttp) as ex:
                 log.warning("%s : fiche illisible (%s) — %s", e.nom, a.url, ex)
             except Exception:  # noqa: BLE001 — une fiche au format imprévu n'arrête pas les autres
@@ -198,12 +238,15 @@ class EmployeursConnector(BaseConnector):
         connus = self.connus if isinstance(self.connus, dict) else dict.fromkeys(self.connus, "")
 
         def titre(e: Employeur, a: Annonce) -> str:
-            return connus.get(self._id(e, a)) or a.titre
+            deja_lue = MEMOIRE.lire(self._id(e, a))
+            return connus.get(self._id(e, a)) or (deja_lue.titre if deja_lue else "") or a.titre
 
         def a_ouvrir_d_abord(e: Employeur, a: Annonce) -> bool:
             # Commerzbank : l'adresse (`index.php?ac=jobad&id=60114`) ne dit rien
-            # de l'offre. Une offre nouvelle y est ouverte avant d'être jugée.
-            return bool(e.options.get("titre_en_fiche")) and self._id(e, a) not in connus
+            # de l'offre. Une offre nouvelle y est ouverte avant d'être jugée —
+            # une seule fois : lue, son intitulé est connu (`MEMOIRE`).
+            ident = self._id(e, a)
+            return bool(e.options.get("titre_en_fiche")) and ident not in connus and MEMOIRE.lire(ident) is None
 
         retenues = [(e, a) for e, a in annonces
                     if (a_ouvrir_d_abord(e, a) or correspond(titre(e, a), recherches))
@@ -222,8 +265,7 @@ class EmployeursConnector(BaseConnector):
             ident = self._id(e, a)
             if ident in connus:
                 brutes.append(self._brute(e, a, ident))
-            elif ident in gardees and ident in self._fiches:
-                fiche = self._fiches[ident]
+            elif ident in gardees and (fiche := MEMOIRE.lire(ident)) is not None:
                 # La fiche dit le vrai pays : « 3 Locations » en liste peut
                 # cacher un poste en Inde. Et le vrai intitulé, quand l'adresse
                 # n'en disait rien.

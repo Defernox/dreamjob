@@ -64,6 +64,14 @@ class ErreurHttp(RuntimeError):
         self.statut = statut
 
 
+# Les validateurs (ETag, Last-Modified) des pages revalidables, avec leur corps :
+# pour toute la durée du processus, pas d'un seul scan — la veille crée un
+# client par passe, toutes les demi-heures.
+_VALIDATIONS: dict[str, tuple[dict[str, str], Reponse]] = {}
+_VERROU_VALIDATIONS = threading.Lock()
+VALIDATIONS_MAX = 300
+
+
 class ClientHttp:
     def __init__(
         self,
@@ -180,7 +188,12 @@ class ClientHttp:
         entetes: dict | None = None,
         utiliser_cache: bool = True,
         statuts_acceptes: tuple[int, ...] = (200,),
+        revalider: bool = False,
     ) -> Reponse:
+        """`revalider` : une page relue souvent et qui change peu (le plan du
+        site d'un employeur, toutes les demi-heures en veille) est redemandée
+        sous condition — « If-None-Match », « If-Modified-Since ». Un site qui
+        répond 304 ne renvoie rien : Hays économise ainsi 2 Mo par passe."""
         chemin = (self._chemin_cache(methode, url, params, donnees, corps_json)
                   if utiliser_cache else None)
         en_cache = self._lire_cache(chemin)
@@ -189,6 +202,12 @@ class ClientHttp:
             return en_cache
 
         tous_entetes = {"User-Agent": self.user_agent, **(entetes or {})}
+        connue = None
+        if revalider and methode == "GET" and not params:
+            with _VERROU_VALIDATIONS:
+                connue = _VALIDATIONS.get(url)
+            if connue is not None:
+                tous_entetes.update(connue[0])
         derniere_erreur: Exception | None = None
 
         for tentative in range(1, self.tentatives_max + 1):
@@ -211,6 +230,10 @@ class ClientHttp:
                 self._patienter(tentative, brute.headers.get("Retry-After"))
                 continue
 
+            if brute.status_code == 304 and connue is not None:
+                log.debug("inchangé (304) : %s", url)
+                return connue[1]
+
             reponse = Reponse(
                 statut=brute.status_code,
                 json_=self._json_ou_none(brute),
@@ -220,6 +243,8 @@ class ClientHttp:
             if reponse.statut not in statuts_acceptes:
                 raise ErreurHttp(reponse.statut, f"HTTP {reponse.statut} sur {url} : {brute.text[:200]}")
             self._ecrire_cache(chemin, reponse)
+            if revalider and methode == "GET" and not params and reponse.statut == 200:
+                self._retenir(url, reponse)
             return reponse
 
         raise ErreurHttp(0, f"{url} injoignable après {self.tentatives_max} tentatives "
@@ -232,6 +257,23 @@ class ClientHttp:
         return self.requete("POST", url, **kw)
 
     # ------------------------------------------------------------------ outils
+
+    @staticmethod
+    def _retenir(url: str, reponse: Reponse) -> None:
+        """Garde les validateurs d'une réponse revalidable, s'il y en a."""
+        entetes = {k.lower(): v for k, v in reponse.entetes.items()}
+        validateurs = {}
+        if etag := entetes.get("etag"):
+            validateurs["If-None-Match"] = etag
+        if modifie := entetes.get("last-modified"):
+            validateurs["If-Modified-Since"] = modifie
+        with _VERROU_VALIDATIONS:
+            if not validateurs:
+                _VALIDATIONS.pop(url, None)
+                return
+            if url not in _VALIDATIONS and len(_VALIDATIONS) >= VALIDATIONS_MAX:
+                _VALIDATIONS.pop(next(iter(_VALIDATIONS)))      # la plus ancienne
+            _VALIDATIONS[url] = (validateurs, reponse)
 
     def _patienter(self, tentative: int, retry_after: str | None = None) -> None:
         """Backoff exponentiel avec bruit, sauf si le serveur a dit quand revenir."""

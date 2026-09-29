@@ -50,7 +50,7 @@ class BrassRing(Logiciel):
                  pages_max: int) -> list[Annonce]:
         url = f"{employeur.adresse}&PageType=searchResults"
         self.verifier(url)
-        donnees = _precharge(self.http.get(url, utiliser_cache=False).texte)
+        donnees = _precharge(self.http.get(url, utiliser_cache=False, revalider=True).texte)
         offres = ((donnees.get("searchResultsResponse") or {}).get("Jobs") or {}).get("Job") or []
         champ_pays = employeur.options.get("champ_pays", "formtext23")
         annonces = []

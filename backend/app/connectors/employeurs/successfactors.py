@@ -84,7 +84,7 @@ class SuccessFactors(Logiciel):
         chemin = employeur.options.get("recherche", "/search/")
         url = f"{base}{chemin}?q=&sortColumn=referencedate&sortDirection=desc&startrow={debut}"
         self.verifier(url)
-        return self.http.get(url, utiliser_cache=False).texte
+        return self.http.get(url, utiliser_cache=False, revalider=True).texte
 
     def _lire(self, html: str, base: str) -> list[Annonce]:
         positions: dict[str, tuple[int, str, str]] = {}

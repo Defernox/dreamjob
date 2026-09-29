@@ -52,7 +52,7 @@ class Greenhouse(Logiciel):
                  pages_max: int) -> list[Annonce]:
         url = f"{API}/{jeton(employeur)}/jobs"
         self.verifier(url)
-        r = self.http.get(url, utiliser_cache=False)
+        r = self.http.get(url, utiliser_cache=False, revalider=True)
         annonces = []
         for o in (r.json_ or {}).get("jobs") or [] if isinstance(r.json_, dict) else []:
             publiee = _date(o.get("first_published") or o.get("updated_at"))

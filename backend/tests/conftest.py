@@ -63,6 +63,25 @@ def sans_reseau(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def memoires_vierges():
+    """Deux mémoires vivent aussi longtemps que le processus, parce que la
+    veille crée un connecteur et un client par passe : les fiches d'employeurs
+    ouvertes et les validateurs des pages relues sous condition. Chaque test
+    part de mémoires vides — sinon l'ordre des tests déciderait du résultat."""
+    from app.connectors import http
+    from app.connectors.employeurs import MEMOIRE
+
+    def vider():
+        MEMOIRE.oublier()
+        with http._VERROU_VALIDATIONS:
+            http._VALIDATIONS.clear()
+
+    vider()
+    yield
+    vider()
+
+
+@pytest.fixture(autouse=True)
 def sans_identifiants_reels(monkeypatch):
     """Coupe la suite de tests du monde extérieur.
 

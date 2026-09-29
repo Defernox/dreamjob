@@ -121,6 +121,12 @@ ssh root@dreamjob tailscale serve --bg 8000
 DreamJob est maintenant sur **https://dreamjob.TON-RESEAU.ts.net**, depuis ton PC
 comme depuis ton téléphone — et nulle part ailleurs.
 
+**Désactive l'expiration de la clé du serveur.** Tailscale demande par défaut de
+reconnecter chaque machine tous les 180 jours : au bout de six mois, le serveur
+continuerait de tourner — veille, résumé du matin — mais tu ne pourrais plus
+ouvrir l'interface. Dans la console Tailscale (login.tailscale.com), onglet
+*Machines*, menu « … » de **dreamjob** → *Disable key expiry*.
+
 ## 9. Les notifications sur ton téléphone (toi) — 2 min
 
 Installe l'application **ntfy** et abonne-toi au sujet choisi à l'étape 5.

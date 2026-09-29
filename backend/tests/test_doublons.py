@@ -29,9 +29,9 @@ from app.services.doublons import cle_entreprise, cle_intitule, meme_poste
 from .conftest import ajouter_offre
 
 
-def _o(titre, entreprise="Société Générale", lieu="Paris", pays="France", contrat="", **kw):
+def _o(titre, entreprise="Société Générale", lieu="Paris", pays="France", contrat="", source="site", **kw):
     return SimpleNamespace(id=kw.get("id"), hash=kw.get("hash", ""), url=kw.get("url", ""), titre=titre,
-                           entreprise=entreprise, lieu=lieu, pays=pays, type_contrat=contrat)
+                           entreprise=entreprise, lieu=lieu, pays=pays, type_contrat=contrat, source=source)
 
 
 # --- La reconnaissance ------------------------------------------------------------------
@@ -40,7 +40,7 @@ def _o(titre, entreprise="Société Générale", lieu="Paris", pays="France", co
 def test_le_poste_de_la_banque_et_sa_reprise_sont_le_meme():
     site = _o("Credit Risk Analyst", "Société Générale")
     reprise = _o("Analyste Risques de Crédit (H/F) - CDI - Paris", "SOCIETE GENERALE SA", lieu="75 - Paris",
-                 contrat="CDI")
+                 contrat="CDI", source="france_travail")
     assert meme_poste(site, reprise)
 
 
@@ -68,7 +68,11 @@ def test_le_meme_intitule_dans_deux_agences_est_un_seul_poste():
 
 def test_references_genre_et_mot_en_plus():
     assert meme_poste(_o("Risk Analyst REF 2600032A"), _o("Risk Analyst (m/w/d)"))
-    assert meme_poste(_o("Analyste risques crédit"), _o("Analyste risques crédit entreprises"))
+    # D'une source à l'autre, un mot de plus est une reformulation ; sur un
+    # même site, deux intitulés différents sont deux postes.
+    assert meme_poste(_o("Analyste risques crédit"), _o("Analyste risques crédit entreprises", source="adzuna"))
+    assert not meme_poste(_o("Gestionnaire Middle Office", "Groupe Crystal"),
+                          _o("Gestionnaire Middle Office CGPI", "Groupe Crystal"))
     assert not meme_poste(_o("Analyste crédit"), _o("Analyste crédit senior"))
     assert not meme_poste(_o("2026 Summer Analyst"), _o("2027 Summer Analyst")), "deux promotions"
 
@@ -138,6 +142,10 @@ def test_un_poste_republie_plus_tard_ne_sonne_plus(session, envois):
 def test_dix_agences_une_alerte_qui_le_dit(session, envois):
     for n, ville in enumerate(["Paris", "Lyon", "Lille"], 1):
         _offre(session, n, f"Gestionnaire Middle Office - {ville} H/F", "Groupe Crystal", score=90 - n, lieu=ville)
+    # Le même poste repris par une autre source, lieu écrit autrement : ce n'est
+    # pas une agence de plus.
+    _offre(session, 9, "Gestionnaire Middle Office H/F", "Groupe Crystal", score=80, lieu="75 - Paris",
+           source="adzuna")
     assert notification.alerter(session, maintenant() - timedelta(hours=1)) == 1
     assert "Paris et 2 autres lieux" in envois[0]["corps"]
 

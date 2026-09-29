@@ -85,15 +85,21 @@ def cle_intitule(titre: str | None, lieu: str | None = "") -> frozenset[str]:
         and (not any(c.isdigit() for c in j) or _ANNEE.match(j)))
 
 
-def memes_mots(a: frozenset[str], b: frozenset[str]) -> bool:
-    """Le même intitulé : les mêmes mots, ou un seul de plus quand l'intitulé
-    court en a déjà trois — pourvu que ce mot ne change pas le poste
-    (« Analyste risques crédit » et « … crédit entreprises », oui ;
-    « Analyste » et « Analyste senior », non)."""
+def memes_mots(a: frozenset[str], b: frozenset[str], *, reformulation: bool = True) -> bool:
+    """Le même intitulé : les mêmes mots, ou — d'une source à l'autre
+    (`reformulation`) — un seul de plus quand l'intitulé court en a déjà trois,
+    pourvu que ce mot ne change pas le poste (« Analyste risques crédit » et
+    « … crédit entreprises », oui ; « Analyste » et « Analyste senior », non).
+
+    Sur un même site, deux intitulés différents sont deux postes : Crystal
+    publie « Gestionnaire middle office » ET « Gestionnaire middle office
+    CGPI »."""
     if not a or not b:
         return False
     if a == b:
         return True
+    if not reformulation:
+        return False
     court, long_ = (a, b) if len(a) <= len(b) else (b, a)
     reste = long_ - court
     return court < long_ and len(court) >= 3 and len(reste) == 1 and not reste & _DISTINCTIFS
@@ -115,4 +121,5 @@ def meme_poste(a, b) -> bool:
     ea, eb = cle_entreprise(a.entreprise), cle_entreprise(b.entreprise)
     if not ea or not eb or not (ea <= eb or eb <= ea):
         return False
-    return memes_mots(cle_intitule(a.titre, a.lieu), cle_intitule(b.titre, b.lieu))
+    return memes_mots(cle_intitule(a.titre, a.lieu), cle_intitule(b.titre, b.lieu),
+                      reformulation=getattr(a, "source", "") != getattr(b, "source", ""))

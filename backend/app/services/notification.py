@@ -142,8 +142,12 @@ def _liberer(session: Session, groupe: list[Paire], instant: datetime) -> None:
 
 
 def _autres_lieux(groupe: list[Paire]) -> int:
+    """Les autres agences où le même poste est ouvert. Seules comptent celles de
+    la même source : d'une source à l'autre, un même lieu s'écrit autrement
+    (« Lyon », « Rhône, Auvergne-Rhône-Alpes ») et passerait pour un second."""
     principal = groupe[0][0]
-    return len({o.lieu or o.pays for o, _ in groupe[1:]} - {principal.lieu or principal.pays})
+    return len({o.lieu or o.pays for o, _ in groupe[1:] if o.source == principal.source}
+               - {principal.lieu or principal.pays})
 
 
 def message(groupes: list[list[Paire]]) -> tuple[str, str]:

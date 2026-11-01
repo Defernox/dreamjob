@@ -230,6 +230,10 @@ def test_le_journal_de_generation_est_ecrit(profil, offre, tmp_path):
     from app.documents.dossier import generer
 
     modele = Path_modele()
+    # Le modèle est personnel et n'est pas versionné : sur un clone neuf, ce
+    # test échouait et le hook pre-commit refusait tout commit.
+    if not modele.exists():
+        pytest.skip("templates/cv_modele.docx absent")
     resultat = generer(
         profil, offre, tmp_path, modele,
         redacteur=lambda s, m: "Le poste m'intéresse. " * 40,

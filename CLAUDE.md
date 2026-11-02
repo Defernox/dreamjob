@@ -373,6 +373,16 @@ référence (`outils/etiquettes_score.py`). `outils/evaluer_score.py` rejoue le
 score sur la base, en lecture seule, et compare son classement aux étiquettes.
 **Un réglage du score se mesure, il ne se devine pas.**
 
+**Et il se mesure sur des offres qui n'ont pas servi à le régler.** Les 182
+étiquettes ont guidé chaque choix de la v7 : leurs chiffres sont flatteurs par
+construction, et elles datent d'avant les sites des employeurs. `outils/tirer_lot.py`
+tire un **lot de contrôle** dans la base actuelle — stratifié par source et par
+tranche de score, la note masquée, chaque offre pondérée par sa strate — que
+l'on étiquette dans Excel et range dans `outils/lots/`. `evaluer_score.py --lot`
+le relit, `--seuils` estime pour chaque seuil du vert la part des offres cœur de
+cible attrapées : c'est le vert qui déclenche les alertes. Un réglage qui fait
+monter le jeu de réglage et baisser les lots de contrôle est refusé.
+
 | Mesure | v6 | v7 |
 |---|---|---|
 | Offres pertinentes (étiquette ≥ 2) dans le top 20 | 6 | **20** |

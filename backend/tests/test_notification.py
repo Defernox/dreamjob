@@ -110,3 +110,144 @@ def test_le_sujet_de_l_env_n_est_qu_au_proprietaire(session, envois, monkeypatch
 
     assert notification.notifier(session, maintenant() - timedelta(hours=1)) == 0
     assert envois == []
+
+
+# --- Telegram, pour le propriétaire -----------------------------------------------
+
+
+@pytest.fixture
+def partis(monkeypatch):
+    """Tout ce qui sort, ntfy comme Telegram."""
+    sortis = []
+
+    def faux_post(url, **kw):
+        sortis.append({"url": url, **kw})
+        return httpx.Response(200, request=httpx.Request("POST", url))
+
+    monkeypatch.setattr(notification.httpx, "post", faux_post)
+    return sortis
+
+
+def _reglage_telegram(monkeypatch):
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "123:jeton-de-test")
+    monkeypatch.setenv("TELEGRAM_CHAT_ID", "4242")
+    monkeypatch.setenv("DREAMJOB_URL", "https://dreamjob.exemple.ts.net")
+
+
+def test_le_proprietaire_recoit_sur_telegram(session, partis, monkeypatch):
+    from app.services.acces import proprietaire
+
+    _reglage_telegram(monkeypatch)
+    monkeypatch.setenv("NTFY_SUJET", "sujet-de-test")
+    proprietaire(session)
+    _offre(session, 1, 91)
+
+    assert notification.notifier(session, maintenant() - timedelta(hours=1)) == 1
+    assert len(partis) == 1, "Telegram remplace ntfy pour le propriétaire, il ne s'y ajoute pas"
+    envoi = partis[0]
+    assert envoi["url"] == "https://api.telegram.org/bot123:jeton-de-test/sendMessage"
+    assert envoi["json"]["chat_id"] == "4242"
+    assert "1 nouvelle offre verte" in envoi["json"]["text"]
+    assert "91 — Analyste 1 · Banque" in envoi["json"]["text"]
+    bouton = envoi["json"]["reply_markup"]["inline_keyboard"][0][0]
+    assert bouton["url"] == "https://dreamjob.exemple.ts.net/offres"
+
+
+def test_l_alerte_telegram_ouvre_la_fiche_de_l_offre(session, partis, monkeypatch):
+    from app.services.acces import proprietaire
+
+    _reglage_telegram(monkeypatch)
+    proprietaire(session)
+    offre = _offre(session, 1, 95)
+
+    assert notification.alerter(session, maintenant() - timedelta(hours=1)) == 1
+    bouton = partis[0]["json"]["reply_markup"]["inline_keyboard"][0][0]
+    assert bouton["url"] == f"https://dreamjob.exemple.ts.net/offres/{offre.id}"
+
+
+def test_sans_identifiant_de_conversation_on_reste_sur_ntfy(session, partis, monkeypatch):
+    from app.services.acces import proprietaire
+
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "123:jeton-de-test")     # l'autre moitié manque
+    monkeypatch.setenv("NTFY_SUJET", "sujet-de-test")
+    proprietaire(session)
+    _offre(session, 1, 91)
+
+    assert notification.notifier(session, maintenant() - timedelta(hours=1)) == 1
+    assert partis[0]["url"] == "https://ntfy.sh/sujet-de-test"
+
+
+def test_un_ami_garde_ntfy_quand_le_proprietaire_a_telegram(session, partis, monkeypatch):
+    from app.services.acces import proprietaire
+
+    _reglage_telegram(monkeypatch)
+    proprietaire(session)
+    ami = Utilisateur(email="ami@exemple.fr", mot_de_passe="")
+    session.add(ami)
+    session.commit()
+    session.add(Profile(utilisateur_id=ami.id, ntfy_sujet="sujet-de-l-ami"))
+    _offre(session, 1, 91)
+    _offre(session, 2, 85, utilisateur_id=ami.id)
+
+    assert notification.notifier(session, maintenant() - timedelta(hours=1)) == 2
+    assert {e["url"] for e in partis} == {
+        "https://api.telegram.org/bot123:jeton-de-test/sendMessage", "https://ntfy.sh/sujet-de-l-ami"}
+
+
+def test_un_profil_ne_peut_pas_viser_la_conversation_du_proprietaire(session, partis, monkeypatch):
+    """Un sujet ntfy ne contient jamais « : » : celui qui en porte un est écarté,
+    sans quoi un ami écrirait la destination interne du propriétaire dans son profil."""
+    from app.services.acces import proprietaire
+
+    _reglage_telegram(monkeypatch)
+    proprietaire(session)
+    ami = Utilisateur(email="ami@exemple.fr", mot_de_passe="")
+    session.add(ami)
+    session.commit()
+    session.add(Profile(utilisateur_id=ami.id, ntfy_sujet=notification.DESTINATION_TELEGRAM))
+    _offre(session, 1, 85, utilisateur_id=ami.id)
+
+    assert notification.notifier(session, maintenant() - timedelta(hours=1)) == 0
+    assert partis == []
+
+
+def test_un_refus_de_telegram_libere_l_offre_sans_exposer_le_jeton(session, monkeypatch, caplog):
+    from app.services.acces import proprietaire
+
+    _reglage_telegram(monkeypatch)
+    proprietaire(session)
+    _offre(session, 1, 91)
+
+    def refus(url, **kw):
+        requete = httpx.Request("POST", url)
+        return httpx.Response(401, request=requete)
+
+    monkeypatch.setattr(notification.httpx, "post", refus)
+    with caplog.at_level("INFO", logger="dreamjob.notification"):
+        assert notification.notifier(session, maintenant() - timedelta(hours=1)) == 0
+    assert "jeton-de-test" not in caplog.text
+    assert "401" in caplog.text
+
+    # L'offre n'a pas été tenue pour signalée : la passe suivante réessaie.
+    monkeypatch.setattr(notification.httpx, "post",
+                        lambda url, **kw: httpx.Response(200, request=httpx.Request("POST", url)))
+    assert notification.notifier(session, maintenant() - timedelta(hours=1)) == 1
+
+
+def test_un_delai_depasse_apres_l_envoi_ne_fait_pas_sonner_deux_fois(session, monkeypatch):
+    from app.services.acces import proprietaire
+
+    _reglage_telegram(monkeypatch)
+    proprietaire(session)
+    _offre(session, 1, 91)
+    appels = []
+
+    def lent(url, **kw):
+        appels.append(url)
+        raise httpx.ReadTimeout("trop lent")
+
+    monkeypatch.setattr(notification.httpx, "post", lent)
+    depuis = maintenant() - timedelta(hours=1)
+    assert notification.notifier(session, depuis) == 1
+    assert notification.notifier(session, depuis) == 0
+    assert len(appels) == 1, "Telegram a pu la recevoir : on ne la renvoie pas"

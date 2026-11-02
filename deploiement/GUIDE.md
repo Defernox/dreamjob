@@ -153,6 +153,29 @@ ouvrir l'interface. Dans la console Tailscale (login.tailscale.com), onglet
 
 Installe l'application **ntfy** et abonne-toi au sujet choisi à l'étape 6.
 
+**ntfy ne réveille pas toujours un iPhone** quand l'application est fermée : le
+message arrive dans l'application mais le téléphone ne sonne pas (problème connu
+côté iOS, indépendant du serveur). Pour le propriétaire, **Telegram** est
+l'alternative, gratuite et fiable :
+
+1. Dans Telegram, écris à **@BotFather**, envoie `/newbot`, choisis un nom : il
+   te remet un **jeton** (`123456:ABC…`). Ne le colle nulle part en dehors du
+   `.env` du serveur.
+2. Écris un message quelconque à ton nouveau bot, puis ouvre dans ton navigateur
+   `https://api.telegram.org/bot<JETON>/getUpdates` : le nombre qui suit
+   `"chat":{"id":` est ton **identifiant de conversation**.
+3. Ajoute au `.env` du serveur, puis relance le conteneur
+   (`docker compose up -d`) :
+
+   ```
+   TELEGRAM_BOT_TOKEN=123456:ABC…
+   TELEGRAM_CHAT_ID=123456789
+   ```
+
+Quand les deux lignes sont là, le propriétaire reçoit sur Telegram et plus sur
+ntfy (un bouton « Ouvrir dans DreamJob » mène à la fiche) ; les autres comptes
+gardent ntfy. Pour revenir à ntfy, retire ces deux lignes.
+
 Tu recevras deux sortes de messages :
 
 - **une alerte par offre verte, dans la demi-heure où elle paraît** (la

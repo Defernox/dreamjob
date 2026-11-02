@@ -5,12 +5,20 @@ l'utilisateur n'a plus besoin d'ouvrir l'application pour savoir s'il y a du
 neuf. Sans offre verte, aucune notification — une alerte quotidienne « rien de
 nouveau » apprend vite à ignorer les autres.
 
-Le canal est **ntfy** : une application gratuite (Android, iOS), sans compte,
-qui reçoit ce qu'on publie sur un « sujet ». Le nom du sujet tient lieu de mot
-de passe — il se choisit long et imprévisible. Chaque compte saisit le sien
-dans son profil ; le propriétaire peut aussi le fixer dans `.env`
-(`NTFY_SUJET`). Ce qui transite : intitulés, employeurs et scores, jamais le
-profil ni les documents.
+Deux canaux, au choix :
+
+- **ntfy** : une application gratuite (Android, iOS), sans compte, qui reçoit ce
+  qu'on publie sur un « sujet ». Le nom du sujet tient lieu de mot de passe — il
+  se choisit long et imprévisible. Chaque compte saisit le sien dans son profil ;
+  le propriétaire peut aussi le fixer dans `.env` (`NTFY_SUJET`).
+- **Telegram**, réservé au propriétaire : un bot qui écrit dans sa conversation
+  (`TELEGRAM_BOT_TOKEN` et `TELEGRAM_CHAT_ID` dans `.env`). Ajouté parce que ntfy
+  sur iPhone ne réveille pas toujours le téléphone quand l'application est
+  fermée. Quand les deux variables sont là, le propriétaire reçoit sur Telegram
+  et plus sur ntfy ; les autres comptes gardent ntfy.
+
+Ce qui transite : intitulés, employeurs et scores, jamais le profil ni les
+documents.
 """
 
 from __future__ import annotations
@@ -31,7 +39,17 @@ from .doublons import Poste, meme_poste, poste
 log = logging.getLogger("dreamjob.notification")
 
 SERVEUR_NTFY = "https://ntfy.sh"
+SERVEUR_TELEGRAM = "https://api.telegram.org"
 MAX_LIGNES = 5
+
+# Destination interne du propriétaire quand Telegram est réglé. Un sujet ntfy ne
+# peut pas contenir « : », donc aucun profil ne peut la produire : sujet_de écarte
+# toute valeur de profil qui en porte un.
+DESTINATION_TELEGRAM = "telegram:proprietaire"
+
+# httpx journalise chaque requête, adresse complète : celle de Telegram contient
+# le jeton du bot. Au niveau WARNING, plus rien de tel dans les journaux.
+logging.getLogger("httpx").setLevel(logging.WARNING)
 
 Paire = tuple[Offer, ScoreOffre]
 
@@ -182,12 +200,21 @@ def message(groupes: list[list[Paire]]) -> tuple[str, str]:
     return titre, "\n".join(lignes)
 
 
+def _telegram() -> tuple[str, str] | None:
+    """(jeton du bot, identifiant de la conversation), quand les deux sont réglés."""
+    jeton, conversation = reglages().secret("TELEGRAM_BOT_TOKEN"), reglages().secret("TELEGRAM_CHAT_ID")
+    return (jeton.strip(), conversation.strip()) if jeton and conversation else None
+
+
 def sujet_de(session: Session, utilisateur: Utilisateur) -> str | None:
-    """Le sujet ntfy d'un compte : celui de son profil, sinon — pour le seul
+    """Où part la notification d'un compte : Telegram pour le propriétaire s'il
+    l'a réglé ; sinon le sujet ntfy de son profil ; sinon — pour le seul
     propriétaire — celui de `.env`. Un ami ne reçoit jamais les notifications
     d'un autre."""
+    if utilisateur.proprietaire and _telegram():
+        return DESTINATION_TELEGRAM
     profil = session.exec(select(Profile).where(Profile.utilisateur_id == utilisateur.id)).first()
-    if profil is not None and profil.ntfy_sujet.strip():
+    if profil is not None and profil.ntfy_sujet.strip() and ":" not in profil.ntfy_sujet:
         return profil.ntfy_sujet.strip()
     return reglages().secret("NTFY_SUJET") if utilisateur.proprietaire else None
 
@@ -329,6 +356,8 @@ def _publier(sujet: str, titre: str, corps: str, *, offre_id: int | None = None,
     inconnue : ntfy a pu la recevoir. La tenir pour échouée ferait réessayer, et
     sonner deux fois. Seuls une connexion impossible ou un refus de ntfy sont
     des échecs certains."""
+    if sujet == DESTINATION_TELEGRAM:
+        return _publier_telegram(titre, corps, offre_id=offre_id)
     entetes = {"Title": titre.encode("utf-8"), "Tags": "briefcase"}
     if urgente:
         entetes["Priority"] = "high"
@@ -347,4 +376,36 @@ def _publier(sujet: str, titre: str, corps: str, *, offre_id: int | None = None,
         log.warning("Notification non envoyée : %s", e)
         return False
     log.info("Notification envoyée : %s", titre)
+    return True
+
+
+def _publier_telegram(titre: str, corps: str, *, offre_id: int | None = None) -> bool:
+    """Même contrat que pour ntfy : vrai si c'est parti ou si l'issue est inconnue.
+
+    Le message porte un bouton qui ouvre la fiche de l'offre. Les erreurs sont
+    journalisées sans leur texte : celui d'`httpx` reprend l'adresse de la
+    requête, donc le jeton du bot."""
+    identifiants = _telegram()
+    if identifiants is None:
+        log.warning("Telegram n'est pas réglé : notification non envoyée.")
+        return False
+    jeton, conversation = identifiants
+    charge: dict = {"chat_id": conversation, "text": f"💼 {titre}\n{corps}", "disable_web_page_preview": True}
+    if adresse := reglages().adresse_publique:
+        chemin = f"/offres/{offre_id}" if offre_id else "/offres"
+        charge["reply_markup"] = {"inline_keyboard": [[{"text": "Ouvrir dans DreamJob",
+                                                        "url": f"{adresse.rstrip('/')}{chemin}"}]]}
+    try:
+        httpx.post(f"{SERVEUR_TELEGRAM}/bot{jeton}/sendMessage", json=charge, timeout=15.0).raise_for_status()
+    except (httpx.ReadTimeout, httpx.WriteTimeout, httpx.RemoteProtocolError, httpx.ReadError) as e:
+        log.warning("Notification Telegram peut-être envoyée (%s) : tenue pour partie, sans nouvel essai.",
+                    type(e).__name__)
+        return True
+    except httpx.HTTPStatusError as e:
+        log.warning("Notification Telegram refusée (code %s).", e.response.status_code)
+        return False
+    except httpx.HTTPError as e:
+        log.warning("Notification Telegram non envoyée (%s).", type(e).__name__)
+        return False
+    log.info("Notification Telegram envoyée : %s", titre)
     return True

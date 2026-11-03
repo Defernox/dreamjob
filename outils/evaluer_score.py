@@ -140,6 +140,18 @@ def postulees(base: Path | None = None) -> list[int]:
     return [r[0] for r in lignes]
 
 
+def avis_telegram(base: Path | None = None) -> dict[int, int]:
+    """{offre: 1 intéressant / 0 pas pour moi} : les appuis sous les alertes."""
+    c = _connexion(base)
+    if "score_offre" not in _tables(c):
+        return {}
+    if "avis" not in {r[1] for r in c.execute("PRAGMA table_info(score_offre)")}:
+        return {}
+    proprio = _proprietaire(c)
+    return {r[0]: r[1] for r in c.execute(
+        "SELECT offer_id, avis FROM score_offre WHERE avis IS NOT NULL AND utilisateur_id = ?", (proprio,))}
+
+
 def scorer(profil, offres, recherches) -> dict[int, float]:
     signaux = {o.id: extraire(o) for o in offres}
     corpus = Corpus.depuis(signaux.values())
@@ -308,6 +320,24 @@ def main(arguments: list[str] | None = None) -> None:
         else:
             _afficher_seuils("Seuil du vert, sur le jeu de réglage (non pondéré : indicatif)",
                              seuils(scores, ETIQUETTES))
+
+    donnes = {i: v for i, v in avis_telegram(args.base).items() if i in scores}
+    if donnes:
+        pour = [i for i, v in donnes.items() if v == 1]
+        contre = [i for i, v in donnes.items() if v == 0]
+
+        def moyenne(ids_):
+            return f"{sum(scores[i] for i in ids_) / len(ids_):.0f}" if ids_ else "-"
+
+        print(f"\n== Avis Telegram ({len(donnes)})")
+        # Pas d'émoji ici : la console Windows (cp1252) ne sait pas les écrire.
+        print(f"intéressant {len(pour)} (note moyenne {moyenne(pour)}) · pas pour moi {len(contre)}"
+              f" (note moyenne {moyenne(contre)}) · part d'alertes utiles {len(pour) / len(donnes):.0%}")
+        # Seules les vertes sonnent : ces avis jugent la précision du vert, pas
+        # ce qu'il laisse passer. Les « pas pour moi » les mieux notés sont les
+        # erreurs à comprendre en premier.
+        for i in sorted(contre, key=lambda i: -scores[i])[:10]:
+            print(f"  non {scores[i]:5.1f}  {titres[i][:70]}")
 
     ids = [i for i in postulees(args.base) if i in scores]
     if ids:

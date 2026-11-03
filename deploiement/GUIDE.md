@@ -176,6 +176,11 @@ Quand les deux lignes sont là, le propriétaire reçoit sur Telegram et plus su
 ntfy (un bouton « Ouvrir dans DreamJob » mène à la fiche) ; les autres comptes
 gardent ntfy. Pour revenir à ntfy, retire ces deux lignes.
 
+Sous chaque alerte, deux boutons : **👍 Intéressant** et **👎 Pas pour moi**.
+Un appui suffit (un second le corrige). Les réponses servent à mesurer le score
+(`outils/evaluer_score.py`), elles ne le changent pas d'elles-mêmes. Seuls les
+appuis venus de ta conversation sont pris en compte.
+
 Tu recevras deux sortes de messages :
 
 - **une alerte par offre verte, dans la demi-heure où elle paraît** (la

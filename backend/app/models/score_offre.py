@@ -57,6 +57,11 @@ class ScoreOffre(SQLModel, table=True):
     # notification, il ne consomme pas le plafond d'alertes du jour — sinon un
     # résumé de quinze offres faisait taire la veille jusqu'au soir.
     par_resume: bool = False
+    # L'avis donné d'un appui sous l'alerte Telegram : 1 « intéressant », 0
+    # « pas pour moi », vide sans réponse. Des étiquettes gratuites pour mesurer
+    # le score (`outils/evaluer_score.py`) ; elles ne le modifient pas.
+    avis: int | None = None
+    avis_le: datetime | None = None
 
 
 class DepenseLlm(SQLModel, table=True):

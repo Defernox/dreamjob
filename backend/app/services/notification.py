@@ -379,6 +379,18 @@ def _publier(sujet: str, titre: str, corps: str, *, offre_id: int | None = None,
     return True
 
 
+PREFIXE_AVIS = "avis"
+AVIS = {1: "👍 Intéressant", 0: "👎 Pas pour moi"}
+
+
+def boutons_avis(offre_id: int, choisi: int | None = None) -> list[dict]:
+    """Les deux boutons d'avis d'une alerte ; celui déjà choisi porte une coche.
+    Les deux restent actifs : un avis se corrige d'un second appui."""
+    return [{"text": ("✓ " if valeur == choisi else "") + libelle,
+             "callback_data": f"{PREFIXE_AVIS}:{offre_id}:{valeur}"}
+            for valeur, libelle in AVIS.items()]
+
+
 def _publier_telegram(titre: str, corps: str, *, offre_id: int | None = None) -> bool:
     """Même contrat que pour ntfy : vrai si c'est parti ou si l'issue est inconnue.
 
@@ -391,10 +403,15 @@ def _publier_telegram(titre: str, corps: str, *, offre_id: int | None = None) ->
         return False
     jeton, conversation = identifiants
     charge: dict = {"chat_id": conversation, "text": f"💼 {titre}\n{corps}", "disable_web_page_preview": True}
+    lignes: list[list[dict]] = []
     if adresse := reglages().adresse_publique:
         chemin = f"/offres/{offre_id}" if offre_id else "/offres"
-        charge["reply_markup"] = {"inline_keyboard": [[{"text": "Ouvrir dans DreamJob",
-                                                        "url": f"{adresse.rstrip('/')}{chemin}"}]]}
+        lignes.append([{"text": "Ouvrir dans DreamJob", "url": f"{adresse.rstrip('/')}{chemin}"}])
+    if offre_id:
+        # Une alerte, une offre : son avis se donne d'un appui (`services/avis.py`).
+        lignes.append(boutons_avis(offre_id))
+    if lignes:
+        charge["reply_markup"] = {"inline_keyboard": lignes}
     try:
         httpx.post(f"{SERVEUR_TELEGRAM}/bot{jeton}/sendMessage", json=charge, timeout=15.0).raise_for_status()
     except (httpx.ReadTimeout, httpx.WriteTimeout, httpx.RemoteProtocolError, httpx.ReadError) as e:

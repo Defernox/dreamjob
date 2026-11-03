@@ -1349,6 +1349,24 @@ quotidien en prend déjà environ 1 500 ; DogFinance est limité à quarante pag
 par jour pour une raison juridique. Les deux restent au scan du matin. France
 Travail et Civiweb n'ont pas ce problème.
 
+**Telegram pour le propriétaire, ntfy pour les autres.** Sur iPhone, ntfy
+livrait le message dans l'application sans réveiller le téléphone. Avec
+`TELEGRAM_BOT_TOKEN` et `TELEGRAM_CHAT_ID`, le propriétaire reçoit par un bot ;
+la destination interne porte un « : », impossible dans un sujet ntfy, et un
+profil qui en contient un est écarté. Le jeton est dans l'adresse de chaque
+requête : `httpx` est mis au niveau WARNING et les erreurs sont journalisées
+sans leur texte.
+
+**Chaque alerte porte deux boutons d'avis** (`services/avis.py`), rangés dans
+`ScoreOffre.avis` : des étiquettes posées en utilisant l'application, que
+`evaluer_score.py` relit. Le serveur n'a pas d'adresse publique, donc pas de
+webhook : un fil interroge `getUpdates` en attente longue (vingt secondes),
+ce qui donne l'accusé dans la seconde — un job du planificateur, toutes les
+minutes, aurait laissé le bouton tourner. Seule la conversation du propriétaire
+est écoutée (le bot se trouve par son nom), et seul son fil est modifié. Ces
+avis ne jugent que les offres vertes, les seules qui sonnent : ils mesurent la
+précision du vert, pas ce qu'il laisse passer.
+
 **Une offre n'est signalée qu'une fois**, alerte ou résumé :
 `ScoreOffre.alertee_le`. Le résumé du matin reprend sur une journée entière
 (`FENETRE_RESUME`) ce qui est vert et pas encore signalé — la nuit, et le

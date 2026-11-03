@@ -35,6 +35,7 @@ from .db import engine
 from .models import ScanRun, ScoreOffre
 from .models.base import maintenant
 from .models.enums import StatutScan
+from .services import avis
 from .services.sauvegarde import sauvegarder
 from .services.scan import (
     clore_les_interrompus,
@@ -289,6 +290,10 @@ def demarrer() -> BackgroundScheduler | None:
             id=TACHE_VEILLE, replace_existing=True,
         )
     _planificateur.start()
+    # Les réponses aux boutons des alertes Telegram : un fil à part, en attente
+    # longue — un job du planificateur relirait au mieux toutes les minutes, et
+    # Telegram veut un accusé dans les secondes qui suivent l'appui.
+    avis.demarrer(engine)
     if r.scan_quotidien_actif:
         log.info("Scan quotidien programmé à %02d:%02d.", heure, minute)
     else:
@@ -318,6 +323,7 @@ def arreter() -> None:
     l'application si le scan s'eternise.
     """
     global _planificateur
+    avis.arreter()
     if _planificateur is None:
         return
 

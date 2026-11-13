@@ -24,6 +24,7 @@ from docx.shared import Cm, Pt
 
 from ..models import Offer, Profile, ScoreOffre
 from ..scoring.couverture import mots_cles_non_couverts
+from . import lecture_ats
 from . import pdf as pdf_outil
 from .cv_render import PUCES_PAR_ESSAI
 from .cv_render import rendre as rendre_cv
@@ -45,6 +46,8 @@ class Resultat:
     # Ce que l'offre réclame et que le profil ne couvre pas. Le signal le plus
     # utile du dossier : il ne juge pas l'offre, il dit ce qui manque.
     mots_cles_non_couverts: list[str] = field(default_factory=list)
+    # Ce qu'un logiciel de recrutement lira du CV produit (`lecture_ats.py`).
+    lecture_ats: dict = field(default_factory=dict)
 
 
 def slug(texte: str, longueur: int = 60) -> str:
@@ -322,6 +325,15 @@ def generer(
             "raccourcissez les descriptions d'expériences dans l'onglet Profil."
         )
 
+    # --- Ce qu'un ATS lira de ce CV ---
+    # Sur le fichier réel, pas sur le profil : c'est lui que le logiciel convertit
+    # en texte. Une lecture manquée ne coûte pas le dossier.
+    try:
+        resultat.lecture_ats = lecture_ats.lire(cv, cv_pdf, profil, offre)
+        resultat.avertissements += resultat.lecture_ats.get("avertissements", [])
+    except Exception as e:  # noqa: BLE001
+        log.warning("Lecture ATS non faite : %s", e)
+
     # --- Lettre (le garde-fou peut légitimement refuser de livrer) ---
     lettre_docx: Path | None = None
     # Renseigné même en cas d'échec : quand une lettre manque, c'est le seul
@@ -424,6 +436,7 @@ def generer(
         "fichiers": sorted({f.name for f in resultat.fichiers} | {JOURNAL}),
         "lettre": journal,
         "mots_cles_non_couverts": resultat.mots_cles_non_couverts,
+        "lecture_ats": resultat.lecture_ats,
         "cv_reordonne": reordonner_cv,
         "ciblage": ciblage.journal if ciblage else None,
         # Ce qu'a coûté ce dossier, appel par appel. L'utilisateur paie ses

@@ -255,7 +255,34 @@ Formations :
 {formations}
 
 EXPÉRIENCES À REFORMULER
-{chr(10).join(blocs)}"""
+{chr(10).join(blocs)}{_mots_a_reprendre(profil, offre, puces)}"""
+
+
+def _mots_a_reprendre(profil: Profile, offre: Offer, puces: dict[int, list[str]]) -> str:
+    """Les mots sur lesquels l'annonce insiste et que le candidat dit autrement.
+
+    Un recruteur cherche dans son ATS avec SES mots, et une recherche par
+    mot-clé ne connaît pas les synonymes : ces termes-là sont ceux que le CV a,
+    sans qu'on puisse les y trouver. Les nommer au modèle vaut mieux que de le
+    laisser deviner lesquels reprendre — et le contrôle puce par puce accepte
+    déjà un synonyme métier, jamais un mot d'un autre sens.
+
+    Seulement pour une annonce en français : glisser des mots anglais dans un CV
+    français n'aide personne à le lire.
+    """
+    from ..scoring.extraction import signaux_de
+    from .lecture_ats import mots_de_l_annonce
+
+    if signaux_de(offre).langue not in ("fr", ""):
+        return ""
+    texte = " ".join([profil.resume or "", *profil.noms_skills(),
+                      *[p for liste in puces.values() for p in liste]])
+    autrement = mots_de_l_annonce(texte, offre)["dit_autrement"]
+    if not autrement:
+        return ""
+    return ("\n\nMOTS DE L'OFFRE QUE LE CANDIDAT DIT AUTREMENT\n" + ", ".join(autrement)
+            + "\nQuand une puce désigne la même chose sous un autre mot, emploie le mot de "
+              "l'offre. Ne l'ajoute à aucune puce qui parle d'autre chose.")
 
 
 # --------------------------------------------------------------------- ciblage

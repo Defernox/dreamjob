@@ -61,6 +61,8 @@ Tu ne mentionnes aucune entreprise, école, diplôme, certification, technologie
 ville, date ni CHIFFRE qui ne figure pas dans le PROFIL ou dans l'OFFRE
 ci-dessous. Si une information te manque, tu écris la lettre sans elle.
 N'affirme jamais avoir étudié ou travaillé quelque part sans que ce soit écrit.
+Tu ne parles JAMAIS de salaire, de rémunération ni de prétentions, même si
+l'offre affiche un montant : cela se discute en entretien.
 
 TU NE RECOPIES PAS L'ANNONCE.
 Reprendre une phrase de l'offre revient à s'attribuer une compétence que le
@@ -325,6 +327,14 @@ def _rappel_contrat(mots_fautifs: list[str], offre: Offer) -> str:
     )
 
 
+def _rappel_salaire(mots_fautifs: list[str]) -> str:
+    return (
+        f"Ta version précédente parlait de « {', '.join(mots_fautifs)} ». Une lettre de "
+        "motivation ne parle ni de salaire, ni de rémunération, ni de prétentions : "
+        "retire toute mention de ce sujet, même si l'offre affiche un montant."
+    )
+
+
 def _rappel_disponibilite(annonces: list[str]) -> str:
     return (
         f"Ta version précédente annonçait une disponibilité (« {annonces[0]} ») "
@@ -392,6 +402,8 @@ def _consignes(bloc: dict[str, list[str]], style: dict[str, list[str]],
         rappels.append(_rappel_voix(bloc["voix"]))
     if bloc["contrat"]:
         rappels.append(_rappel_contrat(bloc["contrat"], offre))
+    if bloc.get("salaire"):
+        rappels.append(_rappel_salaire(bloc["salaire"]))
     if style["copies"]:
         rappels.append(_rappel_copie(style["copies"]))
     if style["disponibilite"]:
@@ -529,8 +541,9 @@ def rediger(profil: Profile, offre: Offer, generer, tentatives: int = 3,
         ("voix", "lettre écrite du mauvais côté, comme si le recruteur s'adressait "
                  "au candidat"),
         ("contrat", "le type de contrat ne correspond pas à l'offre"),
+        ("salaire", "la lettre parle de salaire"),
     ):
-        if dernier[cle]:
+        if dernier.get(cle):
             raison = f"{libelle} : {', '.join(dernier[cle])}"
             break
     else:

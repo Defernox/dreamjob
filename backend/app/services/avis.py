@@ -1,10 +1,18 @@
-"""Les avis donnés d'un appui sous une alerte Telegram.
+"""La relève de ce que le propriétaire répond au bot Telegram.
 
-Chaque alerte porte deux boutons, « 👍 Intéressant » et « 👎 Pas pour moi »
-(`notification.boutons_avis`). La réponse est rangée dans `ScoreOffre.avis` :
-des étiquettes gratuites, posées en utilisant l'application, que
-`outils/evaluer_score.py` relit pour mesurer le score. Elles ne le modifient
-pas — un réglage se décide sur une mesure, pas d'un appui.
+Trois choses arrivent par ce fil, et il les aiguille :
+
+- **« Postuler ? »** sous une alerte, et les boutons du dossier qui suit
+  (`post:…`) — `services/postuler.py` ;
+- **une commande** écrite dans la conversation (`/profil`, `/excel`…) —
+  `services/commandes.py` ;
+- **un avis** des alertes d'avant, « 👍 Intéressant » ou « 👎 Pas pour moi »
+  (`avis:…`), traité ici.
+
+Dans tous les cas la réponse à une alerte est rangée dans `ScoreOffre.avis` —
+postuler vaut 1, passer vaut 0 : des étiquettes gratuites, posées en utilisant
+l'application, que `outils/evaluer_score.py` relit pour mesurer le score. Elles
+ne le modifient pas — un réglage se décide sur une mesure, pas d'un appui.
 
 **Le serveur va chercher les réponses, Telegram ne vient pas les livrer.** Un
 webhook demanderait une adresse publique ; le serveur n'en a pas et n'en aura
@@ -15,8 +23,8 @@ l'accusé arrive aussitôt, sans rien ouvrir sur Internet.
 **Seule la conversation du propriétaire est écoutée.** Le jeton du bot n'est pas
 un secret absolu (il a transité par un navigateur) et le nom du bot se trouve :
 un inconnu peut lui écrire et presser des boutons. Toute réponse qui ne vient
-pas de `TELEGRAM_CHAT_ID` est ignorée, et une offre hors du fil du propriétaire
-n'est jamais modifiée.
+pas de `TELEGRAM_CHAT_ID` est ignorée — commande comprise : elle lirait le
+profil — et une offre hors du fil du propriétaire n'est jamais modifiée.
 
 Les erreurs sont journalisées sans leur texte : celui d'`httpx` reprend
 l'adresse de la requête, donc le jeton.
@@ -27,13 +35,13 @@ from __future__ import annotations
 import logging
 import threading
 
-import httpx
 from sqlalchemy import update
 from sqlmodel import Session, select
 
 from ..models import ScoreOffre, Utilisateur
 from ..models.base import maintenant
-from .notification import AVIS, PREFIXE_AVIS, SERVEUR_TELEGRAM, _telegram, boutons_avis
+from .notification import AVIS, PREFIXE_AVIS, PREFIXE_POSTULER, _telegram, boutons_avis
+from .telegram import appeler as _appeler
 
 log = logging.getLogger("dreamjob.avis")
 
@@ -43,19 +51,6 @@ PAUSE_APRES_ECHEC = 60         # une panne ne doit pas tourner en boucle serrée
 _arret = threading.Event()
 _fil: threading.Thread | None = None
 _suivant: int | None = None    # premier update_id pas encore traité
-
-
-def _appeler(jeton: str, methode: str, charge: dict, delai: float = 15.0) -> dict | None:
-    """Un appel à l'API du bot. None si l'appel échoue, sans jamais lever."""
-    try:
-        reponse = httpx.post(f"{SERVEUR_TELEGRAM}/bot{jeton}/{methode}", json=charge, timeout=delai)
-        reponse.raise_for_status()
-        return reponse.json()
-    except httpx.HTTPStatusError as e:
-        log.warning("Telegram %s refusé (code %s).", methode, e.response.status_code)
-    except (httpx.HTTPError, ValueError) as e:
-        log.warning("Telegram %s en échec (%s).", methode, type(e).__name__)
-    return None
 
 
 def lire_avis(donnees: str) -> tuple[int, int] | None:
@@ -93,6 +88,14 @@ def _clavier_coche(message: dict, offre_id: int, valeur: int) -> dict:
 
 def traiter(session: Session, mise_a_jour: dict, jeton: str, conversation: str) -> bool:
     """Une réponse de Telegram. Vrai si un avis a été enregistré."""
+    courrier = mise_a_jour.get("message")
+    if courrier:
+        if str((courrier.get("chat") or {}).get("id")) != str(conversation):
+            log.warning("Message venu d'une autre conversation que celle du propriétaire : ignoré.")
+            return False
+        from . import commandes      # import tardif : commandes.py se sert de ce module
+        commandes.traiter(session, courrier, jeton, conversation)
+        return False
     rappel = mise_a_jour.get("callback_query")
     if not rappel:
         return False
@@ -100,6 +103,9 @@ def traiter(session: Session, mise_a_jour: dict, jeton: str, conversation: str) 
     if str((message.get("chat") or {}).get("id")) != str(conversation):
         log.warning("Avis venu d'une autre conversation que celle du propriétaire : ignoré.")
         return False
+    if str(rappel.get("data", "")).startswith(f"{PREFIXE_POSTULER}:"):
+        from . import postuler       # import tardif : postuler.py se sert de ce module
+        return postuler.traiter(session, rappel, jeton, conversation)
     lu = lire_avis(rappel.get("data", ""))
     if lu is None:
         _appeler(jeton, "answerCallbackQuery", {"callback_query_id": rappel.get("id")})
@@ -127,7 +133,7 @@ def relever(moteur, attente: int = ATTENTE_SECONDES) -> int | None:
     if identifiants is None:
         return 0
     jeton, conversation = identifiants
-    charge: dict = {"timeout": attente, "allowed_updates": ["callback_query"]}
+    charge: dict = {"timeout": attente, "allowed_updates": ["callback_query", "message"]}
     if _suivant is not None:
         charge["offset"] = _suivant
     reponse = _appeler(jeton, "getUpdates", charge, delai=attente + 10)
@@ -147,6 +153,8 @@ def relever(moteur, attente: int = ATTENTE_SECONDES) -> int | None:
 
 
 def _boucle(moteur) -> None:
+    from . import commandes
+    commandes.annoncer()
     while not _arret.is_set():
         if relever(moteur) is None:
             _arret.wait(PAUSE_APRES_ECHEC)

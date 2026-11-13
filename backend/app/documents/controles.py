@@ -269,6 +269,39 @@ def contrat_incoherent(lettre: str, profil: Profile, offre: Offer) -> list[str]:
     return [mot for mot in interdits if mot in nu and mot not in du_profil]
 
 
+# --- 5 bis. Le salaire --------------------------------------------------------
+# Le modèle lit l'annonce, et l'annonce affiche parfois une fourchette. La
+# reprendre dans la lettre — ou annoncer des prétentions — engage le candidat
+# sur un chiffre qu'il n'a jamais donné : le salaire se discute en entretien,
+# jamais dans une lettre de motivation. L'alerte Telegram le lui montre, à lui
+# seul (`services/apercu.py`).
+
+_PARLE_DE_SALAIRE = re.compile(
+    r"\b(salaires?|salariale?s?|salariaux|remunerations?|pretentions?|salary|salaries)\b")
+# Des métiers, pas une rémunération : un contrôleur de gestion suit une masse
+# salariale, un gérant vend de l'épargne salariale.
+_SALAIRE_METIER = re.compile(
+    r"masse salariale|masses salariales|epargne salariale|politiques? salariales?|"
+    r"charges salariales|politiques? de remuneration|comptes? remuneres?")
+
+
+def salaire_evoque(lettre: str, profil: Profile) -> list[str]:
+    """Mentions de salaire, de rémunération ou de prétentions dans la lettre.
+
+    Comme pour le contrat, un mot du parcours du candidat est laissé passer :
+    « j'ai fiabilisé le calcul des salaires de 400 collaborateurs » est une
+    expérience, pas une demande.
+    """
+    du_profil = _SALAIRE_METIER.sub(" ", normaliser(" ".join(
+        [e.get("poste", "") + " " + e.get("description", "") for e in profil.experiences]
+        + [f.get("diplome", "") + " " + f.get("details", "") for f in profil.formations]
+        + profil.noms_skills()
+    )))
+    connus = set(_PARLE_DE_SALAIRE.findall(du_profil))
+    trouves = _PARLE_DE_SALAIRE.findall(_SALAIRE_METIER.sub(" ", normaliser(lettre)))
+    return sorted({mot for mot in trouves if mot not in connus})
+
+
 # --- 6. La disponibilité ------------------------------------------------------
 # Mesuré : le profil ne renseigne aucune disponibilité, le prompt le dit
 # explicitement, et mistral écrit quand même « Je suis disponible
@@ -388,6 +421,7 @@ def bloquantes(lettre: str, profil: Profile, offre: Offer) -> dict[str, list[str
         "chiffres": chiffres_inventes(lettre, profil, offre),
         "voix": voix_incorrecte(lettre),
         "contrat": contrat_incoherent(lettre, profil, offre),
+        "salaire": salaire_evoque(lettre, profil),
     }
 
 

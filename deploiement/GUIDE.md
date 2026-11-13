@@ -176,10 +176,70 @@ Quand les deux lignes sont là, le propriétaire reçoit sur Telegram et plus su
 ntfy (un bouton « Ouvrir dans DreamJob » mène à la fiche) ; les autres comptes
 gardent ntfy. Pour revenir à ntfy, retire ces deux lignes.
 
-Sous chaque alerte, deux boutons : **👍 Intéressant** et **👎 Pas pour moi**.
-Un appui suffit (un second le corrige). Les réponses servent à mesurer le score
-(`outils/evaluer_score.py`), elles ne le changent pas d'elles-mêmes. Seuls les
+Chaque alerte donne, sous l'intitulé, le **salaire annoncé** (ou « non
+indiqué ») et les **missions** du poste, reprises de l'annonce — de quoi décider
+sans ouvrir la fiche.
+
+Sous chaque alerte, une question : **✅ Postuler** ou **❌ Passer**. Seuls les
 appuis venus de ta conversation sont pris en compte.
+
+- **Passer** : l'offre est écartée, rien d'autre.
+- **Postuler** : DreamJob écrit ton CV ciblé et ta lettre (une minute environ,
+  quelques centimes) et les dépose dans la conversation, en PDF. **Rien ne part
+  à ce stade** : tu relis, puis tu choisis.
+  - *L'annonce donne une adresse e-mail de candidature* et l'envoi est réglé
+    (voir 10 bis) : **✅ Envoyer ma candidature** fait partir l'e-mail avec les
+    deux PDF, t'en adresse une copie et note la candidature dans ton suivi.
+  - *Sinon, elle se postule sur un site* : **🌐 Ouvrir la page de candidature**,
+    tu joins les deux PDF, **📋 Coordonnées et lettre à copier** te donne de
+    quoi remplir le formulaire (un appui sur une ligne la copie), puis
+    **✅ C'est envoyé** note la candidature.
+  - **🔁 Refaire** réécrit les documents, **❌ Annuler** abandonne.
+
+Tes réponses servent aussi à mesurer le score (`outils/evaluer_score.py`) :
+postuler vaut « intéressant », passer vaut « pas pour moi ».
+
+Le bot comprend aussi quelques **commandes**, à écrire dans la conversation (ou
+à choisir dans le menu « / ») :
+
+| Commande | Effet |
+|---|---|
+| `/profil` | affiche ton profil |
+| `/profil disponibilite Immédiate` | modifie un champ (`-` le vide) |
+| `/profil competences + Python` | ajoute à une liste (`-` pour retirer) |
+| `/excel` | t'envoie le suivi des candidatures, pour France Travail |
+| `/candidatures` | tes dix dernières candidatures |
+| `/motscles` | les mots-clés de tes offres vertes que ton profil ne dit pas |
+| `/aide` | rappelle tout cela |
+
+Champs de `/profil` : titre, resume, situation, disponibilite, experience,
+prenom, nom, email, telephone, ville, pays, linkedin, accord ; listes :
+competences, secteurs, contrats, pays_acceptes. Les expériences, formations et
+langues se modifient dans l'interface.
+
+## 10 bis. L'envoi des candidatures par e-mail (toi) — 5 min, facultatif
+
+Sans ce réglage, tout fonctionne : simplement, aucune candidature ne part toute
+seule. Avec lui, quand une annonce donne une adresse de candidature, le bouton
+« Envoyer » fait partir l'e-mail depuis **ta** boîte. Avec Gmail :
+
+1. Active la **validation en deux étapes** de ton compte Google, si ce n'est
+   pas fait (https://myaccount.google.com/security).
+2. Ouvre https://myaccount.google.com/apppasswords, crée un mot de passe
+   d'application nommé « DreamJob » : Google affiche seize lettres. Ce n'est
+   **pas** le mot de passe de ton compte, et il se révoque au même endroit.
+3. Ajoute au `.env` du serveur, puis relance le conteneur
+   (`docker compose up -d`) :
+
+   ```
+   SMTP_HOTE=smtp.gmail.com
+   SMTP_PORT=587
+   SMTP_UTILISATEUR=ton.adresse@gmail.com
+   SMTP_MOT_DE_PASSE=les seize lettres
+   ```
+
+Chaque candidature envoyée arrive aussi dans ta boîte, en copie cachée : c'est
+ta preuve d'envoi. Le recruteur répond à l'adresse de ton profil.
 
 Tu recevras deux sortes de messages :
 

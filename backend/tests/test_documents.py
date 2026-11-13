@@ -367,3 +367,20 @@ def test_sans_libreoffice_le_cv_part_entier(profil, offre, tmp_path, monkeypatch
     cv, pdf, pages = mod._cv_sur_une_page(profil, offre, MODELE, tmp_path, True)
     assert cv.exists()
     assert pdf is None and pages == 0
+
+
+def test_le_dossier_consigne_ce_qu_un_ats_lira_du_cv(profil, offre, tmp_path):
+    """La lecture porte sur le fichier produit, pas sur le profil : c'est lui
+    que le logiciel de recrutement convertit en texte. Le modèle livré doit
+    rester lisible — une colonne, des rubriques classiques, le nom en tête."""
+    import json as _json
+
+    resultat = generer(profil, offre, tmp_path, MODELE,
+                       redacteur=_redacteur_honnete, ouvrir_apres=False)
+    lecture = resultat.lecture_ats
+    assert lecture["lisible"] and lecture["structure"] == []
+    assert lecture["coordonnees"]["nom_en_tete"]
+    assert set(lecture["rubriques"]) == {"expériences", "formation", "compétences"}
+    assert not [a for a in resultat.avertissements if a.startswith("Lecture ATS")]
+    journal = _json.loads((resultat.dossier / "generation.json").read_text(encoding="utf-8"))
+    assert journal["lecture_ats"]["rubriques"] == lecture["rubriques"]

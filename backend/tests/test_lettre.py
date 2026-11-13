@@ -181,3 +181,25 @@ def test_le_prompt_systeme_ne_bouge_pas_d_une_tentative_a_l_autre(profil, offre)
         "le message doit être le précédent AUGMENTÉ du reproche : seul un "
         "préfixe conservé permet au cache de servir")
     assert "Goldman" in messages[1]
+
+
+def test_une_lettre_qui_parle_de_salaire_est_rejetee_puis_regeneree(profil, offre):
+    """Le salaire de l'annonce est une information pour le candidat, jamais un
+    sujet de la lettre : même traitement qu'une invention."""
+    reponses = [
+        _lettre("La rémunération annoncée correspond à mes prétentions."),
+        _lettre("Mon passage au Crédit Mutuel m'a formé."),
+    ]
+    appels = []
+
+    def faux_modele(systeme, message):
+        appels.append((systeme, message))
+        return reponses.pop(0)
+
+    lettre, compte_rendu = rediger(profil, offre, faux_modele, tentatives=3)
+
+    assert compte_rendu["essais"] == 2
+    assert "rémunération" not in lettre and "prétentions" not in lettre
+    # La seconde consigne nomme la faute ; le prompt système l'interdit d'emblée.
+    assert "ni de salaire" in appels[1][1]
+    assert "JAMAIS de salaire" in appels[0][0]

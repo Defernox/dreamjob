@@ -14,3 +14,6 @@ class ResultatDocuments(BaseModel):
     # Ce que l'offre réclame et que le profil ne couvre pas. Ne juge pas
     # l'offre : dit ce qui manque au candidat pour cette famille de postes.
     mots_cles_non_couverts: list[str] = []
+    # Ce qu'un logiciel de recrutement lira du CV produit : intitulé exact,
+    # coordonnées, rubriques, mots de l'annonce au mot près.
+    lecture_ats: dict = {}

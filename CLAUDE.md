@@ -100,6 +100,7 @@ DreamJob/
 │     ├─ api/           routeurs HTTP
 │     ├─ connectors/    base · http (débit, cache) · registry · une source = un fichier · employeurs/ (un logiciel = un fichier)
 │     ├─ services/      dedup · scan · veille · scoring · acces (comptes) · budget · notification · doublons
+│     │                 telegram · avis (relève) · postuler · courriel · commandes · candidatures
 │     ├─ scoring/       lexique · exigences · extraction · cible · corpus · score · explain — pur code
 │     ├─ documents/     docx_outils · intitule · cv_render · ciblage · correspondance · lettre · controles · exemples · pdf · dossier
 │     ├─ importers/     CV .docx/.pdf → profil structuré
@@ -1601,6 +1602,188 @@ Sans LibreOffice, les documents sont générés en Word uniquement — même pri
 
 ---
 
+## Logiciels de recrutement (ATS) : ce qu'on sait, ce qu'on mesure
+
+**Recherche du 2026-11-13, et ce qu'elle vaut.** Presque tout ce qui se lit sur
+les ATS vient de vendeurs d'outils à CV ; leurs chiffres n'ont pas de source
+(« 75 % des CV rejetés par un robot » est une formule publicitaire). Ce qui
+tient, par niveau de preuve :
+
+| Constat | Preuve |
+|---|---|
+| Le rejet automatique passe par les **questions du formulaire**, pas par le contenu du CV | documentation Greenhouse (« application rules ») et Oracle Taleo (questions de disqualification) |
+| Un ATS rejette rarement un CV de lui-même ; un humain trie, aidé d'une recherche par mots-clés ou d'un score | une seule étude, petite et commandée par un vendeur (Enhancv, 25 recruteurs) — convergent, pas prouvé |
+| Le CV est d'abord converti en texte par un analyseur | SAP : SuccessFactors utilise Textkernel ; Textkernel lit le français et range les compétences dans un référentiel |
+| Colonnes, tableaux, zones de texte, en-têtes, images se lisent mal ; une colonne et des rubriques classiques se lisent partout | sources secondaires unanimes, aucun test publié avec sa méthode |
+| Word mieux lu que PDF | faible : un seul tableau comparatif, sans méthode ; seul Taleo est cité partout comme fragile en PDF |
+| Jobscan pondère : compétences techniques, diplôme, intitulé, savoir-être, autres mots ; vise 75 % | tutoriel de Jobscan |
+
+**Ce que DreamJob en fait** — rien qui trompe un logiciel, ni texte caché ni
+mot-clé que le candidat n'a pas :
+
+- **`documents/lecture_ats.py`** relit **le fichier produit**, pas le profil :
+  structure du Word (tableau, zone de texte, colonnes, image, en-tête), texte
+  extrait du PDF (nom en tête, e-mail et téléphone dans le corps, rubriques
+  reconnues), intitulé exact de l'offre, et les mots de l'annonce rangés en
+  quatre : *au mot près*, *forme voisine*, **dit autrement**, *absent*. Consigné
+  dans `generation.json` ; seuls les vrais défauts du document deviennent des
+  avertissements. Le modèle livré n'en a aucun — mais c'est un fichier que
+  l'utilisateur remplace à sa guise.
+- **Deux mesures, deux questions.** Le taux de `correspondance.py` compte les
+  synonymes : il dit si le profil *couvre* l'annonce. Une recherche par mot-clé
+  ne les connaît pas : la lecture « au mot près » dit si un recruteur *trouvera*
+  le CV. « Dit autrement » est la seule liste sur laquelle agir sans mentir —
+  elle est donc **nommée au modèle** du CV ciblé (`ciblage._mots_a_reprendre`),
+  pour une annonce en français seulement.
+- **`documents/ats.py`** : une fiche par logiciel (Workday, SuccessFactors,
+  Oracle, Greenhouse, SmartRecruiters, Talentsoft), chacune avec sa source et
+  son niveau de preuve. Le logiciel vient d'`employeurs.yaml`, ou de l'adresse de
+  candidature pour une offre d'agrégateur. Un logiciel sans source fiable ne
+  reçoit que le conseil commun ; un site inconnu, rien — on ne prête pas à un
+  site les règles d'un autre. Le dossier Telegram en donne la ligne, joint le
+  Word quand il est réputé mieux lu (Oracle), et annonce les **exigences hors
+  de portée** (années, langue) : ce sont elles que les questions éliminatoires
+  demanderont.
+- **`/motscles`** (`couverture.manques_recurrents`) : les mots sur lesquels les
+  offres vertes insistent et que le profil ne dit nulle part, comptés en nombre
+  d'offres, rendus avec leur voisin habituel (« middle office », pas
+  « middle »). **Mesuré le 2026-11-13 sur 248 offres vertes : la moitié des
+  termes récurrents des annonces sont absents du profil**, 33 % y sont au mot
+  près, 6 % sous une forme voisine, 10 % dits autrement. « middle office »
+  manque dans 146 offres, puis « business analyst », « back office »,
+  « titres », « private equity », « reporting ». Le plafond est le profil, pas
+  la mise en page — et seul le candidat sait lequel de ces mots il a pratiqué.
+  La commande signale aussi les compétences écrites en phrases : un référentiel
+  range des mots.
+
+**Écarté, et pourquoi.** Dire chaque compétence aussi dans les mots de l'annonce
+(« Risque de crédit (credit risk) »), en pur code : essayé sur le profil réel,
+aucun alignement — ses compétences sont des phrases, pas des termes. **Un CV en
+anglais pour une annonce en anglais** : 15 des 248 offres vertes locales sont en
+anglais (les sites des employeurs, absents de cette base, en ont davantage). Ce
+serait une traduction par le modèle d'un document signé du candidat : à faire
+avec ses propres contrôles, pas en passant.
+
+---
+
+## Postuler depuis Telegram
+
+**L'alerte demande une décision, pas un avis.** « ✅ Postuler / ❌ Passer »
+remplace les deux pouces (`notification.boutons_postuler`). La réponse reste
+rangée dans `ScoreOffre.avis` (1 ou 0) : les étiquettes du score continuent de
+s'accumuler. Les alertes parties avant gardent leurs pouces, toujours lus.
+
+**Rien ne part sans un second appui** (`services/postuler.py`). Oui génère le
+dossier — par `generer_documents`, la fonction de l'interface appelée telle
+quelle : budget, garde-fou de la lettre, coût consigné —, dépose les deux PDF
+dans la conversation et propose la suite. Le candidat relit ce qui portera son
+nom ; c'est la raison d'être de l'étape, pas une précaution provisoire.
+
+**Deux façons d'envoyer, et l'annonce décide** (`services/courriel.py`) :
+
+| L'annonce… | Bouton | Ce que fait DreamJob |
+|---|---|---|
+| donne une adresse de candidature, boîte d'envoi réglée | ✅ Envoyer | e-mail depuis la boîte du candidat, CV et lettre joints, copie cachée à lui-même, candidature notée |
+| se postule sur un site | ✅ C'est envoyé | lien vers la page, PDF déjà dans la conversation, coordonnées et lettre à copier ; la candidature est notée à l'appui |
+
+**DreamJob ne remplit pas le formulaire d'un employeur.** Workday,
+SuccessFactors, Oracle, Talentsoft exigent un compte par employeur ; les
+formulaires sans compte posent des questions auxquelles seul le candidat répond
+(droit au travail, consentements) ; beaucoup protègent l'envoi contre les
+robots, et une protection ne se contourne pas — même règle que pour la
+collecte. Un robot fragile qui signe à la place du candidat n'est pas un
+progrès. Mesuré sur la base locale : 2 offres vertes sur 248 portent une
+adresse dans leur contact France Travail — **l'envoi vraiment automatique est
+l'exception, le mode assisté la règle.** Ce que DreamJob supprime, c'est la
+rédaction ; il reste une minute de formulaire par offre.
+
+**Une adresse ne se devine pas.** Le contact de l'annonce d'abord (France
+Travail y range parfois une phrase ou un lien : seule une vraie adresse
+compte) ; dans le texte, une adresse n'est retenue que précédée d'une
+invitation à y écrire (« envoyez votre CV à… »), et jamais la boîte du délégué
+aux données ou de la mission handicap. Elle est montrée avant validation.
+
+**Le corps de l'e-mail est fixe**, en français ou en anglais selon l'annonce :
+aucun appel au modèle, donc rien à inventer (règle 3). `Reply-To` porte
+l'adresse du profil quand la boîte d'envoi en diffère.
+
+**Les boutons portent tout l'état** (`post:<offre>:<action>`, 64 octets au
+plus) : le dossier se retrouve par l'offre (`_dossier_de`), le mode d'envoi se
+recalcule de l'annonce. Aucune table, aucune migration, rien à perdre au
+redémarrage. Seule mémoire : les offres en cours de traitement (`_occupees`),
+pour que deux appuis impatients ne paient pas deux dossiers ni n'envoient deux
+e-mails ; et une candidature déjà notée ne se renote ni ne se renvoie.
+
+**La génération tourne dans son propre fil**, une à la fois (LibreOffice ne se
+partage pas) : la relève doit rester libre d'accuser les autres appuis. Les
+tests remplacent `postuler._executer` par un appel direct.
+
+**Ce qui transite par Telegram a changé** : les documents et, par `/profil`, le
+profil passent désormais par la conversation du propriétaire — à sa demande.
+ntfy ne porte toujours que des intitulés et des scores.
+
+### Ce que l'alerte dit de l'offre (`services/apercu.py`)
+
+Pour répondre à « Postuler ? » sans ouvrir la fiche, l'alerte Telegram porte le
+**salaire annoncé** et les **missions** (cinq au plus). ntfy reste à une ligne.
+
+**Pur code, rien de reformulé** : un résumé rédigé coûterait un appel par alerte
+et pourrait dire ce que l'annonce ne dit pas. Tout est repris de l'annonce, coupé
+mais jamais réécrit.
+
+- **Salaire** : d'abord ce que la source structure — France Travail
+  (`salaire.libelle`, rendu lisible), DogFinance (`remuneration`), Civiweb
+  (`indemnite`), Adzuna (`salary_min/max`). **Une estimation d'Adzuna
+  (`salary_is_predicted`) n'est pas montrée**, et son chiffre est donné sans
+  symbole : Adzuna couvre dix-neuf pays et ne dit pas la monnaie (« 800 000 »
+  est un salaire au Mexique). Sinon le texte : un montant **près d'un mot de
+  rémunération**, jamais seul — « un portefeuille de 300 M€ » n'est pas un
+  salaire. Rien trouvé : « Salaire non indiqué ».
+- **Missions**, dans l'ordre : la rubrique que l'annonce intitule ainsi (les
+  puces y priment sur la phrase d'introduction) ; à défaut **la première liste
+  à puces** qui n'est pas rangée sous « Profil » ou « Avantages » — une annonce
+  sans rubriques énumère ses missions d'abord ; à défaut la rubrique qui décrit
+  le poste ; sinon le début de l'annonce, **annoncé comme « Extrait »** plutôt
+  que de faire passer une présentation d'entreprise pour des missions.
+
+Mesuré sur les offres vertes de la base locale (`missions` trouvées / salaire) :
+France Travail 55 et 47 sur 63, DogFinance 29 et 17 sur 30, Civiweb 3 et 3 sur
+3. Adzuna : 9 et 48 sur 152 — ses descriptions sont coupées à 500 caractères
+d'un seul bloc, l'alerte en donne l'extrait. Les sites des employeurs ne sont
+pas dans cette base : à mesurer sur le serveur.
+
+**Le salaire est une information pour le candidat, jamais un sujet de la
+lettre.** L'aperçu ne va qu'à l'alerte ; mais le modèle lit l'annonce, qui
+affiche parfois une fourchette. D'où une interdiction dans le prompt système et
+un contrôle **bloquant** (`controles.salaire_evoque`) : salaire, rémunération,
+prétentions — la lettre est refusée et régénérée, comme pour une invention.
+Deux exceptions, sans lesquelles des lettres honnêtes tomberaient : les métiers
+(« masse salariale », « épargne salariale ») et les mots présents dans le
+parcours du candidat. Le CV n'est pas concerné : il ne reformule que le profil.
+
+### Commandes (`services/commandes.py`)
+
+`/profil`, `/excel`, `/candidatures`, `/motscles`, `/aide` — pour qui n'a que son téléphone
+sous la main ; l'interface reste joignable par Tailscale. Elles sont déclarées
+à Telegram au démarrage de la relève (`setMyCommands`, menu « / »).
+
+- **Seuls les champs simples se règlent par message** : une ligne, un nombre,
+  un élément ajouté ou retiré d'une liste. Expériences, formations, langues
+  sont des blocs : dictés en une ligne, ils finiraient faux dans un CV.
+- **Même validation que l'interface** (`ProfilMaj`), mais seule une faute sur
+  le champ touché fait refuser : un bloc ancien que le schéma n'accepterait
+  plus ne doit pas interdire de changer une ville.
+- **Chaque modification relance le calcul des notes**, hors de la relève.
+- **Un inconnu qui écrit au bot n'obtient rien** : le filtre sur la
+  conversation vaut pour les messages comme pour les boutons — `/profil`
+  montrerait un téléphone et un parcours.
+
+`services/telegram.py` porte les trois gestes du bot (appeler, écrire,
+déposer) ; `services/candidatures.py` ce que l'API et le bot disent tous deux
+du suivi (noter une candidature, les lignes de l'Excel).
+
+---
+
 ## Avancement
 
 - [x] **1.** Squelette, modèles, migrations, `dev.ps1`
@@ -1623,3 +1806,6 @@ Sans LibreOffice, les documents sont générés en Word uniquement — même pri
 - [x] **18.** Sites des employeurs — 228 employeurs repérés et tous examinés : 158 actifs par dix-neuf connecteurs (quinze logiciels, quatre lectures génériques), robots.txt selon la RFC 9309, Crawl-delay et Content-Signal, 36 refus et 27 écarts motivés, offres échues écartées ; branchés sur la veille, qui lit moins que le scan
 - [x] **19.** Un poste, une alerte — le même poste d'une source à l'autre ou d'une agence à l'autre reconnu (FR/EN confondus, dans le doute deux postes), réservation atomique avant l'envoi, envoi incertain tenu pour parti ; cinq mutations attrapées par les tests
 - [x] **20.** Prêt pour le serveur — recherche manuelle en arrière-plan suivie par l'interface, scans interrompus clos au démarrage, sauvegarde et ménage du cache chaque nuit, journaux Docker plafonnés
+- [x] **21.** Postuler depuis Telegram — « Postuler ? » sous l'alerte, dossier généré et déposé en PDF, rien n'est envoyé sans un second appui ; e-mail automatique quand l'annonce donne une adresse (boîte du candidat, copie cachée), mode assisté sinon (lien, coordonnées et lettre à copier) ; candidature notée une seule fois. Déploiement et réglage SMTP : à faire
+- [x] **22.** Commandes du bot — `/profil` (lecture, champs simples, listes), `/excel`, `/candidatures`, `/aide`, réservées à la conversation du propriétaire
+- [x] **23.** Lu comme par un ATS — recherche sourcée par niveau de preuve ; lecture du CV produit (structure, texte extrait, intitulé exact, mots de l'annonce au mot près / dits autrement / absents) consignée dans chaque dossier ; fiche par logiciel de recrutement avec sa source ; mots dits autrement nommés au CV ciblé ; `/motscles` — la moitié des termes récurrents des 248 offres vertes manquent au profil

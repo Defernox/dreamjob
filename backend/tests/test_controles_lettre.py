@@ -298,3 +298,44 @@ def test_le_niveau_de_langue_du_profil_n_est_pas_une_invention():
     lettre = "Mon anglais est certifié par un TOEIC de 775 points, utile pour ce poste."
     fautes = bloquantes(lettre, profil, offre)
     assert not fautes["inventions"] and not fautes["chiffres"], fautes
+
+
+# --- Le salaire ---------------------------------------------------------------
+
+
+@pytest.mark.parametrize("phrase, mot", [
+    ("Mes prétentions salariales s'élèvent à 45 000 euros.", "pretentions"),
+    ("La rémunération proposée, entre 42 et 50 K€, me convient.", "remuneration"),
+    ("Le salaire annoncé correspond à mes attentes.", "salaire"),
+])
+def test_une_lettre_qui_parle_de_salaire_est_bloquee(profil, offre, phrase, mot):
+    """L'annonce affiche parfois une fourchette : la lettre ne la reprend pas,
+    et n'annonce aucune prétention."""
+    from app.documents.controles import bloquantes, salaire_evoque
+
+    assert mot in salaire_evoque(phrase, profil)
+    assert bloquantes(phrase, profil, offre)["salaire"]
+
+
+def test_un_metier_qui_touche_aux_salaires_n_est_pas_une_demande(profil):
+    """« Masse salariale » et « épargne salariale » sont des métiers."""
+    from app.documents.controles import salaire_evoque
+
+    lettre = "J'ai suivi la masse salariale du groupe et conseillé sur l'épargne salariale."
+    assert salaire_evoque(lettre, profil) == []
+
+
+def test_un_mot_du_parcours_est_laisse_passer(profil):
+    from app.documents.controles import salaire_evoque
+
+    profil.experiences[0]["description"] += " Fiabilisation du calcul des salaires."
+    assert salaire_evoque("J'ai fiabilisé le calcul des salaires de la filiale.", profil) == []
+    assert salaire_evoque("Mes prétentions sont de 45 000 euros.", profil) == ["pretentions"]
+
+
+def test_une_lettre_ordinaire_ne_declenche_rien(profil):
+    from app.documents.controles import salaire_evoque
+
+    lettre = ("Mon passage au Crédit Mutuel m'a appris à évaluer la solvabilité d'une "
+              "entreprise. Je serais heureux d'en discuter lors d'un entretien.")
+    assert salaire_evoque(lettre, profil) == []

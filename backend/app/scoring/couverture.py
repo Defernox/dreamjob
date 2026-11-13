@@ -119,6 +119,87 @@ def mots_cles_non_couverts(profil: Profile, offre: Offer) -> list[str]:
     return _partager(profil, offre)[1][:MAX_TERMES]
 
 
+# Du remplissage d'annonce que les filtres du score laissent passer — sans
+# dommage pour lui, mais un rapport qui propose d'ajouter « équipes » ou
+# « chaque » à ses compétences ne sert à rien. Réservé à ce rapport : la liste
+# des mots vides du score est mesurée, on n'y touche pas pour un affichage.
+BRUIT_DU_RAPPORT = {
+    "etes", "tout", "tous", "chaque", "mois", "faire", "fait", "jours", "savoir", "aupres",
+    "cote", "dedie", "dediee", "confirme", "confirmee", "renom", "professionnels",
+    "collaborateurs", "equipes", "equipe", "direction", "environnement", "etablissement",
+    "pole", "partenaires", "dossiers", "qualite", "stage", "consultant", "capacite",
+    "entretien", "documents", "metiers", "perimetre", "reseau", "internes", "externes",
+    "privee", "prives", "privees", "knowledge", "experience", "experiences", "profil",
+    "candidature", "entreprise", "societe", "client", "clients", "annee", "annees",
+    "niveau", "minimum", "group", "groupe", "team", "teams", "work", "working", "role",
+    "strong", "skills", "ability", "including", "within", "across", "support",
+}
+OFFRES_MINIMALES = 3
+PART_D_EXPRESSION = 0.5
+
+
+def manques_recurrents(profil: Profile, offres: list[Offer], maximum: int = 15
+                       ) -> list[tuple[str, int]]:
+    """Les mots sur lesquels les annonces insistent et que le profil ne dit
+    nulle part, avec le nombre d'offres où ils manquent.
+
+    Une offre isolée ne dit rien ; deux cents offres vertes dessinent le
+    vocabulaire du métier visé. Ce n'est pas une liste à recopier : seul le
+    candidat sait lequel de ces mots il a réellement pratiqué.
+
+    Un mot qui va presque toujours avec le même voisin est rendu avec lui —
+    « middle » seul ne dit rien, « middle office » si.
+    """
+    vocabulaire = _vocabulaire_du_profil(profil)
+    if not vocabulaire:
+        return []
+    manques: Counter = Counter()
+    voisins: dict[str, Counter] = {}
+    for offre in offres:
+        absents = {terme for _, terme in _termes_recurrents(offre)[:MAX_TERMES]
+                   if terme not in BRUIT_DU_RAPPORT
+                   and presence(terme, vocabulaire, flou=True) == 0.0}
+        if not absents:
+            continue
+        manques.update(absents)
+        suite = mots(f"{offre.titre or ''}. {offre.description_brute or ''}")
+        for rang, mot in enumerate(suite):
+            if mot in absents:
+                compte = voisins.setdefault(mot, Counter())
+                compte["*"] += 1
+                if rang + 1 < len(suite):
+                    compte[f"{mot} {suite[rang + 1]}"] += 1
+                if rang > 0:
+                    compte[f"{suite[rang - 1]} {mot}"] += 1
+
+    rapport: list[tuple[str, int]] = []
+    vus: set[str] = set()
+    for terme, nombre in manques.most_common():
+        if nombre < OFFRES_MINIMALES or len(rapport) >= maximum:
+            break
+        compte = voisins.get(terme, Counter())
+        total = compte.pop("*", 0)
+        expression, fois = compte.most_common(1)[0] if compte else (terme, 0)
+        libelle = expression if total and fois >= PART_D_EXPRESSION * total else terme
+        if libelle in vus:
+            continue        # « middle office » compté une fois, pas pour chacun de ses mots
+        vus.add(libelle)
+        rapport.append((libelle, nombre))
+    return rapport
+
+
+def competences_en_phrases(profil: Profile, mots_maximum: int = 3) -> list[str]:
+    """Les compétences du profil écrites comme des phrases.
+
+    Un analyseur range les compétences dans un référentiel, un recruteur les
+    cherche par mots : « Excel », « VBA », « Reporting ». « Connaissance du
+    fonctionnement des différents produits boursiers » ne se range nulle part
+    et ne répond à aucune recherche.
+    """
+    return [nom for nom in (s.get("nom", "") for s in profil.skills)
+            if len(mots(nom)) > mots_maximum]
+
+
 def couverture_de_l_offre(profil: Profile, offre: Offer) -> dict:
     """Petit compte rendu : ce que l'offre demande, ce qui manque."""
     signaux = signaux_de(offre)

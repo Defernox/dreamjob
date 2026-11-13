@@ -17,8 +17,10 @@ Deux canaux, au choix :
   fermée. Quand les deux variables sont là, le propriétaire reçoit sur Telegram
   et plus sur ntfy ; les autres comptes gardent ntfy.
 
-Ce qui transite : intitulés, employeurs et scores, jamais le profil ni les
-documents.
+Ce qui transite par ntfy : intitulés, employeurs et scores, jamais le profil ni
+les documents. Par Telegram, depuis que le propriétaire y postule
+(`services/postuler.py`) et y règle son profil (`services/commandes.py`), ses
+documents et son profil passent aussi — dans sa seule conversation, à sa demande.
 """
 
 from __future__ import annotations
@@ -34,6 +36,7 @@ from sqlmodel import Session, select
 from ..config import reglages
 from ..models import Offer, Profile, ScoreOffre, Utilisateur
 from ..models.base import maintenant
+from .apercu import apercu
 from .doublons import Poste, meme_poste, poste
 
 log = logging.getLogger("dreamjob.notification")
@@ -335,8 +338,11 @@ def alerter(session: Session, depuis: datetime) -> int:
             if instant is None:
                 continue                        # une autre passe l'a déjà pris
             offre, note = groupe[0]
+            # Sur Telegram, l'alerte demande « Postuler ? » : elle dit aussi le
+            # salaire annoncé et les missions, de quoi répondre sans ouvrir la fiche.
+            detail = apercu(offre) if sujet == DESTINATION_TELEGRAM else ""
             if _publier(sujet, *message_alerte(offre, note, _autres_lieux(groupe)), offre_id=offre.id,
-                        urgente=note.score >= URGENTE):
+                        urgente=note.score >= URGENTE, detail=detail):
                 passe.ajouter(sujet, [groupe])
                 envoyees += 1
             else:
@@ -349,7 +355,7 @@ URGENTE = 90
 
 
 def _publier(sujet: str, titre: str, corps: str, *, offre_id: int | None = None,
-             urgente: bool = False) -> bool:
+             urgente: bool = False, detail: str = "") -> bool:
     """Vrai si la notification est partie — ou si l'on ne peut pas savoir.
 
     Un délai dépassé APRÈS l'envoi (lecture de la réponse) laisse l'issue
@@ -357,7 +363,7 @@ def _publier(sujet: str, titre: str, corps: str, *, offre_id: int | None = None,
     sonner deux fois. Seuls une connexion impossible ou un refus de ntfy sont
     des échecs certains."""
     if sujet == DESTINATION_TELEGRAM:
-        return _publier_telegram(titre, corps, offre_id=offre_id)
+        return _publier_telegram(titre, corps, offre_id=offre_id, detail=detail)
     entetes = {"Title": titre.encode("utf-8"), "Tags": "briefcase"}
     if urgente:
         entetes["Priority"] = "high"
@@ -391,7 +397,21 @@ def boutons_avis(offre_id: int, choisi: int | None = None) -> list[dict]:
             for valeur, libelle in AVIS.items()]
 
 
-def _publier_telegram(titre: str, corps: str, *, offre_id: int | None = None) -> bool:
+PREFIXE_POSTULER = "post"
+POSTULER = {"oui": "✅ Postuler", "non": "❌ Passer"}
+
+
+def boutons_postuler(offre_id: int, choisi: str | None = None) -> list[dict]:
+    """« Postuler ? » sous une alerte : oui prépare le dossier, non passe
+    (`services/postuler.py`). La réponse vaut aussi avis, comme les deux pouces
+    qu'elle remplace — les alertes déjà parties gardent les leurs, toujours lus."""
+    return [{"text": ("✓ " if valeur == choisi else "") + libelle,
+             "callback_data": f"{PREFIXE_POSTULER}:{offre_id}:{valeur}"}
+            for valeur, libelle in POSTULER.items()]
+
+
+def _publier_telegram(titre: str, corps: str, *, offre_id: int | None = None,
+                      detail: str = "") -> bool:
     """Même contrat que pour ntfy : vrai si c'est parti ou si l'issue est inconnue.
 
     Le message porte un bouton qui ouvre la fiche de l'offre. Les erreurs sont
@@ -402,14 +422,16 @@ def _publier_telegram(titre: str, corps: str, *, offre_id: int | None = None) ->
         log.warning("Telegram n'est pas réglé : notification non envoyée.")
         return False
     jeton, conversation = identifiants
-    charge: dict = {"chat_id": conversation, "text": f"💼 {titre}\n{corps}", "disable_web_page_preview": True}
+    texte = f"💼 {titre}\n{corps}" + (f"\n\n{detail}" if detail else "")
+    # Au-delà de la limite de Telegram, le message serait refusé en entier.
+    charge: dict = {"chat_id": conversation, "text": texte[:4096], "disable_web_page_preview": True}
     lignes: list[list[dict]] = []
     if adresse := reglages().adresse_publique:
         chemin = f"/offres/{offre_id}" if offre_id else "/offres"
         lignes.append([{"text": "Ouvrir dans DreamJob", "url": f"{adresse.rstrip('/')}{chemin}"}])
     if offre_id:
-        # Une alerte, une offre : son avis se donne d'un appui (`services/avis.py`).
-        lignes.append(boutons_avis(offre_id))
+        # Une alerte, une offre : on y répond d'un appui (`services/postuler.py`).
+        lignes.append(boutons_postuler(offre_id))
     if lignes:
         charge["reply_markup"] = {"inline_keyboard": lignes}
     try:

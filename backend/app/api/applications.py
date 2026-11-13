@@ -20,6 +20,7 @@ from ..models.base import maintenant
 from ..models.enums import StatutCandidature
 from ..schemas.candidature import CandidatureCreation, CandidatureLecture, CandidatureMaj
 from ..scoring.texte import normaliser
+from ..services.candidatures import lignes_export
 from .acces import utilisateur_courant
 
 router = APIRouter(prefix="/api/candidatures", tags=["candidatures"])
@@ -81,31 +82,10 @@ def lister(session: Session = Depends(get_session),
 def exporter_xlsx(session: Session = Depends(get_session),
                   moi: Utilisateur = Depends(utilisateur_courant)) -> Response:
     """Le justificatif de recherche d'emploi, prêt à envoyer à France Travail."""
-    candidatures = list(session.exec(
-        _les_miennes(moi.id).order_by(desc(Application.date_candidature))
-    ).all())
-    # Une seule requête pour toutes les offres : un `session.get` par
-    # candidature ferait autant d'allers-retours que de lignes exportées.
-    offres = {
-        o.id: o for o in session.exec(
-            select(Offer).where(Offer.id.in_([c.offer_id for c in candidatures]))
-        ).all()
-    } if candidatures else {}
-
-    lignes = []
-    for candidature in candidatures:
-        offre = offres.get(candidature.offer_id)
-        lignes.append(candidature.model_dump() | {
-            "titre": offre.titre if offre else "",
-            "entreprise": offre.entreprise if offre else "",
-            "pays": offre.pays if offre else "",
-            "score": _score(session, candidature),
-            "url": offre.url if offre else "",
-        })
-
     jour = date.today().isoformat()
     return Response(
-        content=exporter(lignes),
+        # Les mêmes lignes que le `/excel` du bot Telegram.
+        content=exporter(lignes_export(session, moi.id)),
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition":
                  f'attachment; filename="candidatures-{jour}.xlsx"'},

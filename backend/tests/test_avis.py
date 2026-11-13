@@ -43,8 +43,7 @@ def api(monkeypatch):
         return httpx.Response(200, json=corps, request=httpx.Request("POST", url))
 
     Api.updates, Api.appels = [], []
-    monkeypatch.setattr(avis.httpx, "post", faux_post)
-    monkeypatch.setattr(notification.httpx, "post", faux_post)
+    monkeypatch.setattr(httpx, "post", faux_post)
     return Api
 
 
@@ -70,7 +69,7 @@ def _avis(session, offre_id):
     return session.exec(select(ScoreOffre.avis).where(ScoreOffre.offer_id == offre_id)).first()
 
 
-def test_chaque_alerte_porte_les_deux_boutons(session, api):
+def test_chaque_alerte_demande_s_il_faut_postuler(session, api):
     from app.services.acces import proprietaire
 
     proprietaire(session)
@@ -79,7 +78,7 @@ def test_chaque_alerte_porte_les_deux_boutons(session, api):
     _, charge = api.appels[0]
     lignes = charge["reply_markup"]["inline_keyboard"]
     assert lignes[0][0]["url"].endswith(f"/offres/{offre.id}")
-    assert [b["callback_data"] for b in lignes[1]] == [f"avis:{offre.id}:1", f"avis:{offre.id}:0"]
+    assert [b["callback_data"] for b in lignes[1]] == [f"post:{offre.id}:oui", f"post:{offre.id}:non"]
 
 
 def test_le_resume_du_matin_n_a_pas_de_boutons_d_avis(session, api):
@@ -158,7 +157,7 @@ def test_une_panne_de_telegram_ne_leve_pas_et_n_expose_pas_le_jeton(engine, monk
     def en_panne(url, **kw):
         raise httpx.ConnectError(f"injoignable : {url}")
 
-    monkeypatch.setattr(avis.httpx, "post", en_panne)
-    with caplog.at_level("WARNING", logger="dreamjob.avis"):
+    monkeypatch.setattr(httpx, "post", en_panne)
+    with caplog.at_level("WARNING", logger="dreamjob.telegram"):
         assert avis.relever(engine, attente=0) is None
     assert "jeton-de-test" not in caplog.text

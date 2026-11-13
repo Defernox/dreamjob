@@ -105,6 +105,7 @@ def generer_documents(
         avertissements=resultat.avertissements,
         lettre_essais=resultat.lettre_essais,
         mots_cles_non_couverts=resultat.mots_cles_non_couverts,
+        lecture_ats=resultat.lecture_ats,
         ouvert=ouvrir_apres and "Le dossier n'a pas pu être ouvert automatiquement."
         not in resultat.avertissements,
     )

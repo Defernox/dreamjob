@@ -337,3 +337,29 @@ def test_les_puces_gardent_l_ordre_du_candidat_et_le_resultat_chiffre():
     gardees = _puces_ordonnees(puces, {"compte", "resultat", "partenariats"}, True, 3)
     assert "Crowdfunding mené à 150 % de l'objectif fixé." in gardees
     assert gardees == [p for p in puces if p in gardees], "l'ordre du profil doit être gardé"
+
+
+# --- Les mots de l'offre que le candidat dit autrement -------------------------
+
+def test_le_message_nomme_les_mots_de_l_offre_dits_autrement():
+    """Une recherche par mot-clé ne connaît pas les synonymes : le modèle
+    reçoit la liste des mots à reprendre au lieu de devoir la deviner."""
+    from app.documents.ciblage import _message
+    from app.models import Offer, Profile
+
+    profil = Profile(prenom="A", nom="B", skills=[{"nom": "Gestion de trésorerie"}],
+                     experiences=[{"entreprise": "X", "poste": "Trésorier", "description": ""}])
+    puces = {0: ["Suivi quotidien de la trésorerie du groupe."]}
+    francaise = Offer(source="t", source_id="1", titre="Gestionnaire cash", description_brute=(
+        "Vous assurez la gestion du cash au quotidien pour notre société. Les prévisions de "
+        "cash et le reporting du cash sont au cœur du poste, avec les équipes de la direction."))
+    message = _message(profil, francaise, puces)
+    assert "MOTS DE L'OFFRE QUE LE CANDIDAT DIT AUTREMENT" in message
+    assert "cash" in message.split("DIT AUTREMENT")[1]
+
+    # Annonce en anglais : glisser ses mots dans un CV français n'aide personne.
+    anglaise = Offer(source="t", source_id="2", titre="Cash manager", description_brute=(
+        "You will be responsible for the cash management of the company and for the daily "
+        "cash forecast. You will work with the treasury team and report the cash position to "
+        "the management of the group, and you will be in charge of the cash reporting."))
+    assert "DIT AUTREMENT" not in _message(profil, anglaise, puces)

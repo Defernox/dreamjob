@@ -40,7 +40,6 @@ from .intitule import intitule_pour_cv
 
 log = logging.getLogger("dreamjob.cv")
 
-MAX_PUCES = 5
 MAX_COMPETENCES_PAR_LIGNE = 8
 
 # --- Tenir sur une page ------------------------------------------------------
@@ -53,10 +52,12 @@ MAX_COMPETENCES_PAR_LIGNE = 8
 # — un CV mutilé pour un débordement qui n'existait pas. La mise en page dépend
 # de la police, des marges et des césures du modèle ; seul le rendu la connaît.
 #
-# `dossier.py` mesure donc le PDF réellement produit et rappelle `rendre` avec
-# moins de puces si la page déborde. La première conversion était de toute façon
-# nécessaire : dans le cas courant, la mesure ne coûte rien.
-PUCES_PAR_ESSAI = (MAX_PUCES, 3, 2, 1)
+# **Toutes les puces du profil sont rendues par défaut.** Elles étaient plafonnées
+# à cinq, et `dossier.py` en retirait au premier débordement, sans jamais toucher
+# aux marges ni aux espacements du modèle. Il resserre désormais la mise en page
+# d'abord (`mise_en_page.py`), et ne rappelle `rendre` avec moins de puces qu'en
+# dernier recours.
+PUCES_MINIMUM = 2
 
 
 class ModeleIntrouvable(FileNotFoundError):
@@ -147,7 +148,7 @@ def puces_du_profil(profil: Profile) -> dict[int, list[str]]:
     Le ciblage reformule EXACTEMENT ces puces-là : un découpage différent de
     part et d'autre désalignerait les reformulations de leurs originaux.
     """
-    return {i: _decouper_en_puces(x.get("description", ""), maximum=99)
+    return {i: _decouper_en_puces(x.get("description", ""))
             for i, x in enumerate(profil.experiences)}
 
 
@@ -176,9 +177,9 @@ _CHIFFRE = re.compile(r"\d")
 
 
 def _puces_ordonnees(puces: list[str], vocabulaire: set[str], reordonner: bool,
-                     maximum: int) -> list[str]:
+                     maximum: int | None) -> list[str]:
     """Les puces d'une expérience : les plus utiles SONT CHOISIES, puis rendues
-    dans l'ordre du profil.
+    dans l'ordre du profil. `maximum` à None : toutes.
 
     La pertinence sert à **choisir** quand le CV déborde — on gardait les N
     premières du profil, pas celles qui parlent de CETTE offre. Elle ne sert
@@ -188,7 +189,9 @@ def _puces_ordonnees(puces: list[str], vocabulaire: set[str], reordonner: bool,
     avec l'annonce ne voit pas qu'un résultat chiffré vaut plus qu'une tâche ;
     le candidat, lui, a rangé ses puces en connaissance de cause.
     """
-    if not reordonner or len(puces) <= maximum:
+    if maximum is None or len(puces) <= maximum:
+        return list(puces)
+    if not reordonner:
         return puces[:maximum]
     utilite = {i: _pertinence(p, vocabulaire) + (BONUS_CHIFFRE if _CHIFFRE.search(p) else 0.0)
                for i, p in enumerate(puces)}
@@ -219,15 +222,36 @@ def _blocs(paragraphes: list) -> list[list]:
     return blocs
 
 
-def _decouper_en_puces(texte: str, maximum: int = MAX_PUCES) -> list[str]:
-    """Une description en prose devient des puces lisibles.
+def _recoller(lignes: list[str]) -> list[str]:
+    """Rattache à sa ligne une suite coupée par un retour à la ligne égaré.
 
-    `maximum` se resserre quand le CV déborde sur une seconde page — c'est
-    `dossier.py` qui le décide, après avoir mesuré le PDF rendu.
+    Mesuré sur le profil réel : « Recherche de nouveaux locaux professionnels
+    (Budget 1,5 millions d' » puis « euros) » sur la ligne suivante — deux
+    puces, la première tronquée, la seconde réduite à un mot. Une ligne qui
+    commence par une minuscule ou une ponctuation fermante, après une ligne qui
+    ne finit pas une phrase, n'est pas une puce : c'est la fin de la précédente.
+    Rien n'est ajouté ni retiré, seulement recollé.
+    """
+    recollees: list[str] = []
+    for ligne in lignes:
+        if (recollees and ligne and (ligne[0].islower() or ligne[0] in ")]},;:")
+                and not recollees[-1].endswith((".", "!", "?", ";", ":"))):
+            liaison = "" if recollees[-1].endswith(("'", "’", "-", "(")) or ligne[0] in ")]},;" else " "
+            recollees[-1] += liaison + ligne
+        else:
+            recollees.append(ligne)
+    return recollees
+
+
+def _decouper_en_puces(texte: str, maximum: int | None = None) -> list[str]:
+    """Une description en prose devient des puces lisibles — toutes, par défaut.
+
+    `maximum` ne sert plus qu'au dernier recours de `dossier.py`, quand même la
+    mise en page la plus serrée déborde.
     """
     if not texte.strip():
         return []
-    lignes = [l.strip(" -•\t") for l in texte.splitlines() if l.strip()]
+    lignes = _recoller([l.strip(" -•\t") for l in texte.splitlines() if l.strip()])
     if len(lignes) > 1:
         return lignes[:maximum]
     phrases = [p.strip() for p in re.split(r"(?<=[.!?])\s+", texte) if len(p.strip()) > 15]
@@ -419,14 +443,14 @@ def rendre(
     destination: Path,
     *,
     reordonner: bool = True,
-    max_puces: int = MAX_PUCES,
+    max_puces: int | None = None,
     ciblage=None,
 ) -> Path:
     """Écrit le CV adapté à `offre` dans `destination`. Renvoie le chemin.
 
-    `max_puces` borne le nombre de puces par expérience. `dossier.py` le
-    resserre quand le PDF rendu déborde sur une seconde page — voir
-    PUCES_PAR_ESSAI.
+    `max_puces` borne le nombre de puces par expérience ; None, le défaut, les
+    rend toutes. `dossier.py` ne le fixe qu'en dernier recours, quand même la
+    mise en page la plus serrée déborde.
 
     `ciblage` (`documents.ciblage.Ciblage`) apporte un résumé et des puces
     reformulés pour l'offre, déjà contrôlés. Absent, le CV reprend le profil.

@@ -26,7 +26,8 @@ from ..models import Offer, Profile, ScoreOffre
 from ..scoring.couverture import mots_cles_non_couverts
 from . import lecture_ats
 from . import pdf as pdf_outil
-from .cv_render import PUCES_PAR_ESSAI
+from . import mise_en_page
+from .cv_render import PUCES_MINIMUM, puces_du_profil
 from .cv_render import rendre as rendre_cv
 from .docx_outils import signer
 from .intitule import au_poste, intitule_pour_cv, nettoyer_intitule
@@ -48,6 +49,8 @@ class Resultat:
     mots_cles_non_couverts: list[str] = field(default_factory=list)
     # Ce qu'un logiciel de recrutement lira du CV produit (`lecture_ats.py`).
     lecture_ats: dict = field(default_factory=dict)
+    # Comment le CV a tenu sur une page : palier de mise en page, puces coupées.
+    mise_en_page: dict = field(default_factory=dict)
 
 
 def slug(texte: str, longueur: int = 60) -> str:
@@ -219,42 +222,76 @@ def _retirer_generation_precedente(dossier: Path, profil: Profile) -> None:
             log.warning("Impossible de retirer %s : %s", nom, e)
 
 
+class _SansLibreOffice(Exception):
+    """La conversion en PDF a échoué : on ne peut plus mesurer."""
+
+
 def _cv_sur_une_page(profil: Profile, offre: Offer, modele: Path, dossier: Path,
-                     reordonner: bool, ciblage=None) -> tuple[Path, Path | None, int]:
-    """Rend le CV, puis vérifie sur le PDF qu'il tient sur une page.
+                     reordonner: bool, ciblage=None
+                     ) -> tuple[Path, Path | None, int, dict]:
+    """Rend le CV avec TOUTES ses puces, puis le resserre jusqu'à ce qu'il tienne
+    sur une page. Renvoie (Word, PDF, pages, ajustement).
+
+    **On resserre la mise en page avant de couper du contenu.** Les paliers de
+    `mise_en_page.py` — marges, espacements, polices, chacun borné par un
+    plancher — sont essayés dans l'ordre. Seulement si le dernier déborde
+    encore, les puces sont retirées une par une, les moins utiles à l'offre
+    d'abord (`cv_render._puces_ordonnees`), jamais sous deux par expérience.
 
     **On mesure, on ne devine pas.** Une version antérieure estimait la hauteur
     à partir du nombre de caractères : elle se trompait de huit lignes et
     rabotait les expériences à une seule puce pour un débordement imaginaire.
     La mise en page dépend de la police, des marges et des césures du modèle —
-    seul le rendu la connaît.
+    seul le rendu la connaît. Dans le cas courant, où le CV tient du premier
+    coup, la mesure ne coûte rien : la conversion était nécessaire de toute façon.
 
-    La première conversion serait de toute façon nécessaire : dans le cas
-    courant, où le CV tient du premier coup, la mesure ne coûte rien.
-
-    Sans LibreOffice, on ne peut pas mesurer : le CV part avec toutes ses
-    puces, ce qui vaut mieux qu'un CV amputé au hasard.
+    Sans LibreOffice, on ne peut pas mesurer : le CV part complet, dans la mise
+    en page du modèle, ce qui vaut mieux qu'un CV amputé au hasard.
     """
     cible = dossier / f"{noms_de_fichiers(profil)[0]}.docx"
-    cv = pdf = None
-    pages = 0
+    # Le ciblage garde le nombre de puces de chaque expérience : celles du profil
+    # suffisent à compter ce qui sera coupé.
+    nombres = [len(liste) for liste in puces_du_profil(profil).values()]
+    plus_longue = max(nombres, default=0)
 
-    for maximum in PUCES_PAR_ESSAI:
+    def essayer(palier, max_puces):
         cv = rendre_cv(profil, offre, modele, cible, reordonner=reordonner,
-                       max_puces=maximum, ciblage=ciblage)
+                       max_puces=max_puces, ciblage=ciblage)
+        mise_en_page.appliquer(cv, palier)
         try:
             pdf = pdf_outil.convertir(cv)
         except Exception as e:  # noqa: BLE001 — sans LibreOffice, le Word suffit
             log.warning("PDF non généré pour %s : %s", cv.name, e)
-            return cv, None, 0
+            raise _SansLibreOffice from e
+        return cv, pdf, _nombre_de_pages(pdf)
 
-        pages = _nombre_de_pages(pdf)
+    def ajustement(palier, max_puces):
+        coupees = sum(max(0, n - max_puces) for n in nombres) if max_puces else 0
+        return {"palier": palier.numero, "mise_en_page": palier.libelle,
+                "puces_max": max_puces, "puces_coupees": coupees}
+
+    # Les essais : chaque palier avec toutes les puces, puis le dernier palier
+    # avec une puce de moins à chaque fois, jusqu'au minimum.
+    essais = [(palier, None) for palier in mise_en_page.PALIERS]
+    essais += [(mise_en_page.DERNIER_PALIER, m)
+               for m in range(plus_longue - 1, PUCES_MINIMUM - 1, -1)]
+
+    cv = pdf = None
+    pages = 0
+    for palier, max_puces in essais:
+        try:
+            cv, pdf, pages = essayer(palier, max_puces)
+        except _SansLibreOffice:
+            # Rendu à nouveau, sans aucun resserrement : le modèle tel quel.
+            cv = rendre_cv(profil, offre, modele, cible, reordonner=reordonner, ciblage=ciblage)
+            return cv, None, 0, ajustement(mise_en_page.PALIERS[0], None)
         if pages <= 1:
-            if maximum != PUCES_PAR_ESSAI[0]:
-                log.info("CV ramené à une page avec %d puces par expérience.", maximum)
-            return cv, pdf, pages
+            if palier.numero or max_puces:
+                log.info("CV tenu sur une page : %s%s.", palier.libelle,
+                         f", {max_puces} puces au plus par expérience" if max_puces else "")
+            return cv, pdf, pages, ajustement(palier, max_puces)
 
-    return cv, pdf, pages
+    return cv, pdf, pages, ajustement(*essais[-1])
 
 
 def _nombre_de_pages(pdf: Path) -> int:
@@ -314,15 +351,23 @@ def generer(
             resultat.avertissements.append(f"CV non adapté à l'offre — {e}")
 
     # --- CV (obligatoire), tenu sur une page ---
-    cv, cv_pdf, pages = _cv_sur_une_page(profil, offre, modele_cv, dossier, reordonner_cv,
-                                         ciblage)
+    cv, cv_pdf, pages, resultat.mise_en_page = _cv_sur_une_page(
+        profil, offre, modele_cv, dossier, reordonner_cv, ciblage)
     resultat.fichiers.append(cv)
     if cv_pdf is not None:
         resultat.fichiers.append(cv_pdf)
     if pages and pages > 1:
         resultat.avertissements.append(
-            f"Le CV tient sur {pages} pages malgré la réduction des puces — "
-            "raccourcissez les descriptions d'expériences dans l'onglet Profil."
+            f"Le CV tient sur {pages} pages malgré la mise en page la plus serrée et "
+            f"{PUCES_MINIMUM} puces par expérience — raccourcissez les descriptions "
+            "d'expériences dans l'onglet Profil."
+        )
+    elif coupees := resultat.mise_en_page.get("puces_coupees"):
+        resultat.avertissements.append(
+            f"{coupees} puce{'s' if coupees > 1 else ''} d'expérience retirée"
+            f"{'s' if coupees > 1 else ''} pour tenir sur une page, malgré la mise en page "
+            "resserrée — les moins utiles à cette offre. Raccourcir les descriptions dans "
+            "l'onglet Profil les ferait revenir."
         )
 
     # --- Ce qu'un ATS lira de ce CV ---
@@ -437,6 +482,7 @@ def generer(
         "lettre": journal,
         "mots_cles_non_couverts": resultat.mots_cles_non_couverts,
         "lecture_ats": resultat.lecture_ats,
+        "cv_mise_en_page": resultat.mise_en_page,
         "cv_reordonne": reordonner_cv,
         "ciblage": ciblage.journal if ciblage else None,
         # Ce qu'a coûté ce dossier, appel par appel. L'utilisateur paie ses

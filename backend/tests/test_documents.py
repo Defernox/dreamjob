@@ -318,55 +318,179 @@ def test_sans_contrat_la_ligne_disparait(profil, offre, tmp_path):
     assert not any("Recherche" in t for t in textes)
 
 
-def test_le_plafond_de_puces_est_respecte(profil, offre, tmp_path):
-    """`dossier.py` le resserre quand le PDF déborde."""
-    from app.documents.cv_render import rendre
-
+def _huit_puces(profil):
     profil.experiences = [{
         "entreprise": "Crédit Mutuel", "poste": "Gestionnaire",
         "debut": "2023", "fin": "2025",
         "description": "\n".join(f"Mission numéro {i} sur le portefeuille." for i in range(8)),
     }]
-    cv = rendre(profil, offre, MODELE, tmp_path / "CV.docx", max_puces=2)
-    puces = [t for t in _textes(cv) if t.startswith("Mission numéro")]
-    assert len(puces) == 2
+    return profil
 
 
-def test_un_cv_qui_deborde_est_resserre_puis_signale(profil, offre, tmp_path, monkeypatch):
-    """Le filet : on mesure le PDF rendu, on ne devine pas la hauteur. Une
-    estimation par nombre de caractères se trompait de huit lignes et rabotait
-    les expériences pour un débordement imaginaire."""
-    from app.documents import dossier as mod
+def test_toutes_les_puces_du_profil_sont_rendues_par_defaut(profil, offre, tmp_path):
+    """Elles étaient plafonnées à cinq, sans que le CV ait débordé."""
+    cv = rendre(_huit_puces(profil), offre, MODELE, tmp_path / "CV.docx")
+    assert len([t for t in _textes(cv) if t.startswith("Mission numéro")]) == 8
 
-    essais: list[int] = []
 
-    def faux_convertir(source):
-        # On feint deux pages tant que les puces ne sont pas descendues à 2.
+def test_une_ligne_coupee_dans_le_profil_reste_une_seule_puce():
+    """Mesuré sur le profil réel : « (Budget 1,5 millions d' » puis « euros) »
+    à la ligne — deux puces, la première tronquée, la seconde d'un mot."""
+    from app.documents.cv_render import _decouper_en_puces
+
+    assert _decouper_en_puces(
+        "Analyse du marché immobilier parisien\n"
+        "Recherche de nouveaux locaux professionnels (Budget 1,5 millions d'\n"
+        "euros)\n"
+        "Mise en place de crowdfunding\n"
+        "suivi des contributeurs") == [
+        "Analyse du marché immobilier parisien",
+        "Recherche de nouveaux locaux professionnels (Budget 1,5 millions d'euros)",
+        "Mise en place de crowdfunding suivi des contributeurs",
+    ]
+    # Une phrase finie suivie d'une minuscule reste deux puces : on ne devine pas.
+    assert _decouper_en_puces("Clôture mensuelle.\nsuivi des KPI") == [
+        "Clôture mensuelle.", "suivi des KPI"]
+
+
+def _faux_pdf(monkeypatch, mod, pages_selon):
+    """Remplace LibreOffice : le PDF « compte » `pages_selon(docx)` pages, et
+    chaque essai est consigné avec le Word tel qu'il a été converti."""
+    essais = []
+
+    def convertir(source):
+        document = docx.Document(str(source))
+        essais.append(document)
         pdf = source.with_suffix(".pdf")
-        pages = 1 if len(essais) >= 2 else 2
-        pdf.write_bytes(b"%PDF-1.4\n" + b"/Type /Page \n" * pages)
-        essais.append(pages)
+        pdf.write_bytes(b"%PDF-1.4\n" + b"/Type /Page \n" * pages_selon(document))
         return pdf
 
-    monkeypatch.setattr(mod.pdf_outil, "convertir", faux_convertir)
-    cv, pdf, pages = mod._cv_sur_une_page(profil, offre, MODELE, tmp_path, True)
-    assert pages == 1
-    assert len(essais) == 3            # il a fallu resserrer deux fois
-    assert cv.exists() and pdf is not None
+    monkeypatch.setattr(mod.pdf_outil, "convertir", convertir)
+    return essais
+
+
+def _marge_cm(document):
+    return round(document.sections[0].left_margin.cm, 2)
+
+
+def _puces(document):
+    return [p.text for p in document.paragraphs if p.text.startswith("Mission numéro")]
+
+
+def test_on_resserre_la_mise_en_page_avant_de_couper_des_puces(profil, offre, tmp_path, monkeypatch):
+    """Deux pages au modèle tel quel et aux marges réduites, une page dès que
+    les espacements sont divisés par deux : les huit puces restent."""
+    from app.documents import dossier as mod
+
+    titre = next(p for p in docx.Document(str(MODELE)).paragraphs if p.text == "Profil")
+    espace_modele = titre.paragraph_format.space_before.pt
+
+    def pages(document):
+        rubrique = next(p for p in document.paragraphs if p.text == "Profil")
+        return 1 if rubrique.paragraph_format.space_before.pt < espace_modele else 2
+
+    essais = _faux_pdf(monkeypatch, mod, pages)
+    cv, pdf, nombre, ajustement = mod._cv_sur_une_page(
+        _huit_puces(profil), offre, MODELE, tmp_path, True)
+
+    assert nombre == 1 and len(essais) == 3
+    assert ajustement["palier"] == 2 and ajustement["puces_coupees"] == 0
+    assert len(_puces(docx.Document(str(cv)))) == 8
+    assert _marge_cm(essais[0]) > 1.5 and _marge_cm(essais[1]) == 1.5
+
+
+def test_le_palier_retenu_est_consigne_dans_le_journal(profil, offre, tmp_path, monkeypatch):
+    from app.documents import dossier as mod
+
+    _faux_pdf(monkeypatch, mod, lambda d: 1 if _marge_cm(d) == 1.5 else 2)
+    resultat = generer(profil, offre, tmp_path, MODELE,
+                       redacteur=_redacteur_honnete, ouvrir_apres=False)
+    journal = json.loads((resultat.dossier / "generation.json").read_text(encoding="utf-8"))
+    assert journal["cv_mise_en_page"] == {"palier": 1, "mise_en_page": "marges à 1,5 cm",
+                                          "puces_max": None, "puces_coupees": 0}
+    assert not any("retirée" in a for a in resultat.avertissements)
+
+
+def test_les_puces_ne_tombent_qu_apres_le_dernier_palier_et_jamais_sous_deux(
+        profil, offre, tmp_path, monkeypatch):
+    from app.documents import dossier as mod
+    from app.documents.mise_en_page import DERNIER_PALIER, PALIERS
+
+    essais = _faux_pdf(monkeypatch, mod, lambda d: 2)       # rien ne suffit
+    cv, pdf, nombre, ajustement = mod._cv_sur_une_page(
+        _huit_puces(profil), offre, MODELE, tmp_path, True)
+
+    # Chaque palier avec huit puces, puis 7, 6… 2 puces au dernier palier.
+    assert [len(_puces(e)) for e in essais] == [8] * len(PALIERS) + [7, 6, 5, 4, 3, 2]
+    assert nombre == 2 and len(_puces(docx.Document(str(cv)))) == 2
+    assert ajustement == {"palier": DERNIER_PALIER.numero, "mise_en_page": DERNIER_PALIER.libelle,
+                          "puces_max": 2, "puces_coupees": 6}
+
+
+def test_une_puce_coupee_est_signalee(profil, offre, tmp_path, monkeypatch):
+    from app.documents import dossier as mod
+
+    _faux_pdf(monkeypatch, mod, lambda d: 1 if len(_puces(d)) <= 6 else 2)
+    resultat = generer(_huit_puces(profil), offre, tmp_path, MODELE,
+                       redacteur=_redacteur_honnete, ouvrir_apres=False)
+    assert resultat.mise_en_page["puces_coupees"] == 2
+    assert any(a.startswith("2 puces d'expérience retirées") for a in resultat.avertissements)
+
+
+def test_les_planchers_ne_sont_jamais_franchis(tmp_path):
+    """Corps jamais sous 10 pt, marges jamais sous 1,27 cm — titres réduits
+    aussi, qu'ils soient définis sur le style ou sur le texte."""
+    import re
+    import shutil
+    import zipfile
+
+    from app.documents.mise_en_page import DERNIER_PALIER, appliquer
+
+    def tailles(chemin):
+        with zipfile.ZipFile(chemin) as archive:
+            xml = "".join(archive.read(n).decode("utf-8") for n in
+                          ("word/document.xml", "word/styles.xml"))
+        return [int(v) for v in re.findall(r'<w:szCs? w:val="(\d+)"', xml)]
+
+    copie = tmp_path / "CV.docx"
+    shutil.copy(MODELE, copie)
+    avant = tailles(copie)
+    appliquer(copie, DERNIER_PALIER)
+    apres = tailles(copie)
+
+    assert len(avant) == len(apres)
+    for a, b in zip(avant, apres):
+        assert b == a if a <= 20 else b == max(20, a - 2)   # demi-points : 20 = 10 pt
+    assert max(apres) < max(avant), "le nom et les titres sont réduits aussi"
+    document = docx.Document(str(copie))
+    for section in document.sections:
+        for marge in (section.top_margin, section.bottom_margin,
+                      section.left_margin, section.right_margin):
+            assert marge.cm >= 1.27
+
+
+def test_le_plafond_de_puces_est_respecte(profil, offre, tmp_path):
+    """Passé explicitement, en dernier recours de `dossier.py`."""
+    cv = rendre(_huit_puces(profil), offre, MODELE, tmp_path / "CV.docx", max_puces=2)
+    assert len([t for t in _textes(cv) if t.startswith("Mission numéro")]) == 2
 
 
 def test_sans_libreoffice_le_cv_part_entier(profil, offre, tmp_path, monkeypatch):
     """Faute de pouvoir mesurer, mieux vaut un CV complet qu'un CV amputé au
-    hasard."""
+    hasard — et dans la mise en page du modèle, pas à moitié resserrée."""
     from app.documents import dossier as mod
 
     def refuse(source):
         raise RuntimeError("LibreOffice absent")
 
     monkeypatch.setattr(mod.pdf_outil, "convertir", refuse)
-    cv, pdf, pages = mod._cv_sur_une_page(profil, offre, MODELE, tmp_path, True)
+    cv, pdf, pages, ajustement = mod._cv_sur_une_page(
+        _huit_puces(profil), offre, MODELE, tmp_path, True)
     assert cv.exists()
     assert pdf is None and pages == 0
+    assert len([t for t in _textes(cv) if t.startswith("Mission numéro")]) == 8
+    assert _marge_cm(docx.Document(str(cv))) == _marge_cm(docx.Document(str(MODELE)))
+    assert ajustement["palier"] == 0 and ajustement["puces_coupees"] == 0
 
 
 def test_le_dossier_consigne_ce_qu_un_ats_lira_du_cv(profil, offre, tmp_path):

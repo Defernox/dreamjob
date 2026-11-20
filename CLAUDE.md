@@ -918,9 +918,46 @@ eux, sont conservés.
 
 **Le CV tient sur une page, et c'est mesuré, pas estimé.** Un CV de deux pages
 n'est pas une convention discutable : le recruteur lit la première, la seconde
-arrive après sa décision. `dossier.py` convertit le CV, compte les `/Type /Page`
-du PDF, et rappelle `cv_render.rendre` avec moins de puces par expérience
-(`PUCES_PAR_ESSAI`) tant qu'il déborde.
+arrive après sa décision. `dossier.py` convertit le CV et compte les
+`/Type /Page` du PDF.
+
+**On resserre la mise en page avant de couper du contenu.** Les puces étaient
+plafonnées à cinq par expérience, et le premier débordement en retirait
+d'autres — sans jamais toucher aux marges larges ni aux espacements aérés du
+modèle : le contenu était sacrifié à la décoration. Désormais le CV est rendu
+avec **toutes** ses puces, puis `documents/mise_en_page.py` applique des paliers
+cumulatifs au Word rendu, chacun mesuré :
+
+| Palier | Changement |
+|---|---|
+| 0 | modèle tel quel |
+| 1 | marges ramenées à 1,5 cm |
+| 2 | espacements avant/après divisés par deux, interligne simple |
+| 3 | polices − 0,5 pt |
+| 4 | polices − 1 pt |
+
+**Planchers** : aucune police sous 10 pt, aucune marge sous 1,27 cm. Le modèle
+écrit le corps en 10,5 pt : il touche le plancher dès le palier 3, et le palier 4
+ne réduit plus que les titres. Les tailles sont réduites partout où le modèle les
+définit — styles et valeurs par défaut (`styles.xml`), morceaux de texte
+(`document.xml`), puces (`numbering.xml`) : une taille réduite sur le style mais
+pas sur le texte ne changerait rien au rendu. L'interligne n'est ramené à simple
+que s'il est proportionnel : un interligne exact a été fixé pour une raison.
+
+**Seulement si le palier 4 déborde encore**, les puces sont retirées une par une
+(la plus longue expérience d'abord : `max_puces` = n − 1, n − 2…), en gardant
+celles qui parlent le plus à l'offre (`cv_render._puces_ordonnees`), jamais sous
+deux par expérience (`PUCES_MINIMUM`) ; un avertissement le dit. Le palier
+retenu et les puces coupées sont consignés dans `generation.json`
+(`cv_mise_en_page`). Mesuré le 2026-11-20 sur le profil réel (15 puces, offre
+Oddo BHF) : une page au **palier 2**, aucune puce coupée — l'ancien plafond en
+retirait deux. Une conversion LibreOffice coûte ~2 s : trois essais, 6 s.
+
+**Une ligne coupée dans le profil reste une puce** (`cv_render._recoller`).
+Le profil réel portait « (Budget 1,5 millions d' » puis « euros) » à la ligne :
+deux puces, la première tronquée. Une ligne qui commence par une minuscule ou
+une ponctuation fermante, après une ligne qui ne finit pas une phrase, est
+rattachée à la précédente — rien n'est ajouté ni retiré.
 
 Une première version **estimait** la hauteur en lignes à partir du nombre de
 caractères : elle annonçait 55 lignes pour un CV qui en occupait 47, et rabotait
@@ -928,7 +965,8 @@ donc les expériences à une seule puce pour un débordement imaginaire. La mise
 page dépend de la police, des marges et des césures du modèle — seul le rendu la
 connaît. La première conversion étant de toute façon nécessaire, la mesure ne
 coûte rien dans le cas courant. Sans LibreOffice, on ne mesure pas : le CV part
-entier, ce qui vaut mieux qu'un CV amputé au hasard.
+entier, dans la mise en page du modèle, ce qui vaut mieux qu'un CV amputé au
+hasard.
 
 **Le CV ne porte aucune ligne de mobilité.** Les pays acceptés du profil
 servent à filtrer les offres, pas à figurer sur un CV : le recruteur sait où est
